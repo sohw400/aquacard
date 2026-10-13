@@ -87,5 +87,6 @@ KAST는 지원 자산마다 청산 주소를 두고 받은 코인을 거래 확�
 - [입출금 흐름](docs/funding-flows.md)·[입출금 백엔드 설계](docs/funding-architecture.md)
 - [화면 설계](docs/ux-remake.md)
 - [PoC 범위와 후속 기획](docs/poc-scope.md)
+- [모바일 앱 준비 (iOS·Android)](docs/mobile-app-plan.md)
 
 실제 서비스를 위해서는 본인확인, 보관·전환 파트너, 카드 발급·정산, 원화 스테이블 발행·상환, 리저브 보상 재원과 한국 제공 가능 범위를 확정해야 합니다. 브라우저 장부는 실제 금융 장부나 인증 시스템으로 쓸 수 없습니다.
