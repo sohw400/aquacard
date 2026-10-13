@@ -2,3 +2,5 @@ export const won = (value: number) => new Intl.NumberFormat('ko-KR', { maximumFr
 export const money = (value: number) => `${won(value)}원`;
 export const shortDate = (timestamp: number) => new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' }).format(timestamp);
 export const percent = (rate: number) => `${Number((rate * 100).toFixed(2))}%`;
+export const dayLabel = (timestamp: number) => new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', timeZone: 'Asia/Seoul' }).format(timestamp);
+export const timeLabel = (timestamp: number) => new Intl.DateTimeFormat('ko-KR', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Seoul' }).format(timestamp);
