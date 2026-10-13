@@ -7,7 +7,7 @@
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
-import { lintLayout } from './layout-lint.mjs';
+import { lintInteraction, lintLayout, recordShifts } from './layout-lint.mjs';
 
 const base = process.env.AQUA_BASE_URL ?? 'http://127.0.0.1:5173';
 const PROFILES = {
@@ -49,6 +49,7 @@ async function audit(profileName, profile) {
   async function open(snapshot) {
     const context = await browser.newContext({ ...options, ...(snapshot ? { storageState: new URL(`${snapshot}.json`, snapshots).pathname } : {}) });
     await context.grantPermissions([], { origin: base });
+    await context.addInitScript(recordShifts);
     const page = await context.newPage();
     page.setDefaultTimeout(8_000);
     page.on('pageerror', (error) => { failures += 1; console.log(`  page error: ${error.message}`); });
@@ -107,8 +108,10 @@ async function audit(profileName, profile) {
     }
     await page.evaluate((element) => { if (element) element.scrollTop = 0; }, scroller);
     await scroller.dispose();
-    report.push({ id, label, files, issues: [...issues.values()] });
-    console.log(`  ${id} ${files.length} shot(s), ${issues.size} issue(s)`);
+    for (const issue of await lintInteraction(page, { hover: profileName === 'desktop' })) issues.set(`${issue.type}|${issue.where}|${issue.text}`, { ...issue, severity: 'info', detail: '' });
+    const shifts = await page.evaluate(() => (window.__aquaShifts ?? []).splice(0));
+    report.push({ id, label, files, issues: [...issues.values()], shifts });
+    console.log(`  ${id} ${files.length} shot(s), ${issues.size} issue(s)${shifts.length ? `, ${shifts.length} shift(s)` : ''}`);
   }
   async function section(label, run) {
     console.log(`[${profileName}] ${label}`);

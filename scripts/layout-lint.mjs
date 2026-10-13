@@ -364,3 +364,97 @@ function inPageLint({ gutter }) {
     return (light + 0.05) / (dark + 0.05);
   }
 }
+
+/**
+ * Interaction feedback, read from the page's own style rules: controls that give no sign when pressed (or
+ * hovered, on a pointer screen), and disabled controls styled the same as enabled ones.
+ */
+export async function lintInteraction(page, { hover = false } = {}) {
+  return page.evaluate(inPageInteraction, { hover });
+}
+
+function inPageInteraction({ hover }) {
+  const issues = [];
+  const rules = [];
+  const visit = (list) => {
+    for (const rule of list) {
+      if (rule instanceof CSSStyleRule) {
+        for (const part of rule.selectorText.split(',')) {
+          for (const state of ['active', 'hover', 'disabled']) {
+            if (!part.includes(`:${state}`)) continue;
+            const stripped = part.replace(new RegExp(`:${state}`, 'g'), '').replace(/:not\(\s*\)/g, '').trim();
+            rules.push({ state, selector: part.trim(), stripped: stripped || '*' });
+          }
+        }
+      } else if (rule.cssRules) {
+        if (rule.media && !matchMedia(rule.media.mediaText).matches && !(hover && rule.media.mediaText.includes('hover'))) continue;
+        visit(rule.cssRules);
+      }
+    }
+  };
+  for (const sheet of document.styleSheets) { try { visit(sheet.cssRules); } catch { /* cross-origin sheet */ } }
+  const matches = (element, selector) => { try { return element.matches(selector); } catch { return false; } };
+  const styled = (element, state) => rules.some((rule) => rule.state === state && (matches(element, rule.stripped) || [...element.querySelectorAll('*')].some((child) => matches(child, rule.stripped) && rule.selector.includes(' '))));
+  const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+  const describe = (element) => { const test = element.getAttribute('data-testid'); const classes = [...element.classList].slice(0, 2).join('.'); return `${element.tagName.toLowerCase()}${test ? `[${test}]` : ''}${classes ? `.${classes}` : ''}`; };
+  const text = (element) => (element.innerText || element.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  const dialogs = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].filter(visible);
+  const root = dialogs.at(-1) ?? document.body;
+  const controls = [...root.querySelectorAll('button, summary, [role="switch"], a[href], label:has(> input[type="checkbox"]), label:has(> input[type="radio"])')].filter(visible);
+  for (const control of controls) {
+    if (control.matches('input')) continue;
+    if (control.matches(':disabled')) {
+      if (!styled(control, 'disabled') && !control.matches('[aria-disabled]')) issues.push({ type: 'disabled-look', where: describe(control), text: text(control) });
+      continue;
+    }
+    if (!styled(control, 'active') && !control.matches('[role="switch"]')) issues.push({ type: 'no-press-feedback', where: describe(control), text: text(control) });
+    if (hover && !styled(control, 'hover')) issues.push({ type: 'no-hover-feedback', where: describe(control), text: text(control) });
+  }
+  return issues;
+}
+
+/**
+ * Installed before the app loads: after every click it notes which text on screen moved, so a status line or
+ * label that pushes the layout around shows up next to the button that caused it.
+ */
+export function recordShifts() {
+  window.__aquaShifts = [];
+  const scrolledBy = (element) => {
+    let total = 0;
+    for (let node = element.parentElement; node; node = node.parentElement) total += node.scrollTop || 0;
+    return total + (document.scrollingElement?.scrollTop ?? 0);
+  };
+  const snapshot = (skip) => {
+    const map = new Map();
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const element = node.parentElement;
+      if (!element || !/\S/.test(node.nodeValue) || skip?.contains(element) || !element.getClientRects().length) continue;
+      const rect = element.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) continue;
+      const base = `${element.tagName}.${element.className}|${node.nodeValue.trim().slice(0, 40)}`;
+      let key = base;
+      for (let index = 1; map.has(key); index += 1) key = `${base}#${index}`;
+      map.set(key, { x: rect.left, y: rect.top + scrolledBy(element), text: node.nodeValue.trim().slice(0, 30) });
+    }
+    return map;
+  };
+  document.addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target.closest('button, a, summary, label, [role="switch"]') ?? event.target : null;
+    if (!target) return;
+    const label = (target.innerText || target.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim().slice(0, 30);
+    const before = snapshot(target);
+    setTimeout(() => {
+      const after = snapshot(target.isConnected ? target : null);
+      const moved = [];
+      for (const [key, then] of before) {
+        const now = after.get(key);
+        if (!now) continue;
+        const dy = now.y - then.y; const dx = now.x - then.x;
+        if (Math.abs(dy) > 2 || Math.abs(dx) > 2) moved.push({ text: then.text, dy: Math.round(dy), dx: Math.round(dx) });
+      }
+      const kept = [...before.keys()].filter((key) => after.has(key)).length;
+      if (moved.length) window.__aquaShifts.push({ label, kept, moved: moved.sort((a, b) => Math.abs(b.dy) - Math.abs(a.dy)).slice(0, 4), count: moved.length });
+    }, 350);
+  }, true);
+}
