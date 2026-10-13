@@ -43,6 +43,14 @@
   --toast-error: #ff9ca4;
   --chart-coin: #b2b9c0;
   --chart-held: #dca13b;
+  --brand-water: #3fc1c9;
+  --live-bg: #121417;
+  --live-ink: #fff;
+  --live-muted: rgba(255, 255, 255, .64);
+  --live-accent: #64d2d6;
+  --live-line: rgba(255, 255, 255, .12);
+  --live-fill: rgba(255, 255, 255, .1);
+  --live-wave: rgba(100, 210, 214, .18);
   --radius-lg: 24px;
   --radius-md: 16px;
   --radius-sm: 12px;
@@ -89,6 +97,13 @@
     --toast-error: #cc2a36;
     --chart-coin: #5d656d;
     --chart-held: #c8913a;
+    --live-bg: #0f2a2d;
+    --live-ink: #f2f4f5;
+    --live-muted: rgba(242, 244, 245, .66);
+    --live-accent: #79d6d9;
+    --live-line: rgba(255, 255, 255, .1);
+    --live-fill: rgba(255, 255, 255, .08);
+    --live-wave: rgba(121, 214, 217, .16);
   }
 }
 * { box-sizing: border-box; }
@@ -105,7 +120,9 @@ a { color: var(--accent); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 
 /* Brand. The wordmark reuses the serif italic from the card face. */
-.wordmark { color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: 29px; font-style: italic; font-weight: 400; line-height: 1; letter-spacing: -1.4px; }
+.aqua-logo { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); }
+.aqua-logo svg { display: block; flex-shrink: 0; }
+.aqua-mark-water { fill: var(--brand-water); }
 .demo-tag { display: inline-flex; align-items: center; min-height: 20px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--subtle); font-size: 11px; font-weight: 600; line-height: 1.4; letter-spacing: 0; white-space: nowrap; }
 
 /* App shell: bottom tab bar on phones, sidebar on wide screens. */
@@ -257,7 +274,9 @@ details.panel[open] { padding-bottom: 18px; }
 .legend-row > strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .legend-chevron { margin: 0 -4px 0 -6px; color: var(--faint); }
 .dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 2px; }
-.coin-icon { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; color: #fff; font-family: sans-serif; font-size: 19px; font-weight: 600; }
+.coin-icon { display: block; flex-shrink: 0; border-radius: 50%; }
+.coin-krw-face { fill: var(--ink); }
+.coin-krw-mark { stroke: var(--surface); }
 .asset-item.selected .row-chevron { transform: rotate(180deg); }
 .asset-item.empty .row-main > strong, .asset-item.empty .row-value { color: var(--subtle); }
 .asset-expanded { margin: 0 20px 14px; padding: 14px; border-radius: var(--radius-md); background: var(--sunken); }
@@ -454,5 +473,41 @@ details.panel[open] { padding-bottom: 18px; }
   .modal-head { padding-left: 18px; }
   .modal-body { padding-left: 18px; padding-right: 18px; }
   .modal-footer { padding-left: 18px; padding-right: 18px; }
+}
+.live-card { position: relative; overflow: hidden; padding: 22px 20px 18px; border-radius: var(--radius-lg); background: var(--live-bg); color: var(--live-ink); isolation: isolate; }
+.live-waves { position: absolute; right: 0; bottom: 0; z-index: -1; width: 100%; height: 120px; fill: none; stroke: var(--live-wave); stroke-width: 2; }
+.live-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.live-label { display: inline-flex; align-items: center; gap: 8px; color: var(--live-muted); font-size: 14px; font-weight: 600; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live-accent); box-shadow: 0 0 0 0 var(--live-accent); animation: live-pulse 2.4s ease-out infinite; }
+.live-rate { padding: 3px 9px; border-radius: 999px; background: var(--live-fill); color: var(--live-accent); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.live-amount { margin-top: 10px; }
+.live-figure { display: inline-flex; align-items: baseline; color: var(--live-ink); font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
+.live-figure > strong { font-size: 36px; font-weight: 700; line-height: 1.2; }
+.live-fraction { color: var(--live-accent); font-size: 22px; font-weight: 600; }
+.live-figure > small { margin-left: 4px; color: var(--live-muted); font-size: 17px; font-weight: 600; letter-spacing: 0; }
+.live-figure.small > strong { font-size: 16px; font-weight: 700; }
+.live-figure.small > .live-fraction { font-size: 13px; }
+.live-figure.small > small { margin-left: 2px; font-size: 13px; }
+.panel .live-figure, .panel .live-figure > strong, .panel .live-figure > small { color: var(--ink); }
+.panel .live-figure > .live-fraction { color: var(--accent); }
+.live-caption { margin: 8px 0 0; color: var(--live-muted); font-size: 14px; line-height: 1.6; }
+.live-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--live-line); }
+.live-today { display: inline-flex; align-items: baseline; gap: 6px; color: var(--live-muted); font-size: 13px; }
+.live-card-link { display: inline-flex; align-items: center; gap: 2px; min-height: 40px; margin-right: -6px; padding: 0 6px; border-radius: 10px; color: var(--live-ink); font-size: 14px; font-weight: 600; }
+.live-card .won, .live-card .won small { color: var(--live-ink); }
+.live-card .hero-amount { margin-top: 0; }
+.live-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 16px 0 0; }
+.live-stats > div { padding: 12px 14px; border-radius: var(--radius-md); background: var(--live-fill); }
+.live-stats dt { color: var(--live-muted); font-size: 12px; line-height: 1.5; }
+.live-stats dd { margin: 2px 0 0; }
+.live-card .button-pair { margin-top: 16px; }
+.btn.live-primary { background: var(--live-ink); color: var(--live-bg); }
+.btn.live-neutral { background: var(--live-fill); color: var(--live-ink); }
+.reserve-explain { margin: 0 0 6px; }
+.reserve-earnings dd { display: flex; justify-content: flex-end; }
+@keyframes live-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live-accent) 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 8px transparent; } }
+@media (hover: hover) {
+  .live-card-link:hover { background: var(--live-fill); }
+  .btn.live-neutral:hover { background: var(--live-line); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0s !important; transition-duration: 0s !important; } }

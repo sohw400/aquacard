@@ -1,13 +1,16 @@
-import { ASSETS, PLANS, POLICY } from './policy';
+import { FUND_SOURCES, ID_TYPES, OCCUPATIONS, PURPOSES } from './auth';
+import { ASSETS, FUNDING_ASSETS, fundingLabel, PLANS, POLICY } from './policy';
 import { assertFundingQuoteFresh, getFundingQuote } from './funding';
 import { createFundingQuote, fundingStatusLabel, getFundingNetworks, validateFundingAddress } from './movements';
-import type { Action, AppState, AssetSymbol, CardStage, CardState, FundingOperation, Payment, Transaction } from './types';
+import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, FundingOperation, FundingSymbol, Payment, Transaction } from './types';
 
 export const STORAGE_KEY = 'aqua-card:poc:v1';
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const YEAR_MS = POLICY.secondsPerYear * 1_000;
 const FUNDING_STAGE_MS = 3_000;
+const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/;
 const SYMBOLS = Object.keys(ASSETS) as AssetSymbol[];
+const FUNDING_SYMBOLS = Object.keys(FUNDING_ASSETS) as FundingSymbol[];
 const STAGES: CardStage[] = ['not_applied', 'identity', 'plan', 'details', 'review', 'submitted', 'needs_info', 'approved', 'issued', 'active', 'rejected'];
 const TRANSITIONS: Record<CardStage, CardStage[]> = {
   not_applied: ['identity'], identity: ['plan', 'not_applied'], plan: ['identity', 'details'],
@@ -28,7 +31,7 @@ function dateParts(timestamp: number): { day: string; month: string } {
 export function createInitialState(now = Date.now()): AppState {
   const { day, month } = dateParts(now);
   return {
-    version: 1, spend: 128_500, reserve: 1_250_000, rewards: 4_280, accrued: 0, rewardDebt: 0,
+    version: 1, account: null, signedIn: false, spend: 128_500, reserve: 1_250_000, rewards: 4_280, accrued: 0, rewardDebt: 0,
     holdings: { USDC: 100, USDT: 0, BTC: 0.0012, ETH: 0.08 },
     reserveAuto: false, rewardsAuto: true, reserveRate: POLICY.reserveAnnualRate,
     rateHistory: [{ rate: POLICY.reserveAnnualRate, timestamp: now }],
@@ -47,7 +50,7 @@ export function availableToSpend(state: AppState): number {
 
 export function portfolioValue(state: AppState): number {
   const held = state.fundingOperations.reduce((total, item) => total + (item.kind === 'withdrawal'
-    && ['reviewing', 'broadcasting'].includes(item.status) ? item.source === 'holdings' ? item.units * ASSETS[item.symbol].price : item.amountWon : 0), 0);
+    && ['reviewing', 'broadcasting'].includes(item.status) ? item.source === 'holdings' ? item.units * FUNDING_ASSETS[item.symbol].price : item.amountWon : 0), 0);
   return state.spend + state.reserve + held + SYMBOLS.reduce((total, symbol) => total + state.holdings[symbol] * ASSETS[symbol].price, 0);
 }
 
@@ -66,11 +69,15 @@ function nextSequence(state: AppState): number {
   return state.sequence;
 }
 
-function creditSpend(state: AppState, amount: number, excludeFundingId?: string): void {
-  const next = safeAdd(state.spend, amount);
-  const held = state.fundingOperations.reduce((sum, item) => sum + (item.id !== excludeFundingId && item.kind === 'withdrawal'
+/** Spend principal reserved by withdrawals that have not finished yet. */
+function heldSpendWon(state: AppState, excludeId?: string): number {
+  return state.fundingOperations.reduce((sum, item) => sum + (item.id !== excludeId && item.kind === 'withdrawal'
     && item.source === 'spend' && ['reviewing', 'broadcasting'].includes(item.status) ? item.amountWon : 0), 0);
-  safeAdd(next, held); // Keep room to restore every reserved principal in full.
+}
+
+function creditSpend(state: AppState, amount: number, excludeId?: string): void {
+  const next = safeAdd(state.spend, amount);
+  safeAdd(next, heldSpendWon(state, excludeId)); // Keep room to restore every reserved principal in full.
   state.spend = next;
 }
 
@@ -101,17 +108,17 @@ function updateFundingTransaction(state: AppState, operation: FundingOperation):
   const item = state.transactions.find((entry) => entry.fundingId === operation.id);
   if (!item) return;
   item.status = ['completed', 'failed', 'cancelled'].includes(operation.status) ? operation.status as Transaction['status'] : 'pending';
-  item.note = `${fundingStatusLabel(operation.status)} · ${operation.symbol} / ${operation.network}. `
+  item.note = `${fundingStatusLabel(operation.status)} · ${fundingLabel(operation.symbol)} / ${operation.network}. `
     + `전환 수수료 ${operation.feeWon.toLocaleString('ko-KR')}원 · 네트워크 비용 ${operation.networkFeeWon.toLocaleString('ko-KR')}원. `
     + (operation.kind === 'deposit' ? `완료 시 결제 잔액 ${operation.netWon.toLocaleString('ko-KR')}원 반영.`
-      : `출금 원금 ${operation.amountWon.toLocaleString('ko-KR')}원 · 예상 ${operation.outputUnits.toLocaleString('en-US', { maximumFractionDigits: 12 })} ${operation.symbol}.`)
+      : `출금 원금 ${operation.amountWon.toLocaleString('ko-KR')}원 · 예상 ${operation.outputUnits.toLocaleString('en-US', { maximumFractionDigits: 12 })} ${fundingLabel(operation.symbol)}.`)
     + (operation.failureReason ? ` ${operation.failureReason}` : '') + ' 실제 외부 송금은 실행하지 않습니다.';
 }
 
 function restoreFundingHold(state: AppState, operation: FundingOperation): void {
   if (operation.kind !== 'withdrawal') return;
   if (operation.source === 'spend') creditSpend(state, operation.amountWon, operation.id);
-  else creditHolding(state, operation.symbol, operation.units, operation.id);
+  else creditHolding(state, operation.symbol as AssetSymbol, operation.units, operation.id);
 }
 
 /** Persisted deadlines catch up after reload; terminal effects cannot run twice. */
@@ -150,7 +157,7 @@ function progressFunding(state: AppState, wallNow: number): void {
 }
 
 function startFunding(state: AppState, action: Extract<Action, { type: 'START_FUNDING' }>, wallNow: number): void {
-  if (typeof action.requestId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/.test(action.requestId)) throw new Error('올바른 입출금 요청 번호가 필요합니다.');
+  if (typeof action.requestId !== 'string' || !REQUEST_ID.test(action.requestId)) throw new Error('올바른 입출금 요청 번호가 필요합니다.');
   if (!Number.isFinite(action.quotedAt) || action.quotedAt < 0 || action.quotedAt > wallNow) throw new Error('입출금 견적 시각을 확인해 주세요.');
   if (action.simulation !== undefined && !['success', 'failure'].includes(action.simulation)) throw new Error('모의 처리 결과를 확인해 주세요.');
   if ((action.kind === 'deposit' || action.source === 'holdings') ? action.amount !== undefined : action.units !== undefined) throw new Error('입출금 원금과 코인 수량을 함께 요청할 수 없습니다.');
@@ -183,8 +190,9 @@ function startFunding(state: AppState, action: Extract<Action, { type: 'START_FU
       if (state.spend < quote.amountWon) throw new Error('원화 결제 잔액이 부족합니다. 리워드와 리저브는 출금에 자동 사용하지 않습니다.');
       state.spend -= quote.amountWon;
     } else {
-      if (state.holdings[action.symbol] < quote.units) throw new Error('출금할 보유 코인 잔액이 부족합니다.');
-      state.holdings[action.symbol] = changeAssetUnits(state.holdings[action.symbol], -quote.units);
+      const coin = action.symbol as AssetSymbol; // createFundingQuote rejects the won stablecoin as a holding.
+      if (state.holdings[coin] < quote.units) throw new Error('출금할 보유 코인 잔액이 부족합니다.');
+      state.holdings[coin] = changeAssetUnits(state.holdings[coin], -quote.units);
     }
   }
   const operation: FundingOperation = {
@@ -195,7 +203,7 @@ function startFunding(state: AppState, action: Extract<Action, { type: 'START_FU
     ...(action.retryOf ? { retryOf: action.retryOf } : {}),
   };
   state.fundingOperations.unshift(operation);
-  transaction(state, wallNow, { kind: action.kind === 'deposit' ? 'deposit' : 'transfer', title: `${action.symbol} ${action.kind === 'deposit' ? '입금' : '출금'}`,
+  transaction(state, wallNow, { kind: action.kind === 'deposit' ? 'deposit' : 'transfer', title: `${fundingLabel(action.symbol)} ${action.kind === 'deposit' ? '입금' : '출금'}`,
     amount: action.kind === 'deposit' ? quote.netWon : -quote.amountWon, status: 'pending', fundingId: operation.id, note: '' });
   updateFundingTransaction(state, operation);
 }
@@ -219,6 +227,26 @@ function transaction(state: AppState, now: number, fields: Omit<Transaction, 'id
   return item;
 }
 
+export const RESERVE_REWARD_TITLE = '리저브 보상';
+
+/** Whole won leave the accrual remainder as soon as they exist, so rewards grow without a claim step. */
+function sweepAccrued(state: AppState, now: number): void {
+  // Tiny floating-point residue should not lose an exactly accrued whole won.
+  const amount = Math.floor(state.accrued + 1e-9);
+  if (amount < 1) return;
+  state.accrued = Math.max(0, state.accrued - amount);
+  const offset = creditRewards(state, amount);
+  const { day } = dateParts(now);
+  const note = '리저브 잔액에서 실시간으로 쌓인 보상입니다. 리워드에 바로 더해져 카드 결제에 먼저 사용됩니다.';
+  const entry = state.transactions.find((item) => item.kind === 'reward' && item.title === RESERVE_REWARD_TITLE && dateParts(item.timestamp).day === day);
+  if (entry) {
+    entry.amount = safeAdd(entry.amount, amount);
+    if (offset) entry.note = `${note} 이전 페이백 조정분을 먼저 상계했습니다.`;
+  } else {
+    transaction(state, now, { kind: 'reward', title: RESERVE_REWARD_TITLE, amount, status: 'completed', note: offset ? `${note} 이전 페이백 조정분을 먼저 상계했습니다.` : note });
+  }
+}
+
 /** Every action accrues the old balance/rate before it changes either one. */
 function accrue(state: AppState, wallNow: number): number {
   if (!Number.isFinite(wallNow) || wallNow < 0) throw new Error('유효한 시간이 필요합니다.');
@@ -230,7 +258,25 @@ function accrue(state: AppState, wallNow: number): number {
   if (state.spendingDay !== day) { state.spendingDay = day; state.dailySpent = 0; }
   if (state.spendingMonth !== month) { state.spendingMonth = month; state.monthlySpent = 0; }
   if (state.cashbackMonth !== month) { state.cashbackMonth = month; state.monthlyCashback = 0; }
+  sweepAccrued(state, now);
   return now;
+}
+
+/** Live reward figure between engine ticks; the fraction is display-only until it becomes a whole won. */
+export function liveRewards(state: AppState, wallNow = Date.now()): number {
+  const now = Math.max(state.lastAccruedAt, wallNow + state.clockOffsetMs);
+  return state.rewards + state.accrued + Math.min(state.reserve, POLICY.reserveEligibleCap) * state.reserveRate * (now - state.lastAccruedAt) / YEAR_MS;
+}
+
+/** Reserve rewards credited so far plus the remainder still accruing. */
+export function reserveEarnings(state: AppState, wallNow = Date.now()): { total: number; today: number } {
+  const now = Math.max(state.lastAccruedAt, wallNow + state.clockOffsetMs);
+  const pending = state.accrued + Math.min(state.reserve, POLICY.reserveEligibleCap) * state.reserveRate * (now - state.lastAccruedAt) / YEAR_MS;
+  const { day } = dateParts(now);
+  const credits = state.transactions.filter((item) => item.kind === 'reward' && item.title === RESERVE_REWARD_TITLE);
+  const total = credits.reduce((sum, item) => sum + item.amount, 0) + pending;
+  const today = credits.filter((item) => dateParts(item.timestamp).day === day).reduce((sum, item) => sum + item.amount, 0) + pending;
+  return { total, today };
 }
 
 /** Reward credits settle any previous cashback reversal before becoming spendable. */
@@ -239,6 +285,42 @@ function creditRewards(state: AppState, amount: number): number {
   state.rewardDebt -= offset;
   state.rewards = safeAdd(state.rewards, amount - offset);
   return offset;
+}
+
+export const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/;
+const ADULT_AGE = 19;
+
+const HASH_PATTERN = /^[0-9a-f]{64}$/;
+const PHONE_PATTERN = /^01[016789]\d{7,8}$/;
+const normalizeEmail = (value: unknown) => typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+function validKyc(value: unknown): boolean {
+  return record(value) && Object.hasOwn(ID_TYPES, value.idType as string)
+    && (OCCUPATIONS as readonly string[]).includes(value.occupation as string)
+    && (PURPOSES as readonly string[]).includes(value.purpose as string)
+    && (FUND_SOURCES as readonly string[]).includes(value.source as string);
+}
+
+/** Validates sign-up input after the email, phone, ID and face checks have passed in the UI. */
+function signupAccount(action: Extract<Action, { type: 'COMPLETE_SIGNUP' }>, wallNow: number): Account {
+  const email = normalizeEmail(action.email);
+  if (!EMAIL_PATTERN.test(email) || email.length > 120) throw new Error('이메일 주소를 확인해 주세요.');
+  if (typeof action.passwordHash !== 'string' || !HASH_PATTERN.test(action.passwordHash)) throw new Error('비밀번호를 다시 정해 주세요.');
+  if (typeof action.phone !== 'string' || !PHONE_PATTERN.test(action.phone)) throw new Error('휴대폰 번호를 확인해 주세요.');
+  if (!validKyc(action.kyc)) throw new Error('고객확인 질문에 모두 답해 주세요.');
+  const name = typeof action.name === 'string' ? action.name.trim() : '';
+  if (name.length < 2 || name.length > 30) throw new Error('이름은 2자 이상 30자 이하로 입력해 주세요.');
+  const birthDate = typeof action.birthDate === 'string' ? action.birthDate : '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate);
+  const birth = match ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))) : null;
+  if (!match || !birth || birth.getUTCMonth() !== Number(match[2]) - 1 || birth.getUTCDate() !== Number(match[3])) throw new Error('생년월일을 확인해 주세요.');
+  const today = new Date(wallNow);
+  const age = today.getUTCFullYear() - birth.getUTCFullYear() - (today.getUTCMonth() < birth.getUTCMonth()
+    || (today.getUTCMonth() === birth.getUTCMonth() && today.getUTCDate() < birth.getUTCDate()) ? 1 : 0);
+  if (age < ADULT_AGE) throw new Error(`만 ${ADULT_AGE}세 이상만 가입할 수 있습니다.`);
+  if (age > 120) throw new Error('생년월일을 확인해 주세요.');
+  const { idType, occupation, purpose, source } = action.kyc;
+  return { email, passwordHash: action.passwordHash, name, birthDate, phone: action.phone, kyc: { idType, occupation, purpose, source }, verifiedAt: wallNow };
 }
 
 function validateCardChange(previous: CardState, next: CardState): void {
@@ -263,10 +345,29 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
   progressFunding(state, wallNow);
   switch (action.type) {
     case 'TICK': return state;
+    case 'COMPLETE_SIGNUP':
+      if (state.account) throw new Error('이미 가입을 마쳤습니다. 로그인해 주세요.');
+      state.account = signupAccount(action, wallNow);
+      state.signedIn = true;
+      return state;
+    case 'SIGN_IN':
+      if (!state.account || normalizeEmail(action.email) !== state.account.email) throw new Error('가입한 이메일이 아닙니다.');
+      if (action.passwordHash !== state.account.passwordHash) throw new Error('비밀번호가 맞지 않습니다.');
+      state.signedIn = true;
+      return state;
+    case 'SIGN_OUT':
+      state.signedIn = false;
+      return state;
+    case 'RESET_PASSWORD':
+      if (!state.account || normalizeEmail(action.email) !== state.account.email) throw new Error('가입한 이메일이 아닙니다.');
+      if (typeof action.passwordHash !== 'string' || !HASH_PATTERN.test(action.passwordHash)) throw new Error('새 비밀번호를 다시 정해 주세요.');
+      state.account.passwordHash = action.passwordHash;
+      state.signedIn = false;
+      return state;
     case 'ADVANCE_DAY': {
       state.clockOffsetMs += DAY_MS;
       now = accrue(state, wallNow);
-      transaction(state, now, { kind: 'reward', title: '하루 보상 시뮬레이션', amount: 0, status: 'completed', note: '데모 시간을 24시간 진행했습니다. 적립 보상은 수령 후 결제에 사용할 수 있습니다.' });
+      transaction(state, now, { kind: 'rate', title: '하루 지나기 체험', amount: 0, status: 'completed', note: '체험 시간을 24시간 앞당겼습니다. 그동안 쌓인 리저브 보상은 리워드에 바로 더해졌습니다.' });
       return state;
     }
     case 'CHANGE_RATE': {
@@ -290,7 +391,7 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       const quote = getFundingQuote({ direction: 'receive', symbol: action.symbol, units: action.units });
       creditSpend(state, quote.netWon);
       transaction(state, now, { kind: 'deposit', title: `${action.symbol} 입금 · 원화 자동 전환`, amount: quote.netWon, status: 'completed',
-        note: `${action.units} ${action.symbol} 가상 입금 → 원화 평가액 ${quote.grossWon.toLocaleString('ko-KR')}원. 전환 수수료 0.5% (${quote.feeWon.toLocaleString('ko-KR')}원) 공제 후 ${quote.netWon.toLocaleString('ko-KR')}원을 결제 잔액에 반영했습니다. 실제 입금·매도·블록체인 거래는 실행하지 않습니다.` });
+        note: `${action.units} ${action.symbol} 가상 입금 → 원화 평가액 ${quote.grossWon.toLocaleString('ko-KR')}원. 입금 수수료 없이 ${quote.netWon.toLocaleString('ko-KR')}원을 결제 잔액에 반영했습니다. 실제 입금·매도·블록체인 거래는 실행하지 않습니다.` });
       return state;
     }
     case 'WITHDRAW_CRYPTO': {
@@ -366,7 +467,7 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       const net = quote.netWon;
       creditSpend(state, net);
       state.holdings[action.symbol] = changeAssetUnits(state.holdings[action.symbol], -action.units);
-      transaction(state, now, { kind: 'convert', title: `${action.symbol} → 결제 잔액 전환`, amount: net, status: 'completed', note: `데모 고정 시세 · 전환 수수료 0.5% (${quote.feeWon.toLocaleString('ko-KR')}원) 반영` });
+      transaction(state, now, { kind: 'convert', title: `${action.symbol} → 결제 잔액 전환`, amount: net, status: 'completed', note: '데모 고정 시세 · 보유 코인을 원화로 바꿀 때는 수수료가 없습니다.' });
       return state;
     }
     case 'SET_RESERVE_AUTO':
@@ -376,15 +477,6 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       if (typeof action.enabled !== 'boolean') throw new Error('리워드 자동 사용 설정을 확인해 주세요.');
       state.rewardsAuto = action.enabled; return state;
     case 'SET_CARD': validateCardChange(state.card, action.card); state.card = structuredClone(action.card); return state;
-    case 'REDEEM_ACCRUAL': {
-      // Tiny floating-point residue should not lose an exactly accrued whole won.
-      const amount = Math.floor(state.accrued + 1e-9);
-      if (amount < 1) throw new Error('수령할 보상이 아직 1원 미만입니다.');
-      state.accrued = Math.max(0, state.accrued - amount);
-      const offset = creditRewards(state, amount);
-      transaction(state, now, { kind: 'reward', title: 'Reserve 리워드 수령', amount, status: 'completed', note: `카드 결제 전용 리워드입니다.${offset ? ` 이전 페이백 조정 ${offset.toLocaleString('ko-KR')}원을 먼저 반영했습니다.` : ''}` });
-      return state;
-    }
     case 'PAY': {
       integer(action.amount);
       if (state.card.stage !== 'active') throw new Error('카드 신청과 발급을 완료한 뒤 결제해 주세요.');
@@ -485,9 +577,9 @@ function cardConsistent(value: CardState): boolean {
 
 function validFundingOperation(value: unknown): value is FundingOperation {
   if (!record(value) || typeof value.id !== 'string' || !value.id || typeof value.requestId !== 'string'
-    || !/^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/.test(value.requestId)
+    || !REQUEST_ID.test(value.requestId)
     || !['deposit', 'withdrawal'].includes(value.kind as string) || !['spend', 'holdings'].includes(value.source as string)
-    || !SYMBOLS.includes(value.symbol as AssetSymbol) || !['polygon', 'ethereum', 'bitcoin'].includes(value.network as string)
+    || !FUNDING_SYMBOLS.includes(value.symbol as FundingSymbol) || !['polygon', 'ethereum', 'bitcoin'].includes(value.network as string)
     || !['awaiting_deposit', 'confirming', 'converting', 'reviewing', 'broadcasting', 'completed', 'failed', 'cancelled'].includes(value.status as string)
     || !['success', 'failure'].includes(value.simulation as string)
     || !['amountWon', 'feeWon', 'networkFeeWon', 'netWon'].every((key) => whole(value[key]))
@@ -505,7 +597,10 @@ function validFundingOperation(value: unknown): value is FundingOperation {
   try {
     const quote = createFundingQuote({ kind: operation.kind, source: operation.source, symbol: operation.symbol, network: operation.network,
       ...(operation.kind === 'withdrawal' && operation.source === 'spend' ? { amount: operation.amountWon } : { units: operation.units }) });
-    if (!(['amountWon', 'units', 'feeWon', 'networkFeeWon', 'netWon', 'outputUnits'] as const).every((key) => quote[key] === operation[key])) return false;
+    // Deposits saved before inbound conversion became free carry the old 0.5% fee.
+    const legacyDepositFee = operation.kind === 'deposit' && operation.feeWon === Math.ceil(operation.amountWon * POLICY.conversionFee - 1e-9);
+    const keys = legacyDepositFee ? ['amountWon', 'units', 'networkFeeWon', 'outputUnits'] as const : ['amountWon', 'units', 'feeWon', 'networkFeeWon', 'netWon', 'outputUnits'] as const;
+    if (!keys.every((key) => quote[key] === operation[key])) return false;
   } catch { return false; }
   const dueRequired = ['confirming', 'converting', 'reviewing', 'broadcasting'].includes(operation.status);
   if (dueRequired ? operation.stageDueAt === null || operation.stageDueAt < operation.updatedAt : operation.stageDueAt !== null) return false;
@@ -518,8 +613,16 @@ function validFundingOperation(value: unknown): value is FundingOperation {
     && (operation.source !== 'holdings' || operation.feeWon === 0);
 }
 
+function validAccount(value: unknown): value is Account {
+  return value === null || (record(value) && typeof value.email === 'string' && EMAIL_PATTERN.test(value.email)
+    && typeof value.passwordHash === 'string' && HASH_PATTERN.test(value.passwordHash)
+    && typeof value.name === 'string' && value.name.trim().length >= 2 && value.name.length <= 30
+    && typeof value.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.birthDate)
+    && typeof value.phone === 'string' && PHONE_PATTERN.test(value.phone) && validKyc(value.kyc) && timestamp(value.verifiedAt));
+}
+
 function validState(value: unknown): value is AppState {
-  if (!record(value) || value.version !== 1) return false;
+  if (!record(value) || value.version !== 1 || !validAccount(value.account) || typeof value.signedIn !== 'boolean' || (value.signedIn && !value.account)) return false;
   const integers = ['spend', 'reserve', 'rewards', 'rewardDebt', 'monthlyCashback', 'dailySpent', 'monthlySpent', 'sequence'];
   if (!integers.every((key) => whole(value[key])) || !nonnegative(value.accrued) || !nonnegative(value.clockOffsetMs)
     || !timestamp(value.lastAccruedAt) || !nonnegative(value.reserveRate) || value.reserveRate > 1
@@ -576,8 +679,8 @@ export function loadState(): AppState {
     const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
     if (raw) {
       const candidate: unknown = JSON.parse(raw);
-      const migrated = record(candidate) && candidate.version === 1 && candidate.fundingOperations === undefined
-        ? { ...candidate, fundingOperations: [] } : candidate;
+      const migrated = record(candidate) && candidate.version === 1
+        ? { ...candidate, fundingOperations: candidate.fundingOperations ?? [], account: candidate.account ?? null, signedIn: candidate.signedIn ?? false } : candidate;
       if (validState(migrated)) return applyAction(migrated, { type: 'TICK' });
     }
   } catch { /* Disabled storage or corrupt snapshots reset safely to demo balances. */ }

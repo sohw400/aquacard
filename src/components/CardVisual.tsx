@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import type { CardState } from '../lib/types';
+import { Wordmark } from './Logo';
 import './CardVisual.css';
 
 interface CardVisualProps {
@@ -104,7 +105,7 @@ export default function CardVisual({ card, revealed = false, compact = false, va
     >
       <span className="acv-reflection" aria-hidden="true" />
       <svg className="acv-contour" viewBox="0 0 300 220" fill="none" aria-hidden="true"><path d="M11 237C12 135 191 157 222 67C238 22 241-22 301-37" /><path d="M42 250C37 157 217 176 245 86C261 38 263-2 315-17" /></svg>
-      <div className="acv-top"><span className="acv-brand">aqua</span><span className="acv-plan">{plan.toUpperCase()}</span></div>
+      <div className="acv-top"><span className="acv-brand" role="img" aria-label="aqua"><Wordmark /></span><span className="acv-plan">{plan.toUpperCase()}</span></div>
       <svg className="acv-chip" viewBox="0 0 42 32" aria-hidden="true">
         <defs><linearGradient id={`acv-metal-${chipId}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#e8ece7" /><stop offset=".37" stopColor="#b5bfbe" /><stop offset=".62" stopColor="#dce1db" /><stop offset="1" stopColor="#a8b4b4" /></linearGradient></defs>
         <rect x=".5" y=".5" width="41" height="31" rx="5" fill={`url(#acv-metal-${chipId})`} stroke="#8e9da3" strokeWidth=".6" />

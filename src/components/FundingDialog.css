@@ -28,10 +28,6 @@
 /* Step 1: asset and network. */
 .funding-fieldset { min-width: 0; margin: 0 0 22px; padding: 0; border: 0; }
 .funding-fieldset legend { margin-bottom: 10px; padding: 0; color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.5; }
-.funding-assets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.funding-asset { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 48px; padding: 8px 4px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink-soft); font-size: 14px; font-weight: 600; line-height: 1.4; transition: border-color .15s, background-color .15s; }
-.funding-asset.selected { border-color: var(--primary); background: var(--sunken); color: var(--ink); }
-.funding-asset-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; }
 .funding-network-options { display: grid; gap: 8px; }
 .funding-network-option { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 68px; padding: 14px 16px; border: 1.5px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); text-align: left; transition: border-color .15s, background-color .15s; }
 .funding-network-option.selected { border-color: var(--primary); background: var(--sunken); }
@@ -42,6 +38,20 @@
 .funding-route-note { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--sunken); color: var(--muted); font-size: 14px; line-height: 1.5; }
 .funding-route-note strong { color: var(--ink); font-weight: 600; text-align: right; }
 .funding-help { margin: 8px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
+
+.funding-origins { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.funding-origin { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; min-height: 64px; padding: 11px 14px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); text-align: left; }
+.funding-origin strong { font-size: 15px; font-weight: 700; line-height: 1.4; }
+.funding-origin span { color: var(--subtle); font-size: 12px; line-height: 1.45; }
+.funding-origin.selected { border-color: var(--primary); background: var(--sunken); }
+.funding-coins { display: grid; gap: 8px; }
+.funding-coin { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 14px; border: 1.5px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); text-align: left; }
+.funding-coin.selected { border-color: var(--primary); background: var(--sunken); }
+.funding-coin-main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.funding-coin-main strong { font-size: 16px; font-weight: 600; line-height: 1.45; }
+.funding-coin-main span { color: var(--subtle); font-size: 13px; line-height: 1.5; }
+.funding-coin.selected .funding-selection-mark { border-color: var(--primary); background: var(--primary); }
+.funding-recommend { margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--accent-weak); color: var(--accent-strong); font-size: 12px; font-style: normal; font-weight: 700; vertical-align: 2px; }
 
 /* Step 2: details. */
 .funding-route-label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 18px; }
@@ -75,6 +85,35 @@
 .funding-field-error { margin: 8px 0 0; color: var(--danger); font-size: 13px; line-height: 1.6; }
 .funding-error { margin-top: 16px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--danger-weak); color: var(--danger); font-size: 14px; line-height: 1.6; }
 
+.funding-receive { display: flex; flex-direction: column; gap: 12px; padding: 18px 16px 16px; border-radius: var(--radius-md); background: var(--sunken); }
+.funding-receive-head { display: flex; align-items: center; gap: 12px; }
+.funding-receive-head strong { display: block; color: var(--ink); font-size: 17px; font-weight: 700; line-height: 1.4; }
+.funding-receive-head span { display: block; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.funding-receive-address { display: block; padding: 14px; border-radius: 12px; background: var(--surface); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+.funding-receive-copy { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; border-radius: 12px; background: var(--primary); color: var(--on-primary); font-size: 15px; font-weight: 600; }
+.funding-guide { margin: 2px 0 0; padding: 0; list-style: none; counter-reset: guide; }
+.funding-guide li { position: relative; padding: 4px 0 4px 30px; color: var(--ink-soft); font-size: 14px; line-height: 1.55; counter-increment: guide; }
+.funding-guide li::before { content: counter(guide); position: absolute; top: 5px; left: 0; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--fill-strong); color: var(--ink); font-size: 12px; font-weight: 700; }
+.funding-receive-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.funding-receive-facts > div { padding: 10px 12px; border-radius: 12px; background: var(--surface); }
+.funding-receive-facts dt { color: var(--subtle); font-size: 12px; line-height: 1.5; }
+.funding-receive-facts dd { margin: 2px 0 0; color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.45; }
+.funding-receive-note { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--accent-weak); color: var(--accent-strong); font-size: 13px; line-height: 1.6; }
+.funding-receive-warning { margin: 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
+.funding-trial-head { margin-top: 24px; }
+.funding-trial-head h3 { margin: 0; color: var(--ink); font-size: 16px; font-weight: 700; line-height: 1.5; }
+.funding-trial-head p { margin: 2px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.funding-trial-head + .funding-amount { margin-top: 12px; }
+.email-check { margin-top: 16px; padding: 12px 16px 14px; border-radius: var(--radius-md); background: var(--sunken); }
+.email-check-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.email-check-head strong { color: var(--ink); font-size: 15px; font-weight: 700; }
+.email-check > p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.email-check-done { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-size: 14px; font-weight: 700; }
+.email-check-demo { margin-top: 8px !important; padding: 10px 12px; border-radius: 12px; background: var(--accent-weak); color: var(--accent-strong) !important; }
+.email-check-demo strong { letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+.email-check-input { width: 100%; min-height: 52px; margin-top: 10px; padding: 12px 16px; border: 1.5px solid transparent; border-radius: 14px; outline: none; background: var(--surface); color: var(--ink); font-size: 20px; font-weight: 700; letter-spacing: .3em; font-variant-numeric: tabular-nums; }
+.email-check-input:focus { border-color: var(--ink); }
+
 /* Quote. */
 .funding-quote { margin-top: 22px; padding: 4px 16px 14px; border-radius: var(--radius-md); background: var(--sunken); }
 .funding-quote-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 12px; min-height: 44px; }
@@ -95,8 +134,10 @@
 
 /* Consent and outcome simulation keep native inputs. */
 /* The agreement stays above the confirm button while the details scroll. */
-.funding-consent { position: sticky; bottom: 8px; z-index: 1; display: flex; align-items: flex-start; gap: 12px; min-height: 56px; margin-top: 14px; padding: 14px; border-radius: var(--radius-md); background: var(--sunken); box-shadow: 0 0 0 8px var(--surface); color: var(--ink-soft); font-size: 14px; font-weight: 500; line-height: 1.6; cursor: pointer; }
+.funding-consent { position: relative; display: flex; align-items: flex-start; gap: 12px; min-height: 56px; margin-top: 14px; padding: 14px; border-radius: var(--radius-md); background: var(--sunken); box-shadow: 0 0 0 8px var(--surface); color: var(--ink-soft); font-size: 14px; font-weight: 500; line-height: 1.6; cursor: pointer; }
 .funding-consent > span { min-width: 0; }
+/* Keep the final withdrawal consent above the footer while the long review scrolls. */
+.funding-review-step .funding-consent { position: sticky; bottom: 8px; z-index: 1; }
 .funding-consent > input { appearance: none; -webkit-appearance: none; display: grid; place-items: center; flex-shrink: 0; width: 24px; height: 24px; margin: 0; border: 2px solid var(--control); border-radius: 7px; background: var(--surface); cursor: pointer; transition: background-color .15s, border-color .15s; }
 .funding-consent > input::after { content: ''; width: 6px; height: 11px; margin-top: -3px; border: solid var(--on-primary); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg) scale(0); transition: transform .15s var(--ease); }
 .funding-consent > input:checked { border-color: var(--primary); background: var(--primary); }
@@ -186,8 +227,8 @@
   .funding-copy-feedback { margin-left: 18px; margin-right: 18px; }
   .funding-footer { padding-left: 18px; padding-right: 18px; }
   .funding-header h2 { font-size: 20px; }
-  .funding-assets { gap: 6px; }
-  .funding-asset { gap: 4px; font-size: 13px; }
+  .funding-receive-facts { grid-template-columns: 1fr; }
+  .funding-origin { padding: 10px 12px; }
   .funding-destination { padding: 12px 14px 14px; }
   .funding-amount-input > input { font-size: 30px; }
   .funding-quote-total { gap: 10px; }
@@ -195,7 +236,8 @@
 }
 @media (hover: hover) {
   .funding-close:hover { background: rgba(0, 0, 0, .04); }
-  .funding-asset:not(.selected):hover, .funding-network-option:not(.selected):hover { border-color: var(--control); }
+  .funding-coin:not(.selected):hover, .funding-origin:not(.selected):hover, .funding-network-option:not(.selected):hover { border-color: var(--control); }
+  .funding-receive-copy:hover { background: var(--primary-hover); }
   .funding-confirm:hover:not(:disabled) { background: var(--primary-hover); }
   .funding-secondary:hover:not(:disabled) { background: var(--fill-strong); }
 }

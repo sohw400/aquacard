@@ -1,13 +1,13 @@
-import { ASSETS, POLICY } from './policy';
-import type { AssetSymbol } from './types';
+import { FUNDING_ASSETS, POLICY } from './policy';
+import type { FundingSymbol } from './types';
 
 export type FundingQuoteRequest =
-  | { direction: 'receive'; symbol: AssetSymbol; units: number }
-  | { direction: 'withdraw'; symbol: AssetSymbol; amount: number };
+  | { direction: 'receive'; symbol: FundingSymbol; units: number }
+  | { direction: 'withdraw'; symbol: FundingSymbol; amount: number };
 
 export interface FundingQuote {
   direction: 'receive' | 'withdraw';
-  symbol: AssetSymbol;
+  symbol: FundingSymbol;
   price: number;
   inputUnits: number;
   grossWon: number;
@@ -17,7 +17,7 @@ export interface FundingQuote {
   outputUnits: number;
 }
 
-const SYMBOLS = Object.keys(ASSETS) as AssetSymbol[];
+const SYMBOLS = Object.keys(FUNDING_ASSETS) as FundingSymbol[];
 const MAX_WON = BigInt(Number.MAX_SAFE_INTEGER);
 
 /** Use the decimal input rather than binary multiplication when rounding won. */
@@ -32,7 +32,7 @@ function decimalRatio(value: number): { numerator: bigint; denominator: bigint }
 
 export function getFundingQuote(request: FundingQuoteRequest): FundingQuote {
   if (!request || !SYMBOLS.includes(request.symbol)) throw new Error('지원하는 입출금 코인을 선택해 주세요.');
-  const price = ASSETS[request.symbol].price;
+  const price = FUNDING_ASSETS[request.symbol].price;
   let gross: bigint;
   let inputUnits = 0;
 
@@ -53,8 +53,8 @@ export function getFundingQuote(request: FundingQuoteRequest): FundingQuote {
   if (gross < BigInt(POLICY.minimumTopup)) throw new Error('입출금 평가액은 최소 1,000원이어야 합니다.');
   if (gross > MAX_WON) throw new Error('처리할 수 있는 원화 금액 범위를 초과했습니다.');
   const feeRate = decimalRatio(POLICY.conversionFee);
-  // Floor the received value to won first; round the disclosed fee up to won.
-  const fee = (gross * feeRate.numerator + feeRate.denominator - 1n) / feeRate.denominator;
+  // Incoming coins convert free, and the won stablecoin never converts; other outgoing coins round the fee up to won.
+  const fee = request.direction === 'receive' || request.symbol === 'KRWS' ? 0n : (gross * feeRate.numerator + feeRate.denominator - 1n) / feeRate.denominator;
   const grossWon = Number(gross);
   const feeWon = Number(fee);
   const netWon = grossWon - feeWon;

@@ -1,6 +1,6 @@
 import { getFundingQuote } from './funding';
-import { ASSETS } from './policy';
-import type { AppState, AssetSymbol, FundingNetwork, FundingOperation } from './types';
+import { FUNDING_ASSETS } from './policy';
+import type { AppState, FundingNetwork, FundingOperation, FundingSymbol } from './types';
 
 export interface FundingNetworkOption {
   id: FundingNetwork;
@@ -12,7 +12,7 @@ export interface FundingNetworkOption {
 
 export interface FundingMovementQuoteRequest {
   kind: 'deposit' | 'withdrawal';
-  symbol: AssetSymbol;
+  symbol: FundingSymbol;
   network: FundingNetwork;
   source: 'spend' | 'holdings';
   amount?: number;
@@ -29,7 +29,11 @@ export interface FundingMovementQuote {
   outputUnits: number;
 }
 
-const NETWORKS: Record<AssetSymbol, FundingNetworkOption[]> = {
+const NETWORKS: Record<FundingSymbol, FundingNetworkOption[]> = {
+  KRWS: [
+    { id: 'polygon', label: 'Polygon', feeWon: 140, confirmationLabel: '네트워크 확인 2회', estimatedTime: '약 1~3분' },
+    { id: 'ethereum', label: 'Ethereum', feeWon: 2_800, confirmationLabel: '네트워크 확인 12회', estimatedTime: '약 3~10분' },
+  ],
   USDC: [
     { id: 'polygon', label: 'Polygon', feeWon: 140, confirmationLabel: '네트워크 확인 2회', estimatedTime: '약 1~3분' },
     { id: 'ethereum', label: 'Ethereum', feeWon: 2_800, confirmationLabel: '네트워크 확인 12회', estimatedTime: '약 3~10분' },
@@ -46,7 +50,7 @@ const NETWORKS: Record<AssetSymbol, FundingNetworkOption[]> = {
 };
 
 /** Fees and timing are PoC estimates, not live blockchain quotes. */
-export function getFundingNetworks(symbol: AssetSymbol): FundingNetworkOption[] {
+export function getFundingNetworks(symbol: FundingSymbol): FundingNetworkOption[] {
   return (Object.hasOwn(NETWORKS, symbol) ? NETWORKS[symbol] : []).map((network) => ({ ...network }));
 }
 
@@ -55,6 +59,7 @@ export function createFundingQuote(request: FundingMovementQuoteRequest): Fundin
   const network = getFundingNetworks(request.symbol).find((option) => option.id === request.network);
   if (!network) throw new Error('선택한 코인에서 지원하는 네트워크를 선택해 주세요.');
   if (request.source !== 'spend' && request.source !== 'holdings') throw new Error('출금할 잔액을 선택해 주세요.');
+  if (request.source === 'holdings' && request.symbol === 'KRWS') throw new Error('원화 스테이블은 결제 잔액에서 출금합니다.');
 
   if (request.kind === 'deposit') {
     if (request.source !== 'spend') throw new Error('입금한 코인은 원화 결제 잔액으로 전환됩니다.');
@@ -77,14 +82,14 @@ export function createFundingQuote(request: FundingMovementQuoteRequest): Fundin
   if (netWon <= 0) throw new Error('출금 금액이 전환·네트워크 수수료보다 커야 합니다.');
   return {
     amountWon: quote.grossWon,
-    units: request.source === 'holdings' ? quote.inputUnits : quote.grossWon / ASSETS[request.symbol].price,
+    units: request.source === 'holdings' ? quote.inputUnits : quote.grossWon / FUNDING_ASSETS[request.symbol].price,
     feeWon, networkFeeWon: network.feeWon, netWon,
-    outputUnits: netWon / ASSETS[request.symbol].price,
+    outputUnits: netWon / FUNDING_ASSETS[request.symbol].price,
   };
 }
 
 /** Check supported routes and address shape only; Bitcoin checksums are not verified. */
-export function validateFundingAddress(symbol: AssetSymbol, network: FundingNetwork, address: string): string | null {
+export function validateFundingAddress(symbol: FundingSymbol, network: FundingNetwork, address: string): string | null {
   if (!getFundingNetworks(symbol).some((option) => option.id === network)) {
     return '선택한 코인에서 지원하는 네트워크를 선택해 주세요.';
   }

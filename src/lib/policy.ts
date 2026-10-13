@@ -1,4 +1,4 @@
-import type { AssetSymbol, Plan } from './types';
+import type { AssetSymbol, FundingSymbol, Plan } from './types';
 
 export const POLICY = {
   reserveAnnualRate: 0.05,
@@ -26,3 +26,13 @@ export const ASSETS: Record<AssetSymbol, { name: string; price: number; color: s
   BTC: { name: 'Bitcoin', price: 150_000_000, color: '#f7931a', network: 'Bitcoin · 데모', decimals: 6 },
   ETH: { name: 'Ethereum', price: 4_000_000, color: '#6879bd', network: 'Ethereum · 데모', decimals: 4 },
 };
+
+/** The won stablecoin's real name and networks are set once an issuer partners; KRWS is a placeholder. */
+export const FUNDING_ASSETS: Record<FundingSymbol, { name: string; label: string; price: number }> = {
+  KRWS: { name: '원화 스테이블코인', label: '원화 스테이블', price: 1 },
+  USDC: { name: ASSETS.USDC.name, label: 'USDC', price: ASSETS.USDC.price },
+  USDT: { name: ASSETS.USDT.name, label: 'USDT', price: ASSETS.USDT.price },
+  BTC: { name: ASSETS.BTC.name, label: 'BTC', price: ASSETS.BTC.price },
+  ETH: { name: ASSETS.ETH.name, label: 'ETH', price: ASSETS.ETH.price },
+};
+export const fundingLabel = (symbol: FundingSymbol) => FUNDING_ASSETS[symbol].label;

@@ -1,4 +1,6 @@
 export type AssetSymbol = 'USDC' | 'USDT' | 'BTC' | 'ETH';
+/** Coins that move in and out. KRWS is the won stablecoin that backs the spend balance one to one. */
+export type FundingSymbol = 'KRWS' | AssetSymbol;
 export type Plan = 'basic' | 'plus';
 export type CardStage = 'not_applied' | 'identity' | 'plan' | 'details' | 'review' | 'submitted' | 'needs_info' | 'approved' | 'issued' | 'active' | 'rejected';
 export type DeliveryStage = 'none' | 'preparing' | 'shipped' | 'delivered';
@@ -9,7 +11,7 @@ export interface FundingOperation {
   requestId: string;
   kind: 'deposit' | 'withdrawal';
   source: 'spend' | 'holdings';
-  symbol: AssetSymbol;
+  symbol: FundingSymbol;
   network: FundingNetwork;
   amountWon: number;
   units: number;
@@ -26,6 +28,24 @@ export interface FundingOperation {
   failureReason?: string;
   simulation: 'success' | 'failure';
   retryOf?: string;
+}
+
+export interface KycAnswers {
+  idType: 'resident' | 'driver';
+  occupation: string;
+  purpose: string;
+  source: string;
+}
+
+/** Created once the email code, phone check, ID and face checks and the customer questions (KYC) all pass. */
+export interface Account {
+  email: string;
+  passwordHash: string;
+  name: string;
+  birthDate: string;
+  phone: string;
+  kyc: KycAnswers;
+  verifiedAt: number;
 }
 
 export interface CardState {
@@ -75,6 +95,8 @@ export interface RatePeriod { rate: number; timestamp: number }
 
 export interface AppState {
   version: 1;
+  account: Account | null;
+  signedIn: boolean;
   spend: number;
   reserve: number;
   rewards: number;
@@ -102,12 +124,16 @@ export interface AppState {
 
 export type Action =
   | { type: 'TICK' }
+  | { type: 'COMPLETE_SIGNUP'; email: string; passwordHash: string; name: string; birthDate: string; phone: string; kyc: KycAnswers }
+  | { type: 'SIGN_IN'; email: string; passwordHash: string }
+  | { type: 'SIGN_OUT' }
+  | { type: 'RESET_PASSWORD'; email: string; passwordHash: string }
   | { type: 'ADVANCE_DAY' }
   | { type: 'CHANGE_RATE'; rate: number }
   | { type: 'DEPOSIT'; bucket: 'spend' | 'reserve'; amount: number }
   | { type: 'RECEIVE_ASSET'; symbol: AssetSymbol; units: number; quotedAt: number }
   | { type: 'WITHDRAW_CRYPTO'; symbol: AssetSymbol; amount: number; quotedAt: number }
-  | { type: 'START_FUNDING'; requestId: string; kind: 'deposit' | 'withdrawal'; symbol: AssetSymbol; network: FundingNetwork; source: 'spend' | 'holdings'; amount?: number; units?: number; address?: string; recipient?: string; quotedAt: number; simulation?: 'success' | 'failure'; retryOf?: string }
+  | { type: 'START_FUNDING'; requestId: string; kind: 'deposit' | 'withdrawal'; symbol: FundingSymbol; network: FundingNetwork; source: 'spend' | 'holdings'; amount?: number; units?: number; address?: string; recipient?: string; quotedAt: number; simulation?: 'success' | 'failure'; retryOf?: string }
   | { type: 'SIMULATE_FUNDING_DEPOSIT'; id: string }
   | { type: 'CANCEL_FUNDING'; id: string }
   | { type: 'DEPOSIT_ASSET'; symbol: AssetSymbol; units: number }
@@ -120,5 +146,4 @@ export type Action =
   | { type: 'REFUND'; id: string; amount?: number }
   | { type: 'SET_RESERVE_AUTO'; enabled: boolean }
   | { type: 'SET_REWARDS_AUTO'; enabled: boolean }
-  | { type: 'SET_CARD'; card: CardState }
-  | { type: 'REDEEM_ACCRUAL' };
+  | { type: 'SET_CARD'; card: CardState };

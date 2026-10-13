@@ -4,12 +4,13 @@ import {
   Eye, EyeOff, LockKeyhole, MapPin, Package, RefreshCw, Truck, UnlockKeyhole,
 } from 'lucide-react';
 import { PLANS, POLICY } from '../lib/policy';
-import type { CardStage, CardState, Plan } from '../lib/types';
+import type { Account, CardStage, CardState, Plan } from '../lib/types';
 import CardVisual from './CardVisual';
 import './CardApplication.css';
 
 interface CardApplicationProps {
   card: CardState;
+  account: Account;
   onChange: (next: CardState) => void;
   onNotify: (message: string) => void;
 }
@@ -21,7 +22,7 @@ const stepByStage: Partial<Record<CardStage, number>> = { identity: 0, plan: 1, 
 const autoDelays: Partial<Record<CardStage, number>> = { submitted: 1_400, approved: 500, issued: 350 };
 const preparingProgress: Partial<Record<CardStage, number>> = { submitted: 34, approved: 67, issued: 90 };
 
-export default function CardApplication({ card, onChange, onNotify }: CardApplicationProps) {
+export default function CardApplication({ card, account, onChange, onNotify }: CardApplicationProps) {
   const [identityConsent, setIdentityConsent] = useState(false);
   const [reviewConsent, setReviewConsent] = useState(false);
   const [revealed, setRevealed] = useState(false);
@@ -121,14 +122,14 @@ export default function CardApplication({ card, onChange, onNotify }: CardApplic
               <li><span className="cf-feature-icon" aria-hidden="true"><Package /></span><div><strong>실물카드 선택 신청</strong><p>발급비 {won(POLICY.physicalIssueFee)}</p></div></li>
             </ul>
             <button className="cf-button cf-primary" data-testid="card-apply" onClick={() => nextStage('identity')}>카드 신청하기 <ArrowRight size={17} /></button>
-            <p className="cf-disclaimer">샘플 프로필로 진행하며 실제 카드가 발급되지 않습니다.</p>
+            <p className="cf-disclaimer">가입 때 확인한 정보로 진행하며 실제 카드는 발급되지 않습니다.</p>
           </div>}
 
           {card.stage === 'identity' && <div className="cf-group">
-            <h2>본인확인</h2><p className="cf-panel-description">이번 체험에는 샘플 프로필을 사용합니다.</p>
-            <div className="cf-profile"><span className="cf-avatar" aria-hidden="true">A</span><div><strong>아쿠아 사용자</strong><p>대한민국 · 성인</p></div><span className="cf-profile-status">샘플</span></div>
-            <label className="cf-final-consent"><input type="checkbox" data-testid="card-identity-consent" checked={identityConsent} onChange={(event) => setIdentityConsent(event.target.checked)} /><span>샘플 본인확인과 체험 안내를 확인했습니다.</span></label>
-            <details className="cf-terms"><summary>체험 안내</summary><p>실제 개인정보나 신분증을 입력하지 않습니다. 카드 발급·자금 이동·비용 청구는 모의 처리되며 체험 데이터는 이 브라우저에 저장됩니다.</p></details>
+            <h2>본인확인</h2><p className="cf-panel-description">가입할 때 확인한 정보로 신청합니다. 다시 촬영할 필요가 없습니다.</p>
+            <div className="cf-profile"><span className="cf-avatar" aria-hidden="true">{account.name.charAt(0)}</span><div><strong>{account.name}</strong><p>{account.birthDate.replaceAll('-', '.')} · 휴대폰 {account.phone.slice(0, 3)}-****-{account.phone.slice(-4)}</p></div><span className="cf-profile-status">확인 완료</span></div>
+            <label className="cf-final-consent"><input type="checkbox" data-testid="card-identity-consent" checked={identityConsent} onChange={(event) => setIdentityConsent(event.target.checked)} /><span>본인확인 정보를 카드 발급사에 제공하는 데 동의합니다.</span></label>
+            <details className="cf-terms"><summary>체험 안내</summary><p>카드 발급·자금 이동·비용 청구는 모의 처리되며 체험 데이터는 이 브라우저에 저장됩니다.</p></details>
             <button className="cf-button cf-primary" data-testid="card-identity-next" disabled={!identityConsent} onClick={() => patch({ identityVerified: true, stage: 'plan' })}>다음 <ArrowRight size={17} /></button>
             <button className="cf-text-button" onClick={() => nextStage('not_applied')}><ChevronLeft size={15} /> 돌아가기</button>
           </div>}

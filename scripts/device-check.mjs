@@ -49,6 +49,54 @@ async function prepareDeposit(funding, failure = false) {
   await funding.getByTestId('funding-consent').check();
 }
 
+const sixDigits = async (locator) => (await locator.innerText()).match(/\d{6}/)[0];
+
+/** Signs up by touch and checks every sign-up screen for horizontal overflow and 44px targets. */
+async function signUp(page, name) {
+  const tapTarget = async (testId) => {
+    const target = page.getByTestId(testId);
+    const box = await target.boundingBox();
+    assert.ok(box && box.height >= 44, `${name} ${testId}: touch target smaller than 44px`);
+    await target.tap();
+  };
+  await assertFits(page, `${name} welcome`);
+  await tapTarget('auth-signup');
+  await page.getByTestId('signup-email-sample').tap();
+  await tapTarget('signup-send-code');
+  await page.getByTestId('signup-code').fill(await sixDigits(page.getByTestId('signup-demo-code')));
+  await page.getByTestId('signup-password').fill('aqua2026pass');
+  await page.getByTestId('signup-password-confirm').fill('aqua2026pass');
+  await assertFits(page, `${name} sign-up account`);
+  await tapTarget('signup-next');
+  await page.getByTestId('kyc-sample').tap();
+  await tapTarget('kyc-send-code');
+  await page.getByTestId('kyc-code').fill(await sixDigits(page.getByTestId('kyc-demo-code')));
+  await assertFits(page, `${name} phone check`);
+  await tapTarget('kyc-next');
+  await tapTarget('kyc-id-scan');
+  await page.getByTestId('kyc-id-done').waitFor();
+  await tapTarget('kyc-face-scan');
+  await page.getByTestId('kyc-face-done').waitFor();
+  await assertFits(page, `${name} ID and face check`);
+  await tapTarget('kyc-id-next');
+  await page.getByTestId('kyc-occupation').selectOption('회사원');
+  await page.getByTestId('kyc-purpose').selectOption('카드 결제');
+  await page.getByTestId('kyc-source').selectOption('근로소득');
+  await page.getByTestId('kyc-consent').check();
+  await assertFits(page, `${name} customer questions`);
+  await tapTarget('kyc-submit');
+  await page.getByTestId('signup-finish').waitFor();
+  await assertFits(page, `${name} sign-up done`);
+  await tapTarget('signup-finish');
+  await page.getByTestId('available-balance').waitFor();
+}
+
+async function verifyEmail(funding) {
+  await funding.getByTestId('email-send').tap();
+  await funding.getByTestId('email-code').fill(await sixDigits(funding.getByTestId('email-demo-code')));
+  await funding.getByTestId('email-verified').waitFor();
+}
+
 async function waitFundingStatus(page, id, status) {
   await page.waitForFunction(({ operationId, expected }) => {
     const state = JSON.parse(localStorage.getItem('aqua-card:poc:v1'));
@@ -65,6 +113,7 @@ try {
     page.on('pageerror', (error) => errors.push(error.message));
     page.setDefaultTimeout(10_000);
     await page.goto(base, { waitUntil: 'networkidle' });
+    await signUp(page, name);
     const readState = () => page.evaluate(() => JSON.parse(localStorage.getItem('aqua-card:poc:v1')));
     const initial = await readState();
     assert.ok(await page.evaluate(() => navigator.maxTouchPoints > 0));
@@ -111,7 +160,7 @@ try {
     const funding = page.getByTestId('dialog-funding');
     await funding.waitFor({ state: 'visible' });
     await page.waitForFunction(() => document.activeElement?.tagName === 'H2' && !!document.activeElement.closest('[data-testid="dialog-funding"]'));
-    for (const id of ['funding-asset-USDC', 'funding-asset-USDT', 'funding-asset-BTC', 'funding-asset-ETH', 'funding-network-polygon', 'funding-next']) {
+    for (const id of ['funding-origin-domestic', 'funding-origin-wallet', 'funding-asset-KRWS', 'funding-asset-USDC', 'funding-asset-USDT', 'funding-asset-BTC', 'funding-asset-ETH', 'funding-network-polygon', 'funding-next']) {
       const target = await funding.getByTestId(id).boundingBox();
       assert.ok(target && target.width >= 44 && target.height >= 44, `${name} ${id}: touch target smaller than 44px (${JSON.stringify(target)})`);
     }
@@ -124,9 +173,9 @@ try {
     await funding.getByTestId('funding-next').tap();
     assert.equal(await page.locator('.toast').count(), 0, `${name}: toast overlays the funding sheet`);
     await assertAmount(funding.getByTestId('quote-units'), 10, `${name} default coin amount`);
-    await assertAmount(funding.getByTestId('quote-fee'), 70, `${name} disclosed coin conversion fee`);
+    await assertAmount(funding.getByTestId('quote-fee'), 0, `${name} deposits carry no fee`);
     await assertAmount(funding.getByTestId('quote-network-fee'), 0, `${name} deposit network fee`);
-    await assertAmount(funding.getByTestId('quote-net'), 13_930, `${name} received won balance preview`);
+    await assertAmount(funding.getByTestId('quote-net'), 14_000, `${name} received won balance preview`);
     assert.equal(await funding.getByTestId('confirm-action').isDisabled(), true);
     await funding.getByTestId('funding-consent').check();
     const viewportHeight = profile.viewport.height;
@@ -169,7 +218,7 @@ try {
     assert.equal((await readState()).spend, initial.spend);
     await waitFundingStatus(page, pendingDeposit.id, 'completed');
     const funded = await readState();
-    const fundedSpend = initial.spend + 13_930;
+    const fundedSpend = initial.spend + 14_000;
     assert.equal(funded.spend, fundedSpend);
     assert.deepEqual(funded.holdings, initial.holdings);
     assert.equal(funded.fundingOperations.length, 1);
@@ -197,6 +246,9 @@ try {
     assert.ok(withdrawalAction && withdrawalAction.width >= 44 && withdrawalAction.height >= 44);
     await assertFits(page, `${name} withdrawal review`);
     await withdrawalConsent.check();
+    assert.equal(await funding.getByTestId('confirm-action').isDisabled(), true, `${name}: withdrawal needs the email code`);
+    await verifyEmail(funding);
+    await assertFits(page, `${name} withdrawal email check`);
     await funding.getByTestId('confirm-action').tap();
     await funding.getByTestId('funding-status').waitFor({ state: 'visible' });
     const pendingWithdrawal = (await readState()).fundingOperations[0];
@@ -277,7 +329,7 @@ try {
     });
     const state = await readState();
     assert.equal(state.card.stage, 'active');
-    assert.equal(state.payments[0].fromReserve, 53_290);
+    assert.equal(state.payments[0].fromReserve, 53_220);
     assert.equal(state.payments[0].cashback, 1_957);
     assert.equal(state.rewards, 1_957);
 
@@ -302,12 +354,9 @@ try {
     await assertAmount(benefits.getByTestId('cashback-pending'), 0, `${name} pending monthly cashback`);
     await assertAmount(benefits.getByTestId('cashback-remaining'), 8_043, `${name} remaining monthly cashback`);
     await assertAmount(benefits.getByTestId('reward-balance'), 1_957, `${name} spendable reward balance`);
-    assert.equal(await benefits.getByTestId('reserve-pending-rewards').isVisible(), true);
-    assert.match(await benefits.locator('.reserve-pending').innerText(), /아직 받지 않은 보상.*받은 뒤 카드 결제에 사용할 수 있습니다/s);
-    const claimRewards = benefits.getByTestId('claim-rewards');
-    const claimTarget = await claimRewards.boundingBox();
-    assert.ok(claimTarget && claimTarget.width >= 44 && claimTarget.height >= 44, `${name}: benefit claim button is smaller than 44px`);
-    assert.equal(await claimRewards.isDisabled(), true, `${name}: sub-won unclaimed rewards must remain unavailable`);
+    assert.equal(await benefits.getByTestId('reserve-today').isVisible(), true);
+    assert.match(await benefits.locator('.reserve-earnings').innerText(), /1원이 될 때마다 리워드에 바로 더해집니다/);
+    assert.equal(await benefits.getByTestId('claim-rewards').count(), 0, `${name}: reserve rewards need no claim step`);
     const rewardsAuto = benefits.getByTestId('rewards-auto');
     const rewardsToggle = await rewardsAuto.boundingBox();
     assert.ok(rewardsToggle && rewardsToggle.width >= 44 && rewardsToggle.height >= 44, `${name} rewards setting: touch target smaller than 44px`);

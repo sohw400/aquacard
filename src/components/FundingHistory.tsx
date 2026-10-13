@@ -1,6 +1,8 @@
-import { ArrowDownLeft, ArrowUpRight, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
+import CoinIcon from './CoinIcon';
 import { money, shortDate } from '../lib/format';
 import { fundingStatusLabel, getFundingNetworks, isFundingPending } from '../lib/movements';
+import { fundingLabel } from '../lib/policy';
 import type { FundingOperation } from '../lib/types';
 import './FundingHistory.css';
 
@@ -19,11 +21,10 @@ export default function FundingHistory({ operations, onOpen, onAll }: {
       const active = isFundingPending(operation);
       const stopped = operation.status === 'failed' || operation.status === 'cancelled';
       const deposit = operation.kind === 'deposit';
-      const Icon = deposit ? ArrowDownLeft : ArrowUpRight;
       const network = getFundingNetworks(operation.symbol).find((item) => item.id === operation.network)?.label;
       return <button className={`list-row funding-history-row${active ? ' pending' : ''}`} key={operation.id} onClick={() => onOpen(operation)} data-testid={`funding-open-${operation.id}`}>
-        <span className="row-icon" aria-hidden="true"><Icon /></span>
-        <span className="row-main"><strong>{operation.symbol} {deposit ? '입금' : '출금'}</strong><span>{network} · {shortDate(operation.createdAt)}</span></span>
+        <CoinIcon symbol={operation.symbol} />
+        <span className="row-main"><strong>{fundingLabel(operation.symbol)} {deposit ? '입금' : '출금'}</strong><span>{network} · {shortDate(operation.createdAt)}</span></span>
         <span className="funding-history-amount"><strong>{money(deposit ? operation.netWon : operation.amountWon)}</strong><small className={stopped ? 'stopped' : active ? 'pending' : 'done'}>{fundingStatusLabel(operation.status)}</small></span>
         <ChevronRight className="row-chevron" size={20} />
       </button>;

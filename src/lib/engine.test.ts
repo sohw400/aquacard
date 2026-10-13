@@ -110,44 +110,60 @@ test('5,800원 반복 결제의 잔액 57원은 실제 리워드 차감 후 새 
   assert.equal(state.transactions.filter((item) => item.kind === 'payback').length, 3);
 });
 
+const earned = (state: AppState, rewardsBefore = 4_280) => state.rewards - rewardsBefore + state.accrued;
+
 test('Reserve 적립은 시간에 비례하며 동일 시각의 재실행과 시계 역행은 중복 적립하지 않는다', () => {
   const initial = createInitialState(NOW);
   const first = applyAction(initial, { type: 'TICK' }, NOW + DAY);
-  close(first.accrued, 1_250_000 * 0.05 / 365);
+  close(earned(first), 1_250_000 * 0.05 / 365);
+  assert.equal(first.rewards, 4_280 + 171, '1원이 된 보상은 받기 없이 바로 리워드에 더한다');
+  assert.ok(first.accrued < 1);
   assert.deepEqual(applyAction(first, { type: 'TICK' }, NOW + DAY), first);
   assert.deepEqual(applyAction(first, { type: 'TICK' }, NOW), first);
+});
+
+test('같은 날 쌓인 리저브 보상은 이용 내역 한 줄에 합산하고 다음 날은 새 줄로 남긴다', () => {
+  let state = createInitialState(NOW);
+  state = applyAction(state, { type: 'TICK' }, NOW + 3_600_000);
+  state = applyAction(state, { type: 'TICK' }, NOW + 7_200_000);
+  const today = state.transactions.filter((item) => item.kind === 'reward' && item.title === '리저브 보상');
+  assert.equal(today.length, 1);
+  assert.equal(today[0].amount, state.rewards - 4_280);
+  state = applyAction(state, { type: 'TICK' }, NOW + DAY);
+  assert.equal(state.transactions.filter((item) => item.kind === 'reward' && item.title === '리저브 보상').length, 2);
+  assert.equal(state.transactions.filter((item) => item.title === '리저브 보상').reduce((sum, item) => sum + item.amount, 0), state.rewards - 4_280);
 });
 
 test('입금과 보상률 변경 시 이전 잔액·보상률로 먼저 적립한다', () => {
   let state = createInitialState(NOW);
   state = applyAction(state, { type: 'DEPOSIT', bucket: 'reserve', amount: 1_250_000 }, NOW + DAY);
-  close(state.accrued, 1_250_000 * 0.05 / 365);
+  close(earned(state), 1_250_000 * 0.05 / 365);
   state = applyAction(state, { type: 'CHANGE_RATE', rate: 0.08 }, NOW + 2 * DAY);
-  close(state.accrued, (1_250_000 * 0.05 + 2_500_000 * 0.05) / 365);
+  close(earned(state), (1_250_000 * 0.05 + 2_500_000 * 0.05) / 365);
   state = applyAction(state, { type: 'TICK' }, NOW + 3 * DAY);
-  close(state.accrued, (1_250_000 * 0.05 + 2_500_000 * 0.05 + 2_500_000 * 0.08) / 365);
+  close(earned(state), (1_250_000 * 0.05 + 2_500_000 * 0.05 + 2_500_000 * 0.08) / 365);
   assert.equal(state.rateHistory.length, 2);
 });
 
-test('Reserve 보상 대상 상한과 하루 진행·정수 수령을 적용한다', () => {
+test('Reserve 보상 대상 상한과 하루 진행을 적용하고 정수 원만 리워드로 옮긴다', () => {
   let state = createInitialState(NOW);
   state.reserve = 20_000_000;
   state = applyAction(state, { type: 'TICK' }, NOW + YEAR);
-  assert.equal(state.accrued, 500_000);
+  assert.equal(state.rewards, 4_280 + 500_000);
+  close(state.accrued, 0);
   const next = applyAction(createInitialState(NOW), { type: 'ADVANCE_DAY' }, NOW);
-  close(next.accrued, 1_250_000 * 0.05 / 365);
   assert.equal(next.clockOffsetMs, DAY);
-  const redeemed = applyAction(next, { type: 'REDEEM_ACCRUAL' }, NOW);
-  assert.equal(redeemed.rewards, 4_451);
-  close(redeemed.accrued, next.accrued - 171);
+  assert.equal(next.rewards, 4_451);
+  close(next.accrued, 1_250_000 * 0.05 / 365 - 171);
 });
 
 test('Reserve 결제 이후 잔액에만 다음 구간 보상이 적립된다', () => {
   let state = activeState();
-  state.spend = 0; state.rewards = 0; state.reserveAuto = true;
+  state.spend = 0; state.rewards = 0; state.reserveAuto = true; state.rewardsAuto = false;
   state = applyAction(state, { type: 'PAY', merchant: '서점', amount: 100_000 }, NOW + DAY);
+  assert.equal(state.reserve, 1_150_000);
   state = applyAction(state, { type: 'TICK' }, NOW + 2 * DAY);
-  close(state.accrued, (1_250_000 + 1_150_000) * 0.05 / 365);
+  close(earned(state, 0), (1_250_000 + 1_150_000) * 0.05 / 365);
 });
 
 test('일·월 결제 한도는 서울 날짜 경계에 갱신되며 건별 한도도 적용한다', () => {
@@ -219,7 +235,7 @@ test('사용한 페이백 환수 부족분은 향후 리워드에서 상계하�
   assert.equal(state.rewardDebt, 100);
   assert.equal(state.rewards, 0);
   state.accrued = 150.75;
-  state = applyAction(state, { type: 'REDEEM_ACCRUAL' }, NOW);
+  state = applyAction(state, { type: 'TICK' }, NOW);
   assert.equal(state.rewardDebt, 0);
   assert.equal(state.rewards, 50);
   assert.equal(state.accrued, 0.75);
@@ -259,14 +275,14 @@ test('지갑 이동·출금은 원금만 대상으로 하며 음수 잔액을 �
   assert.throws(() => applyAction(state, { type: 'DEPOSIT', bucket: 'reserve', amount: 999 }, NOW), /1,000/);
 });
 
-test('코인 입출금과 전환은 보유량을 반영하고 0.5% 전환 수수료를 공제한다', () => {
+test('코인 입출금과 원화 전환은 보유량을 반영하고 받는 쪽 전환에는 수수료가 없다', () => {
   let state = createInitialState(NOW);
   state = applyAction(state, { type: 'DEPOSIT_ASSET', symbol: 'USDT', units: 10 }, NOW);
   state = applyAction(state, { type: 'WITHDRAW_ASSET', symbol: 'USDT', units: 3 }, NOW);
   assert.equal(state.holdings.USDT, 7);
   state = applyAction(state, { type: 'CONVERT', symbol: 'USDT', units: 7, quotedAt: NOW }, NOW);
   assert.equal(state.holdings.USDT, 0);
-  assert.equal(state.spend, 128_500 + 9_751);
+  assert.equal(state.spend, 128_500 + 9_800);
   assert.throws(() => applyAction(state, { type: 'WITHDRAW_ASSET', symbol: 'USDT', units: 1 }, NOW), /부족/);
   assert.throws(() => applyAction(state, { type: 'CONVERT', symbol: 'BTC', units: 0.000001 }, NOW), /1,000/);
   assert.throws(() => applyAction(state, { type: 'CONVERT', symbol: 'USDC', units: 101 }, NOW), /부족/);
@@ -279,21 +295,21 @@ test('전환 견적 TTL은 실시간 기준이며 하루 진행 시뮬레이션�
   assert.throws(() => applyAction(state, { type: 'CONVERT', symbol: 'USDC', units: 1, quotedAt: NOW + 1 }, NOW), /만료/);
 });
 
-test('외부 코인 입금은 수수료를 공제해 원화 결제 잔액으로 자동 전환하며 기존 보유 코인은 유지한다', () => {
+test('외부 코인 입금은 수수료 없이 원화 결제 잔액으로 자동 전환하며 기존 보유 코인은 유지한다', () => {
   const initial = createInitialState(NOW);
   const snapshot = structuredClone(initial);
   const quote = getFundingQuote({ direction: 'receive', symbol: 'USDC', units: 10 });
   assert.deepEqual(quote, { direction: 'receive', symbol: 'USDC', price: 1_400, inputUnits: 10,
-    grossWon: 14_000, feeWon: 70, netWon: 13_930, outputUnits: 0 });
+    grossWon: 14_000, feeWon: 0, netWon: 14_000, outputUnits: 0 });
   const funded = applyAction(initial, { type: 'RECEIVE_ASSET', symbol: 'USDC', units: 10, quotedAt: NOW }, NOW);
-  assert.equal(funded.spend, 142_430);
+  assert.equal(funded.spend, 142_500);
   assert.equal(funded.reserve, initial.reserve);
   assert.equal(funded.rewards, initial.rewards);
   assert.deepEqual(funded.holdings, initial.holdings, '입금 수량을 보유 코인 지갑에 중복 반영하지 않는다');
-  assert.equal(portfolioValue(funded), portfolioValue(initial) + 13_930);
+  assert.equal(portfolioValue(funded), portfolioValue(initial) + 14_000);
   assert.equal(funded.transactions[0].kind, 'deposit');
-  assert.equal(funded.transactions[0].amount, 13_930);
-  assert.match(funded.transactions[0].note, /수수료 0\.5% \(70원\)/);
+  assert.equal(funded.transactions[0].amount, 14_000);
+  assert.match(funded.transactions[0].note, /입금 수수료 없이 14,000원/);
   assert.deepEqual(initial, snapshot);
 });
 
@@ -329,12 +345,12 @@ test('출금은 결제 잔액까지만 허용하고 리워드·Reserve 자동 �
   assert.deepEqual(insufficient, snapshot, '출금 실패는 원금·리워드·보유 코인·거래 내역을 변경하지 않는다');
 });
 
-test('입금 평가액은 십진수로 계산하고 원 미만은 절사하며 수수료는 원 단위로 올림한다', () => {
+test('입금 평가액은 십진수로 계산해 원 미만을 절사하고 출금 전환 수수료만 원 단위로 올림한다', () => {
   const cases: [AssetSymbol, number, number, number, number][] = [
-    ['USDC', 1.005, 1_407, 8, 1_399],
-    ['BTC', 0.00000822, 1_233, 7, 1_226],
-    ['ETH', 0.000251, 1_004, 6, 998],
-    ['USDC', 1.001, 1_401, 8, 1_393],
+    ['USDC', 1.005, 1_407, 0, 1_407],
+    ['BTC', 0.00000822, 1_233, 0, 1_233],
+    ['ETH', 0.000251, 1_004, 0, 1_004],
+    ['USDC', 1.001, 1_401, 0, 1_401],
   ];
   for (const [symbol, units, grossWon, feeWon, netWon] of cases) {
     const quote = getFundingQuote({ direction: 'receive', symbol, units });
@@ -402,11 +418,11 @@ test('자동 전환된 원화의 Reserve 지정·해제에는 추가 매도나 �
   let state = applyAction(initial, { type: 'RECEIVE_ASSET', symbol: 'USDC', units: 10, quotedAt: NOW }, NOW);
   const assets = portfolioValue(state);
   state = applyAction(state, { type: 'TRANSFER_RESERVE', direction: 'in', amount: 10_000 }, NOW);
-  assert.equal(state.spend, 132_430);
+  assert.equal(state.spend, 132_500);
   assert.equal(state.reserve, 1_260_000);
   assert.equal(portfolioValue(state), assets);
   state = applyAction(state, { type: 'TRANSFER_RESERVE', direction: 'out', amount: 10_000 }, NOW);
-  assert.equal(state.spend, 142_430);
+  assert.equal(state.spend, 142_500);
   assert.equal(state.reserve, initial.reserve);
   assert.deepEqual(state.holdings, initial.holdings);
   assert.equal(portfolioValue(state), assets);
@@ -421,7 +437,7 @@ test('입금 대기·확인·전환이 끝난 뒤에만 순 원화를 한 번 �
   assert.equal(state.fundingOperations[0].status, 'awaiting_deposit');
   assert.equal(state.fundingOperations[0].stageDueAt, null);
   assert.equal(state.spend, initial.spend);
-  assert.equal(state.transactions[0].amount, 13_930);
+  assert.equal(state.transactions[0].amount, 14_000);
   assert.equal(state.transactions[0].status, 'pending');
   state = applyAction(state, { type: 'SIMULATE_FUNDING_DEPOSIT', id }, NOW);
   state = applyAction(state, { type: 'SIMULATE_FUNDING_DEPOSIT', id }, NOW + 1_000);
@@ -433,14 +449,14 @@ test('입금 대기·확인·전환이 끝난 뒤에만 순 원화를 한 번 �
   assert.equal(state.spend, initial.spend);
   state = applyAction(state, { type: 'TICK' }, NOW + 6_000);
   assert.equal(state.fundingOperations[0].status, 'completed');
-  assert.equal(state.spend, initial.spend + 13_930);
+  assert.equal(state.spend, initial.spend + 14_000);
   assert.deepEqual(state.holdings, initial.holdings);
   assert.equal(state.transactions.length, 1);
   assert.equal(state.transactions[0].id, txId);
   assert.equal(state.transactions[0].status, 'completed');
   state = applyAction(state, { type: 'TICK' }, NOW + 20_000);
   state = applyAction(state, { type: 'SIMULATE_FUNDING_DEPOSIT', id }, NOW + 20_000);
-  assert.equal(state.spend, initial.spend + 13_930);
+  assert.equal(state.spend, initial.spend + 14_000);
   assert.equal(state.transactions.length, 1);
 });
 
@@ -609,12 +625,12 @@ test('재로드는 저장 기한을 이어서 진행하고 완료 후 재로드�
   setTime(NOW + 10_000);
   state = loadState();
   assert.equal(state.fundingOperations[0].status, 'completed');
-  assert.equal(state.spend, 142_430);
+  assert.equal(state.spend, 142_500);
   saveState(state);
   setTime(NOW + 60_000);
   state = loadState();
   state = applyAction(state, depositRequest(), NOW + 60_000);
-  assert.equal(state.spend, 142_430);
+  assert.equal(state.spend, 142_500);
   assert.equal(state.fundingOperations.length, 1);
   assert.equal(state.transactions.length, 1);
 }));
@@ -702,15 +718,15 @@ test('보류금 복원 공간과 요청 번호 범위를 지켜 오버플로 시
   assert.deepEqual(exhausted, snapshot);
 });
 
-test('전환 모달과 원장 모두 소수 평가액을 먼저 절사하고 같은 0.5% 수수료를 사용한다', () => {
+test('전환 모달과 원장 모두 소수 평가액을 먼저 절사하고 보유 코인 전환에는 수수료를 받지 않는다', () => {
   const units = 1_001.9 / 1_400;
   const quote = getFundingQuote({ direction: 'receive', symbol: 'USDC', units });
   assert.equal(quote.grossWon, 1_001);
-  assert.equal(quote.feeWon, 6);
-  assert.equal(quote.netWon, 995);
+  assert.equal(quote.feeWon, 0);
+  assert.equal(quote.netWon, 1_001);
   const state = applyAction(createInitialState(NOW), { type: 'CONVERT', symbol: 'USDC', units, quotedAt: NOW }, NOW);
   assert.equal(state.spend, 128_500 + quote.netWon);
-  assert.match(state.transactions[0].note, /\(6원\)/);
+  assert.match(state.transactions[0].note, /수수료가 없습니다/);
 });
 
 test('카드 신청은 단계별로 진행하며 본인 확인·발급·실물 수령 전 활성화를 거절한다', () => {
@@ -781,4 +797,74 @@ test('저장소 접근이 차단되어도 세션과 초기 상태는 사용할 �
     if (original) Object.defineProperty(globalThis, 'localStorage', original);
     else Reflect.deleteProperty(globalThis, 'localStorage');
   }
+});
+
+test('원화 스테이블 입금은 확인이 끝나면 같은 금액을 결제 잔액에 더하고 보유 코인은 바꾸지 않는다', () => withFundingStorage(({ setTime }) => {
+  const initial = createInitialState(NOW);
+  let state = applyAction(initial, depositRequest({ requestId: 'krws-in', symbol: 'KRWS', units: 50_000 }), NOW);
+  assert.equal(state.transactions[0].title, '원화 스테이블 입금');
+  assert.equal(state.transactions[0].amount, 50_000);
+  const id = state.fundingOperations[0].id;
+  state = applyAction(state, { type: 'SIMULATE_FUNDING_DEPOSIT', id }, NOW);
+  state = applyAction(state, { type: 'TICK' }, NOW + 6_000);
+  assert.equal(state.fundingOperations[0].status, 'completed');
+  assert.equal(state.spend, initial.spend + 50_000);
+  assert.deepEqual(state.holdings, initial.holdings);
+  state = applyAction(state, withdrawalRequest({ requestId: 'krws-out', symbol: 'KRWS', amount: 20_000, address: 'aqua-preview:polygon:krws' }), NOW + 7_000);
+  assert.equal(state.fundingOperations[0].feeWon, 0);
+  assert.equal(state.fundingOperations[0].outputUnits, 19_860);
+  saveState(state);
+  setTime(NOW + 7_500);
+  const restored = loadState();
+  assert.equal(restored.fundingOperations.length, 2, '원화 스테이블 입출금 기록도 저장 후 다시 불러온다');
+  assert.equal(restored.spend, initial.spend + 30_000);
+}));
+
+const HASH = 'a'.repeat(64);
+const signup = {
+  type: 'COMPLETE_SIGNUP', email: ' Tester@Aqua.Example ', passwordHash: HASH, name: '아쿠아 사용자', birthDate: '1995-04-12',
+  phone: '01012345678', kyc: { idType: 'resident', occupation: '회사원', purpose: '카드 결제', source: '근로소득' },
+} as const satisfies Action;
+
+test('가입은 이메일·비밀번호·휴대폰·만 19세 이상·고객확인 답변을 확인한 뒤 한 번만 완료한다', () => withFundingStorage(({ values }) => {
+  const initial = createInitialState(NOW);
+  assert.equal(initial.account, null);
+  assert.equal(initial.signedIn, false);
+  const state = applyAction(initial, signup, NOW);
+  assert.equal(state.account?.email, 'tester@aqua.example');
+  assert.equal(state.account?.kyc.purpose, '카드 결제');
+  assert.equal(state.account?.verifiedAt, NOW);
+  assert.equal(state.signedIn, true);
+  assert.equal(state.spend, initial.spend);
+  assert.throws(() => applyAction(state, signup, NOW), /이미 가입/);
+  assert.throws(() => applyAction(initial, { ...signup, email: 'not-an-email' }, NOW), /이메일/);
+  assert.throws(() => applyAction(initial, { ...signup, passwordHash: 'plain-password' }, NOW), /비밀번호/);
+  assert.throws(() => applyAction(initial, { ...signup, phone: '0212345678' }, NOW), /휴대폰/);
+  assert.throws(() => applyAction(initial, { ...signup, name: '김' }, NOW), /이름/);
+  assert.throws(() => applyAction(initial, { ...signup, birthDate: '2009-02-30' }, NOW), /생년월일/);
+  assert.throws(() => applyAction(initial, { ...signup, birthDate: '2010-01-01' }, NOW), /만 19세/);
+  assert.throws(() => applyAction(initial, { ...signup, kyc: { ...signup.kyc, source: '' } }, NOW), /고객확인/);
+  saveState(state);
+  assert.deepEqual(loadState().account, state.account);
+  const legacy = { ...initial } as Partial<AppState>;
+  delete legacy.account;
+  delete legacy.signedIn;
+  values.set(STORAGE_KEY, JSON.stringify(legacy));
+  const restored = loadState();
+  assert.equal(restored.account, null, '가입 기록이 없던 저장 데이터는 가입부터 다시 진행한다');
+  assert.equal(restored.signedIn, false);
+}));
+
+test('로그아웃 뒤에는 같은 이메일과 비밀번호로만 로그인하고 비밀번호를 바꾸면 다시 로그인한다', () => {
+  let state = applyAction(createInitialState(NOW), signup, NOW);
+  state = applyAction(state, { type: 'SIGN_OUT' }, NOW);
+  assert.equal(state.signedIn, false);
+  assert.throws(() => applyAction(state, { type: 'SIGN_IN', email: 'other@aqua.example', passwordHash: HASH }, NOW), /가입한 이메일/);
+  assert.throws(() => applyAction(state, { type: 'SIGN_IN', email: 'tester@aqua.example', passwordHash: 'b'.repeat(64) }, NOW), /비밀번호가 맞지/);
+  state = applyAction(state, { type: 'SIGN_IN', email: 'TESTER@aqua.example', passwordHash: HASH }, NOW);
+  assert.equal(state.signedIn, true);
+  state = applyAction(state, { type: 'RESET_PASSWORD', email: 'tester@aqua.example', passwordHash: 'c'.repeat(64) }, NOW);
+  assert.equal(state.signedIn, false);
+  assert.throws(() => applyAction(state, { type: 'SIGN_IN', email: 'tester@aqua.example', passwordHash: HASH }, NOW), /비밀번호가 맞지/);
+  assert.equal(applyAction(state, { type: 'SIGN_IN', email: 'tester@aqua.example', passwordHash: 'c'.repeat(64) }, NOW).signedIn, true);
 });
