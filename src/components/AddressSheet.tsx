@@ -36,7 +36,7 @@ export default function AddressSheet({ initial, holder, confirmLabel = '이 주�
         }) : <li className="address-empty">찾는 주소가 없어요. 다른 이름으로 찾아 주세요.</li>}</ul>
         {picked && <div className="form-field"><label htmlFor={`${id}-detail`}>상세 주소</label><input id={`${id}-detail`} data-testid="address-detail" placeholder="동·호수 (없으면 비워 두세요)" maxLength={60} autoComplete="off" value={detail} onChange={(event) => setDetail(event.target.value)} /></div>}
         <dl className="card-sheet-cost"><div><dt>받는 분</dt><dd>{holder} (본인)</dd></div></dl>
-        <p className="itd-demo-note">체험판이라 예시 주소만 찾을 수 있어요. 실제 집 주소는 넣지 마세요.</p>
+        <p className="itd-demo-note">체험판이라 예시 주소만 찾을&nbsp;수 있어요. 실제 집 주소는 넣지 마세요.</p>
       </div>
       <footer className="itd-footer"><button type="button" className="itd-button itd-primary" data-testid="address-save" disabled={!picked} onClick={() => { if (picked) onSave({ ...picked, detail: detail.trim() }); }}>{confirmLabel}</button></footer>
     </section>

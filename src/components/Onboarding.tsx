@@ -121,12 +121,12 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
   const back = (target: Screen, label = '이전') => <button type="button" className="onboarding-back" onClick={() => go(target)}><ChevronLeft size={18} />{label}</button>;
   const emailBlock = (prefix: 'signup' | 'reset') => <>
     {field(`${prefix}-email`, '이메일', <input id={id(`${prefix}-email`)} data-testid={`${prefix}-email`} type="email" inputMode="email" autoComplete="email" value={email} placeholder="name@example.com" disabled={emailVerified} onChange={(event) => { setEmail(event.target.value); setEmailCode(null); setError(''); }} />,
-      prefix === 'signup' && !emailVerified ? <button type="button" className="onboarding-text-button" data-testid="signup-email-sample" onClick={() => { setEmail(SAMPLE.email); setEmailCode(null); setError(''); }}>체험용 주소 넣기</button> : undefined)}
+      emailVerified ? <span className="onboarding-done" data-testid={`${prefix}-email-verified`}><Check size={15} strokeWidth={2.6} />인증 완료</span>
+        : prefix === 'signup' ? <button type="button" className="onboarding-text-button" data-testid="signup-email-sample" onClick={() => { setEmail(SAMPLE.email); setEmailCode(null); setError(''); }}>체험용 주소 넣기</button> : undefined)}
     {!emailVerified && (emailCode ? <>
       <p className="onboarding-code-note" data-testid={`${prefix}-demo-code`}>체험판이라 메일은 보내지 않아요. 인증 코드 <strong>{emailCode}</strong></p>
       {field(`${prefix}-code`, '인증 코드 6자리', <input id={id(`${prefix}-code`)} data-testid={`${prefix}-code`} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={emailInput} onChange={(event) => setEmailInput(event.target.value.replace(/\D/g, ''))} />, <button type="button" className="onboarding-text-button" onClick={sendEmailCode}>다시 받기</button>)}
     </> : <button type="button" className="btn neutral block" data-testid={`${prefix}-send-code`} disabled={!EMAIL_PATTERN.test(email.trim())} onClick={sendEmailCode}>인증 코드 받기</button>)}
-    {emailVerified && <p className="onboarding-verified" data-testid={`${prefix}-email-verified`}><Check size={16} strokeWidth={2.6} />이메일 인증을 마쳤어요</p>}
   </>;
   const passwordBlock = (prefix: 'signup' | 'reset') => emailVerified && <>
     {field(`${prefix}-password`, prefix === 'signup' ? '비밀번호' : '새 비밀번호', <input id={id(`${prefix}-password`)} data-testid={`${prefix}-password`} type="password" autoComplete="new-password" value={password} onChange={(event) => { setPassword(event.target.value); setError(''); }} aria-invalid={Boolean(passwordProblem)} />)}
@@ -140,7 +140,7 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
     body = <div className="onboarding-form welcome">
       <img className="onboarding-hero" src={heroCards} width={960} height={630} alt="Aqua 카드 두 장" />
       <h1 ref={heading} tabIndex={-1}>코인을 보내면<br />원화로 쓰는 카드</h1>
-      <p className="onboarding-lead">받은 코인은 바로 원화 스테이블 잔액이 돼요. 카드로 쓸 때마다 1%를 돌려받고, 리저브에 둔 돈에는 1초마다 보상이 쌓여요.</p>
+      <p className="onboarding-lead">받은 코인은 바로 원화 스테이블 잔액이 돼요. 카드로 쓸&nbsp;때마다 1%를 돌려받고, 리저브에 둔 돈에는 1초마다 보상이 쌓여요.</p>
       <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="auth-signup" onClick={() => go('account')}>시작하기</button><button type="button" className="btn neutral block" data-testid="auth-login" onClick={() => go('login')}>로그인</button></div>
     </div>;
   } else if (screen === 'account') {
@@ -158,8 +158,8 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
       {back('account')}
       <h1 ref={heading} tabIndex={-1}>휴대폰 본인인증</h1>
       <p className="onboarding-lead">본인 명의 휴대폰으로 인증해 주세요. 카드를 만들고 충전하려면 법에 따라 본인확인이 필요해요.</p>
-      <button type="button" className="onboarding-text-button" data-testid="kyc-sample" onClick={() => { setName(SAMPLE.name); setBirth(SAMPLE.birth); setPhone(SAMPLE.phone); setPhoneCode(null); setError(''); }}>샘플 정보 채우기</button>
-      {field('name', '이름', <input id={id('name')} data-testid="kyc-name" autoComplete="name" maxLength={30} value={name} disabled={phoneVerified} onChange={(event) => { setName(event.target.value); setPhoneCode(null); setError(''); }} />)}
+      {field('name', '이름', <input id={id('name')} data-testid="kyc-name" autoComplete="name" maxLength={30} value={name} disabled={phoneVerified} onChange={(event) => { setName(event.target.value); setPhoneCode(null); setError(''); }} />,
+        !phoneVerified ? <button type="button" className="onboarding-text-button" data-testid="kyc-sample" onClick={() => { setName(SAMPLE.name); setBirth(SAMPLE.birth); setPhone(SAMPLE.phone); setPhoneCode(null); setError(''); }}>샘플 정보 채우기</button> : undefined)}
       {field('birth', '생년월일 8자리', <input id={id('birth')} data-testid="kyc-birth" inputMode="numeric" maxLength={8} placeholder="19950412" value={birth} disabled={phoneVerified} onChange={(event) => { setBirth(event.target.value.replace(/\D/g, '')); setPhoneCode(null); setError(''); }} />)}
       <fieldset className="onboarding-choice"><legend>통신사</legend><div>{CARRIERS.map((item) => <button type="button" key={item} className={carrier === item ? 'selected' : ''} aria-pressed={carrier === item} disabled={phoneVerified} onClick={() => setCarrier(item)}>{item}</button>)}</div></fieldset>
       {field('phone', '휴대폰 번호', <input id={id('phone')} data-testid="kyc-phone" inputMode="numeric" autoComplete="tel-national" maxLength={11} placeholder="01012345678" value={phone} disabled={phoneVerified} onChange={(event) => { setPhone(event.target.value.replace(/\D/g, '')); setPhoneCode(null); setError(''); }} />,
@@ -197,7 +197,7 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
     body = <form className="onboarding-form" noValidate onSubmit={(event) => { event.preventDefault(); if (ready) { setReview('checking'); go('review'); } }}>
       {back('identity')}
       <h1 ref={heading} tabIndex={-1}>몇 가지만 여쭤볼게요</h1>
-      <p className="onboarding-lead">가상자산을 다루는 서비스라 법에 따라 거래 목적과 자금 출처를 확인해요.</p>
+      <p className="onboarding-lead">가상자산을 다루는 서비스라 법에 따라 거래 목적과 자금&nbsp;출처를 확인해요.</p>
       {select('occupation', '직업', occupation, OCCUPATIONS, setOccupation)}
       {select('purpose', '주로 쓰려는 목적', purpose, PURPOSES, setPurpose)}
       {select('source', '자금 출처', source, FUND_SOURCES, setSource)}
@@ -218,7 +218,7 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
       {!state.account && back('welcome', '처음으로')}
       <h1 ref={heading} tabIndex={-1}>로그인</h1>
       {notice && <p className="onboarding-code-note" role="status">{notice}</p>}
-      {!state.account && <p className="onboarding-hint">이 브라우저에는 가입한 계정이 없어요. 먼저 가입해 주세요.</p>}
+      {!state.account && <p className="onboarding-lead">이 브라우저에는 가입한 계정이 없어요. 먼저 가입해 주세요.</p>}
       {field('login-email', '이메일', <input id={id('login-email')} data-testid="login-email" type="email" inputMode="email" autoComplete="email" value={email} onChange={(event) => { setEmail(event.target.value); setError(''); }} />)}
       {field('login-password', '비밀번호', <input id={id('login-password')} data-testid="login-password" type="password" autoComplete="current-password" value={loginPassword} onChange={(event) => { setLoginPassword(event.target.value); setError(''); }} />)}
       {errorBox}
@@ -229,7 +229,7 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
     body = <form className="onboarding-form" noValidate onSubmit={resetPassword}>
       {back('login', '로그인으로')}
       <h1 ref={heading} tabIndex={-1}>비밀번호 찾기</h1>
-      <p className="onboarding-lead">가입한 이메일로 받은 코드를 넣고 새 비밀번호를 정해요.</p>
+      <p className="onboarding-lead">가입한 이메일로 받은 코드를 넣고 새&nbsp;비밀번호를 정해요.</p>
       {emailBlock('reset')}
       {passwordBlock('reset')}
       {errorBox}
@@ -242,7 +242,7 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
       <div className="onboarding-brand"><Logo size={30} /><span className="demo-tag">체험판</span></div>
       {progress}
       {body}
-      <p className="onboarding-note">체험판이에요. 실제 이름, 휴대폰 번호, 신분증 정보는 넣지 마세요. 입력한 내용은 이 브라우저에만 남고 비밀번호는 해시로만 저장돼요.</p>
+      <p className="onboarding-note">체험판이에요. 실제 이름, 휴대폰 번호, 신분증 정보는 넣지 마세요. 입력한 내용은 이&nbsp;브라우저에만 남고 비밀번호는 해시로만 저장돼요.</p>
     </div>
   </main>;
 }

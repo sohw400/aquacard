@@ -33,12 +33,14 @@ function ActivityRow({ item, payment, coin, onRefund, onFunding, onDetail, detai
     <div className="activity-copy">
       <strong>{item.title}</strong>
       <span>{detailed ? timeLabel(item.timestamp) : shortDate(item.timestamp)}{status && <em className={`status-text ${status[1]}`}>{status[0]}</em>}</span>
-      {detailed && onDetail && <button type="button" className="detail-link" data-testid={`tx-detail-${item.id}`} aria-label={`${item.title} 상세`} onClick={() => onDetail(item)}>상세</button>}
+      {detailed && (onDetail || (item.fundingId && onFunding) || refundable) && <div className="activity-actions">
+        {onDetail && <button type="button" className="pill-button" data-testid={`tx-detail-${item.id}`} aria-label={`${item.title} 상세`} onClick={() => onDetail(item)}>상세</button>}
+        {item.fundingId && onFunding && <button type="button" className="pill-button" data-testid={`funding-open-${item.fundingId}`} onClick={() => onFunding(item.fundingId!)} aria-label={`${item.title} 처리 내역`}>처리 내역</button>}
+        {refundable && <button type="button" className="pill-button" onClick={() => onRefund(payment)} aria-label={`${payment.merchant} 환불`}>환불</button>}
+      </div>}
     </div>
     <div className={`activity-amount${positive ? ' positive' : ''}${item.kind === 'payment' && item.status === 'refunded' ? ' refunded' : ''}${unsettled ? ' unsettled' : ''}`}>
       {item.amount !== 0 || item.kind === 'payment' || item.fundingId ? <strong>{signed(item.amount, positive, unsettled)}</strong> : null}
-      {item.fundingId && onFunding && <button className="pill-button" data-testid={`funding-open-${item.fundingId}`} onClick={() => onFunding(item.fundingId!)} aria-label={`${item.title} 처리 내역`}>처리 내역</button>}
-      {refundable && <button className="pill-button" onClick={() => onRefund(payment)} aria-label={`${payment.merchant} 환불`}>환불</button>}
     </div>
   </div>;
 }

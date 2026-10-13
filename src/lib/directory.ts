@@ -37,7 +37,8 @@ export const findMemberByEmail = (value: string) => {
   const email = value.trim().toLowerCase();
   return EMAIL_SEARCH.test(email) ? MEMBERS.find((member) => member.email === email) : undefined;
 };
-export const formatPhone = (digits: string) => digits.length === 11 ? `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}` : digits;
+export const formatPhone = (digits: string) => digits.length === 11 ? `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
+  : digits.length === 10 ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}` : digits;
 
 /** Why a tag cannot be used, or '' when it is free. */
 export function tagIssue(tag: string): string {

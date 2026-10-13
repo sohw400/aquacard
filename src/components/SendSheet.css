@@ -1,16 +1,16 @@
 .send-sheet .send-head { display: flex; align-items: center; gap: 2px; min-width: 0; }
-.send-sheet .send-back { margin-left: -12px; }
+.send-sheet .send-back { margin: -6.6px 0 -6.6px -12px; }
 .send-sheet .send-options { display: grid; gap: 8px; padding-bottom: 6px; }
 .send-sheet .send-option { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 76px; padding: 14px 14px 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; transition: border-color .15s, background-color .15s; }
 .send-sheet .send-option > span:nth-child(2) { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
 .send-sheet .send-option strong { font-size: 16px; font-weight: 600; line-height: 1.5; }
 .send-sheet .send-option small { color: var(--subtle); font-size: 13px; line-height: 1.5; }
 .send-sheet .send-option > svg { color: var(--faint); }
-.send-sheet .send-own-tag { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; margin: 6px 2px 0; color: var(--subtle); font-size: 14px; line-height: 1.6; }
+.send-sheet .send-own-tag { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; margin: 6px 0 0; color: var(--subtle); font-size: 14px; line-height: 1.6; }
 .send-sheet .send-own-tag strong { color: var(--ink-soft); font-weight: 600; overflow-wrap: anywhere; }
-.send-sheet .send-own-qr { min-height: 44px; padding: 0 2px; border: 0; background: none; color: var(--accent-strong); font: inherit; font-weight: 600; cursor: pointer; }
+.send-sheet .send-own-qr { min-height: 44px; padding: 0; border: 0; background: none; color: var(--accent-strong); font: inherit; font-weight: 600; cursor: pointer; }
 .send-sheet .send-option-icon { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 50%; background: var(--fill); color: var(--ink-soft); }
-.send-sheet .send-tag-field { display: flex; align-items: center; gap: 4px; min-height: 56px; padding: 0 16px; border: 1.5px solid transparent; border-radius: 14px; background: var(--fill); transition: border-color .15s, background-color .15s; }
+.send-sheet .send-tag-field { display: flex; align-items: center; gap: 1px; min-height: 56px; padding: 0 16px; border: 1.5px solid transparent; border-radius: 14px; background: var(--fill); transition: border-color .15s, background-color .15s; }
 .send-sheet .send-tag-field:focus-within { border-color: var(--ink); background: var(--surface); }
 .send-sheet .send-tag-field > span { color: var(--subtle); font-size: 18px; font-weight: 600; }
 .send-sheet .send-tag-field > input { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 17px; font-weight: 500; }
@@ -22,7 +22,7 @@
 .send-sheet .send-members strong, .send-sheet .send-to strong { font-size: 16px; font-weight: 600; }
 .send-sheet .send-members small, .send-sheet .send-to small { color: var(--subtle); font-size: 13px; }
 .send-sheet .send-avatar { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--accent-weak); color: var(--accent-strong); font-size: 15px; font-weight: 700; }
-.send-sheet .send-to { min-height: 64px; padding: 10px 14px; border-radius: var(--radius-md); background: var(--sunken); cursor: default; }
+.send-sheet .send-to { min-height: 64px; padding: 10px 16px; border-radius: var(--radius-md); background: var(--sunken); cursor: default; }
 .send-sheet .send-empty { margin: 8px 0 0; color: var(--subtle); font-size: 14px; line-height: 1.6; }
 .send-sheet .send-find { width: 100%; margin-top: 16px; }
 .send-sheet .send-next { width: 100%; margin-top: 20px; }
@@ -31,11 +31,12 @@
   .send-sheet .send-option:hover { border-color: var(--control); }
   .send-sheet .send-members button:hover strong { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line); }
 }
+.send-sheet .send-search-field { gap: 8px; }
 .send-sheet .send-search-field > span { display: grid; place-items: center; }
-.send-sheet .send-demo-note { margin: 14px 2px 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
-.send-sheet .send-scan-lead { margin: 0 2px 16px; color: var(--subtle); font-size: 14px; line-height: 1.6; }
+.send-sheet .send-demo-note { margin: 10px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
+.send-sheet .send-scan-lead { margin: 0 0 16px; color: var(--subtle); font-size: 14px; line-height: 1.6; }
 .send-sheet .send-qr-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; margin: 0; padding: 0 0 4px; list-style: none; }
-.send-sheet .send-qr-list button { display: grid; justify-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 14px 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); text-align: center; cursor: pointer; transition: border-color .15s; }
+.send-sheet .send-qr-list button { display: grid; justify-items: center; gap: 4px; width: 100%; min-height: 44px; padding: 4px 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); text-align: center; cursor: pointer; transition: border-color .15s; }
 .send-sheet .send-qr-list button > span:last-child { display: grid; gap: 1px; min-width: 0; }
 .send-sheet .send-qr-list strong { font-size: 15px; font-weight: 600; }
 .send-sheet .send-qr-list small { color: var(--subtle); font-size: 13px; overflow-wrap: anywhere; }

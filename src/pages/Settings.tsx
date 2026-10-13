@@ -74,9 +74,9 @@ export default function Settings({ state, account, cardStatus, go, onRewardsAuto
 
     <details className="settings-group demo-tools" data-testid="demo-tools"><summary>체험 설정</summary><div className="details-body">
       <div className="demo-control"><div><strong>하루 지나기</strong><p>하루치 리저브 보상을 바로 쌓아요.</p></div><button type="button" className="btn small neutral" data-testid="advance-day" onClick={onAdvanceDay}>1일 진행</button></div>
-      <div className="demo-control"><div><strong>리저브 기본 보상률</strong><p>바꾼 순간부터 쌓여요. 멤버십 추가 보상은 그대로 붙어요.</p></div><div className="rate-buttons">{[0.03, 0.05, 0.08].map((rate) => <button type="button" key={rate} className={`btn small${state.reserveRate === rate ? ' chosen' : ' neutral'}`} aria-pressed={state.reserveRate === rate} data-testid={`rate-${rate * 100}`} onClick={() => onRate(rate)}>{percent(rate)}</button>)}</div></div>
+      <div className="demo-control"><div><strong>리저브 기본 보상률</strong><p>바꾼 순간부터 쌓여요. 멤버십&nbsp;추가 보상은 그대로 붙어요.</p></div><div className="rate-buttons">{[0.03, 0.05, 0.08].map((rate) => <button type="button" key={rate} className={`btn small${state.reserveRate === rate ? ' chosen' : ' neutral'}`} aria-pressed={state.reserveRate === rate} data-testid={`rate-${rate * 100}`} onClick={() => onRate(rate)}>{percent(rate)}</button>)}</div></div>
       <div className="demo-control"><div><strong>처음으로 되돌리기</strong><p>잔액, 카드, 내역을 처음 상태로 돌려요.</p></div><button type="button" className="btn small danger" data-testid="reset-demo" onClick={onReset}>초기화</button></div>
-      <p className="small-note">체험 데이터는 이 브라우저에만 저장돼요.</p>
+      <p className="small-note">체험 데이터는 이&nbsp;브라우저에만 저장돼요.</p>
     </div></details>
   </div>;
 }

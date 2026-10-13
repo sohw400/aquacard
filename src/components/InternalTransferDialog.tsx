@@ -3,6 +3,7 @@ import { ArrowRight, Check, ChevronLeft, X } from 'lucide-react';
 import { money, shortDate } from '../lib/format';
 import { POLICY } from '../lib/policy';
 import type { Action, AppState } from '../lib/types';
+import { AmountInput } from './ui';
 import './InternalTransferDialog.css';
 
 export interface InternalTransferDialogProps {
@@ -11,7 +12,6 @@ export interface InternalTransferDialogProps {
   state: AppState;
   onClose: () => void;
   dispatch: (action: Action) => AppState;
-  notify: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 type Step = 'amount' | 'review' | 'completed';
@@ -28,7 +28,7 @@ interface TransferReceipt {
 const focusable = 'button:not([disabled]), input:not([disabled]), a[href], select:not([disabled]), textarea:not([disabled]), [tabindex="0"]';
 
 /** Moves won between the spend balance and the Reserve; no fee, no conversion. */
-export default function InternalTransferDialog({ direction, state, onClose, dispatch, notify }: InternalTransferDialogProps) {
+export default function InternalTransferDialog({ direction, state, onClose, dispatch }: InternalTransferDialogProps) {
   const sourceName = direction === 'in' ? '잔액' : '리저브';
   const targetName = direction === 'in' ? '리저브' : '잔액';
   const title = direction === 'in' ? '리저브에 넣기' : '리저브에서 빼기';
@@ -137,7 +137,6 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
       setBusy(false);
       const message = failure instanceof Error ? failure.message : '옮기지 못했어요. 금액을 다시 확인해 주세요.';
       setError(message);
-      notify(message, 'error');
     }
   }
 
@@ -159,7 +158,7 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
             <div className="itd-route"><strong>{sourceName}</strong><ArrowRight size={16} aria-label="이동 대상" /><strong>{targetName}</strong></div>
 
             {step === 'amount' ? <>
-              <div className="itd-amount"><label htmlFor={inputId}>이동할 금액</label><div className="itd-input"><input ref={input} id={inputId} data-testid="action-amount" type="number" inputMode="numeric" min={POLICY.minimumTopup} step={1} value={value} onChange={(event) => updateAmount(event.target.value)} autoComplete="off" aria-invalid={Boolean(issue)} aria-describedby={issue ? `${helpId} ${errorId}` : helpId} /><span>원</span></div><div className="itd-available" id={helpId}><span>이동 가능</span><strong data-testid="transfer-available">{money(available)}</strong></div></div>
+              <div className="itd-amount"><label htmlFor={inputId}>이동할 금액</label><div className="itd-input"><AmountInput ref={input} id={inputId} data-testid="action-amount" value={value} onValueChange={updateAmount} autoComplete="off" aria-invalid={Boolean(issue)} aria-describedby={issue ? errorId : helpId} /><span>원</span></div>{issue ? <p className="itd-field-error itd-in-place" id={errorId} role="alert">{issue}</p> : <div className="itd-available" id={helpId}><span>이동 가능</span><strong data-testid="transfer-available">{money(available)}</strong></div>}</div>
               <div className="itd-presets">{[10_000, 50_000, 100_000].map((preset) => <button type="button" key={preset} disabled={preset > available} onClick={() => updateAmount(String(preset))}>{preset.toLocaleString('ko-KR')}원</button>)}<button type="button" data-testid="transfer-max" disabled={available <= 0} onClick={() => updateAmount(String(available))}>최대</button></div>
               <dl className="itd-detail-list itd-amount-details"><div><dt>수수료</dt><dd>0원</dd></div><div><dt>최소 이동 금액</dt><dd>{money(POLICY.minimumTopup)}</dd></div></dl>
             </> : <>
@@ -169,7 +168,7 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
               <p className="itd-reserve-note">{direction === 'in' ? '넣은 순간부터 보상이 쌓여요.' : '뺀 금액에는 이제 보상이 쌓이지 않아요. 이미 쌓인 보상은 그대로예요.'}</p>
             </>}
 
-            {issue && <p className="itd-error" id={errorId} role="alert">{issue}</p>}
+            {step === 'review' && issue && <p className="itd-error" id={errorId} role="alert">{issue}</p>}
           </form>}
 
           {step === 'completed' && receipt && <div className="itd-completed" data-testid="transfer-completed">
@@ -183,7 +182,7 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
           </div>}
         </div>
 
-        <footer className="itd-footer">{step === 'amount' ? <button key="next" type="submit" form={formId} className="itd-button itd-primary" data-testid="transfer-next" disabled={!canProceed}>다음</button> : step === 'review' ? <><button key="back" type="button" className="itd-button itd-secondary" data-testid="transfer-back" disabled={busy} onClick={(event) => { event.preventDefault(); setStep('amount'); setError(''); }}>이전 <ChevronLeft size={15} /></button><button key="confirm" type="submit" form={formId} className="itd-button itd-primary" data-testid="confirm-action" disabled={!canProceed}>{busy ? '처리 중' : '이동하기'}</button></> : <button key="done" type="button" className="itd-button itd-primary" data-testid="transfer-done" disabled={!completionReady} onClick={onClose}>확인</button>}</footer>
+        <footer className="itd-footer">{step === 'amount' ? <button key="next" type="submit" form={formId} className="itd-button itd-primary" data-testid="transfer-next" disabled={!canProceed}>다음</button> : step === 'review' ? <><button key="back" type="button" className="itd-button itd-secondary" data-testid="transfer-back" disabled={busy} onClick={(event) => { event.preventDefault(); setStep('amount'); setError(''); }}><ChevronLeft size={16} />이전</button><button key="confirm" type="submit" form={formId} className="itd-button itd-primary" data-testid="confirm-action" disabled={!canProceed}>{busy ? '처리 중' : '이동하기'}</button></> : <button key="done" type="button" className="itd-button itd-primary itd-guarded" data-testid="transfer-done" disabled={!completionReady} onClick={onClose}>확인</button>}</footer>
       </section>
     </div>
   );

@@ -27,7 +27,7 @@ export default function Benefits({ state, onReserve, onRewardsAuto }: { state: A
       <div className="cashback-progress" role="progressbar" aria-label="이번 달 페이백 한도" aria-valuemin={0} aria-valuemax={cashback.cap} aria-valuenow={Math.min(cashback.cap, cashback.allocated)} aria-valuetext={`${money(cashback.allocated)} / ${money(cashback.cap)}`}><span className="cashback-progress-fill" style={{ width: `${used}%` }} /></div>
       <dl className="cashback-metrics"><div><dt>확정 전</dt><dd data-testid="cashback-pending">{money(cashback.pending)}</dd></div><div><dt>남은 한도</dt><dd data-testid="cashback-remaining">{money(cashback.remaining)}</dd></div><div><dt>월 한도</dt><dd>{money(cashback.cap)}</dd></div></dl>
       <details className="rule-details"><summary>페이백 기준</summary>
-        <p>리워드로 낸 금액을 뺀 결제액의 {percent(cashback.rate)}를 돌려드려요. 한 달에 {money(cashback.cap)}까지예요.</p>
+        <p>리워드로 낸 금액을 뺀 결제액의 {percent(cashback.rate)}를 돌려드려요. 한&nbsp;달에 {money(cashback.cap)}까지예요.</p>
         <p>결제가 확정되면 리워드에 들어가고, 환불하면 그만큼 줄어요.</p>
         <p>지난달 결제는 이번 달에 확정돼도 지난달 페이백으로 계산해요.</p>
       </details>

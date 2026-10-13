@@ -17,7 +17,7 @@ export default function Reserve({ state, onMove, onAutoUse }: { state: AppState;
     </section>
 
     <section className="plain-section">
-      <p className="lead-text">{state.reserve > 0 ? `지금 금액이면 하루에 약 ${money(daily)}이 쌓여요.` : '잔액 일부를 리저브에 두면 1초마다 보상이 쌓여요.'} 보상은 1원이 될 때마다 리워드에 들어가요.</p>
+      <p className="lead-text">{state.reserve > 0 ? `지금 금액이면 하루에 약 ${money(daily)}이 쌓여요.` : '잔액 일부를 리저브에 두면 1초마다 보상이 쌓여요.'} 보상은 1원이 될&nbsp;때마다 리워드에 들어가요.</p>
       <Toggle checked={state.reserveAuto} onChange={onAutoUse} label="잔액이 모자랄 때 리저브로 결제" detail="모자란 만큼만 리저브에서 빠져요." testId="reserve-auto" />
     </section>
 
@@ -28,7 +28,7 @@ export default function Reserve({ state, onMove, onAutoUse }: { state: AppState;
         <li>{money(terms.cap)}까지 보상이 쌓여요. 보상률은 바뀔 수 있고 단리로 계산해요.</li>
         <li>넣고 빼기는 1,000원부터, 수수료 없이 할 수 있어요.</li>
         <li>밖으로 보내려면 잔액으로 뺀 뒤 보내기를 이용해 주세요.</li>
-        <li>예금이 아니라서 원금이 보장되지 않아요. 실제 운용과 상환 조건은 제휴 후 정해요.</li>
+        <li>예금이 아니라서 원금이 보장되지 않아요. 실제 운용과 상환&nbsp;조건은 제휴 후 정해요.</li>
       </ul>
       <div className="rate-history"><h3>기본 보상률 변경 기록</h3>{state.rateHistory.slice().reverse().slice(0, 5).map((item, index) => <div key={`${item.timestamp}-${index}`}><span>{shortDate(item.timestamp)}</span><strong>연 {percent(item.rate)}</strong></div>)}</div>
     </details>

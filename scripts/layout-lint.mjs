@@ -177,7 +177,7 @@ function inPageLint({ gutter }) {
     }
     return box;
   }
-  const shownGlyphs = (element, info) => { const clip = clipOf(element); return info.lines.flat().filter((glyph) => glyph.rect && glyph.rect.bottom > clip.top + 1 && glyph.rect.top < clip.bottom - 1 && glyph.rect.right > clip.left + 1 && glyph.rect.left < clip.right - 1); };
+  const shownGlyphs = (element, info) => { const clip = clipOf(element); return info.lines.flat().filter((glyph) => glyph.rect && glyph.rect.top >= clip.top - 0.5 && glyph.rect.bottom <= clip.bottom + 0.5 && glyph.rect.left >= clip.left - 0.5 && glyph.rect.right <= clip.right + 0.5); };
   const stuck = (element) => { for (let node = element; node && node !== document.body; node = node.parentElement) { const position = styleOf(node).position; if (position === 'fixed' || position === 'sticky') return node; } return null; };
   const blocks = [...blockInfo.entries()];
   for (let first = 0; first < blocks.length; first += 1) {
@@ -200,11 +200,15 @@ function inPageLint({ gutter }) {
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       if (!/\S/.test(node.nodeValue) || !node.parentElement || !visible(node.parentElement)) continue;
+      // Wrap the text with a zero-size probe: inside a flex or grid parent a bare probe would become an item of its own.
       const probe = document.createElement('span');
       probe.style.cssText = 'display:inline-block;width:0;height:0;padding:0;margin:0;border:0;vertical-align:baseline';
-      node.parentNode.insertBefore(probe, node);
+      const wrapper = document.createElement('span');
+      node.parentNode.insertBefore(wrapper, node);
+      wrapper.append(probe, node);
       const bottom = probe.getBoundingClientRect().bottom;
-      probe.remove();
+      wrapper.parentNode.insertBefore(node, wrapper);
+      wrapper.remove();
       return bottom;
     }
     return null;
@@ -254,7 +258,7 @@ function inPageLint({ gutter }) {
     if (bottom - top < rect.height * 0.8 && lines <= 2) {
       const offsetY = (top + bottom) / 2 - (rect.top + rect.bottom) / 2;
       if (Math.abs(offsetY) > 1.6) report('off-center', control, `세로 ${offsetY.toFixed(1)}px`);
-      const centred = style.textAlign === 'center' || style.justifyContent === 'center';
+      const centred = /flex|grid/.test(style.display) ? ['center', 'space-around', 'space-evenly'].includes(style.justifyContent) || style.justifyItems === 'center' : style.textAlign === 'center';
       const offsetX = (left + right) / 2 - (rect.left + rect.right) / 2;
       if (centred && Math.abs(offsetX) > 1.6 && right - left < rect.width * 0.9) report('off-center', control, `가로 ${offsetX.toFixed(1)}px`);
     }

@@ -1,15 +1,15 @@
 .wallet-sheet .itd-body { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
 .wallet-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--radius-md); background: var(--sunken); }
-.wallet-card .wallet-card-thumb { width: 76px; margin: -8px -2px -8px -6px; }
+.wallet-card .wallet-card-thumb { width: 76px; margin: -8px -2px -8px 0; }
 .wallet-card > div { display: flex; flex-direction: column; min-width: 0; }
 .wallet-card strong { color: var(--ink); font-size: 16px; font-weight: 700; }
 .wallet-card span { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .wallet-points { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .wallet-points li { display: flex; align-items: flex-start; gap: 10px; color: var(--ink-soft); font-size: 14px; line-height: 1.55; }
 .wallet-points svg { flex-shrink: 0; margin-top: 1px; color: var(--muted); }
-.wallet-terms { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--sunken); color: var(--ink-soft); font-size: 14px; line-height: 1.6; cursor: pointer; }
+.wallet-terms { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; padding: 12px 16px; border-radius: var(--radius-md); background: var(--sunken); color: var(--ink-soft); font-size: 14px; line-height: 1.6; cursor: pointer; }
 .wallet-terms input { flex-shrink: 0; width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--primary); }
-.wallet-code-note { margin: 0; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--accent-weak); color: var(--accent-strong); font-size: 14px; line-height: 1.6; }
+.wallet-code-note { margin: 0; padding: 12px 16px; border-radius: var(--radius-sm); background: var(--accent-weak); color: var(--accent-strong); font-size: 14px; line-height: 1.6; }
 .wallet-code-note strong { letter-spacing: .08em; font-variant-numeric: tabular-nums; }
 .wallet-verified { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--accent); font-size: 14px; font-weight: 700; }
 .wallet-done > p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.6; }
@@ -23,26 +23,29 @@
 .card-sheet-cost > div + div { border-top: 1px solid var(--line); }
 .card-sheet-cost dt { color: var(--muted); font-size: 14px; }
 .card-sheet-cost dd { margin: 0; color: var(--ink); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.card-sheet-short { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--warning-weak); }
+.card-sheet-short { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; border-radius: var(--radius-md); background: var(--warning-weak); }
 .card-sheet-short > p { flex: 1; margin: 0; color: var(--warning); font-size: 14px; font-weight: 600; line-height: 1.55; }
-.card-sheet-short > .itd-button { flex: 0 0 auto; width: auto; min-height: 40px; padding: 8px 14px; background: var(--surface); }
+.card-sheet-short > .itd-button { flex: 0 0 auto; width: auto; min-height: 40px; padding: 0 16px; border-radius: 999px; background: var(--surface); font-size: 14px; }
 .internal-transfer-dialog .itd-button.itd-primary.card-sheet-danger:not(:disabled) { background: var(--danger); color: #fff; }
 
-.address-search { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 14px; border: 1.5px solid transparent; border-radius: 14px; background: var(--fill); color: var(--subtle); }
+.address-search { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 16px; border: 1.5px solid transparent; border-radius: 14px; background: var(--fill); color: var(--subtle); }
 .address-search:focus-within { border-color: var(--ink); }
-.address-search > input { flex: 1; min-width: 0; min-height: 48px; padding: 0; border: 0; outline: none; background: none; color: var(--ink); font-size: 16px; }
-.address-results { display: grid; max-height: 236px; margin: 0; padding: 0; overflow-y: auto; border-radius: var(--radius-md); background: var(--sunken); list-style: none; }
+/* The field is the grey wrapper; the input inside stays bare even when focused. */
+.address-search > input, .address-search > input:focus { flex: 1; min-width: 0; min-height: 48px; padding: 0; border: 0; border-radius: 0; outline: none; background: none; color: var(--ink); font-size: 16px; font-weight: 500; appearance: none; }
+.address-search > input::-webkit-search-cancel-button, .address-search > input::-webkit-search-decoration { display: none; -webkit-appearance: none; }
+.address-sheet { --sheet-height: 720px; }
+.address-results { display: grid; margin: 0; padding: 0; overflow: hidden; border-radius: var(--radius-md); background: var(--sunken); list-style: none; }
 .address-results > li + li { border-top: 1px solid var(--line); }
-.address-results button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px 14px; color: var(--ink); text-align: left; }
+.address-results button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px 16px; color: var(--ink); text-align: left; }
 .address-results button > span { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .address-results strong { font-size: 15px; font-weight: 600; line-height: 1.45; }
 .address-results small { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .address-results button.selected { background: var(--accent-weak); }
 .address-results button > svg { flex-shrink: 0; color: var(--accent); }
-.address-empty { padding: 16px 14px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.address-empty { padding: 16px; color: var(--muted); font-size: 14px; line-height: 1.6; }
 
 .sheet-form { display: contents; }
-.sheet-hint { margin: -8px 2px 0; color: var(--subtle); font-size: 13px; line-height: 1.5; }
+.sheet-hint { margin: -8px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.5; }
 .sheet-hint.bad { color: var(--danger); }
 .tx-amount { color: var(--ink); font-size: 28px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
 .tx-amount.positive { color: var(--accent); }

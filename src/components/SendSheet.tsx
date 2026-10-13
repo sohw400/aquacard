@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { AtSign, Check, ChevronLeft, ChevronRight, QrCode as QrIcon, Search, Wallet, X } from 'lucide-react';
 import { useModal } from './useModal';
 import QrCode from './QrCode';
+import { AmountInput } from './ui';
 import { EMAIL_SEARCH, findMember, findMemberByEmail, findMemberByPhone, formatPhone, maskName, MEMBERS, normalizeTag, PHONE_SEARCH, phoneDigits, TAG_PATTERN, tagLink, type Member } from '../lib/directory';
 import { money, particle, shortDate, won } from '../lib/format';
 import { POLICY } from '../lib/policy';
@@ -20,9 +21,8 @@ const SAMPLE_PHONE = MEMBERS.find((member) => member.phone)?.phone ?? '';
 const SAMPLE_EMAIL = MEMBERS.find((member) => member.email)?.email ?? '';
 
 /** Send to another Aqua member by tag, phone number, email or QR code (free, instant), or hand over to the on-chain send flow. */
-export default function SendSheet({ state, onClose, onWallet, onReceive, dispatch, notify }: {
-  state: AppState; onClose: () => void; onWallet: () => void; onReceive: () => void;
-  dispatch: (action: Action) => AppState; notify: (message: string, type?: 'success' | 'error' | 'info') => void;
+export default function SendSheet({ state, onClose, onWallet, onReceive, dispatch }: {
+  state: AppState; onClose: () => void; onWallet: () => void; onReceive: () => void; dispatch: (action: Action) => AppState;
 }) {
   const [step, setStep] = useState<Step>('choose');
   const [origin, setOrigin] = useState<Origin>('tag');
@@ -62,7 +62,7 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
       if (!PHONE_SEARCH.test(digits)) { setError('휴대폰 번호를 끝까지 넣어 주세요.'); return; }
       if (state.account && digits === state.account.phone) { setError('내 번호예요. 받는 사람의 번호를 넣어 주세요.'); return; }
       const found = findMemberByPhone(digits);
-      if (!found) { setError('이 번호로 찾을 수 있는 회원이 없어요. 상대가 휴대폰 번호로 찾기를 켰는지 확인해 주세요.'); return; }
+      if (!found) { setError('이 번호로 찾을\u00a0수 있는 회원이 없어요. 상대가 휴대폰\u00a0번호로 찾기를 켰는지 확인해 주세요.'); return; }
       pick(found, 'phone');
       return;
     }
@@ -70,7 +70,7 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
       if (!EMAIL_SEARCH.test(email)) { setError('이메일 주소를 끝까지 넣어 주세요.'); return; }
       if (state.account && email === state.account.email) { setError('내 이메일이에요. 받는 사람의 이메일을 넣어 주세요.'); return; }
       const found = findMemberByEmail(email);
-      if (!found) { setError('이 이메일로 찾을 수 있는 회원이 없어요. 상대가 이메일로 찾기를 켰는지 확인해 주세요.'); return; }
+      if (!found) { setError('이 이메일로 찾을\u00a0수 있는 회원이 없어요. 상대가 이메일로 찾기를 켰는지 확인해 주세요.'); return; }
       pick(found, 'email');
       return;
     }
@@ -87,16 +87,14 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
       setSentAt(Date.now());
       setStep('done');
     } catch (failure) {
-      const message = failure instanceof Error ? failure.message : '보내지 못했어요. 다시 시도해 주세요.';
-      setError(message);
-      notify(message, 'error');
+      setError(failure instanceof Error ? failure.message : '보내지 못했어요. 다시 시도해 주세요.');
     }
   }
   const back = () => { setError(''); setStep(step === 'review' ? 'amount' : step === 'amount' ? origin === 'scan' ? 'scan' : 'tag' : 'choose'); };
   const findLabel = phoneQuery ? PHONE_SEARCH.test(digits) ? `${formatPhone(digits)} 찾기` : '번호로 찾기' : emailQuery ? '이메일로 찾기' : `@${typed || '태그'} 찾기`;
 
   return <div className="itd-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="internal-transfer-dialog send-sheet" ref={panel} role="dialog" aria-modal="true" aria-labelledby={`${uid}-title`} tabIndex={-1} data-testid="send-sheet">
+    <section className="internal-transfer-dialog send-sheet" ref={panel} role="dialog" aria-modal="true" aria-labelledby={`${uid}-title`} tabIndex={-1} data-testid="send-sheet" data-step={step}>
       <header className="itd-header">
         <div className="send-head">{step !== 'choose' && step !== 'done' && <button type="button" className="itd-close send-back" aria-label="이전" onClick={back}><ChevronLeft size={22} /></button>}<h2 id={`${uid}-title`} ref={heading} tabIndex={-1}>{titles[step]}</h2></div>
         <button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button>
@@ -111,14 +109,14 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
 
         {step === 'tag' && <form onSubmit={find} noValidate>
           <label className="send-tag-field send-search-field" htmlFor={`${uid}-tag`}><span aria-hidden="true"><Search size={19} /></span><input ref={tagInput} id={`${uid}-tag`} data-testid="send-tag" value={query} onChange={(event) => { setQuery(event.target.value); setError(''); }} placeholder="태그·이름·휴대폰·이메일" autoComplete="off" autoCapitalize="none" spellCheck={false} /></label>
-          {error && <p className="itd-error" role="alert">{error}</p>}
-          {phoneQuery ? !error && <p className="send-empty" data-testid="send-phone-hint">{PHONE_SEARCH.test(digits) ? '번호를 다 넣었어요. 찾기를 눌러 주세요.' : '휴대폰 번호는 끝까지 넣어야 찾을 수 있어요.'} 번호로 찾기를 켠 회원만 나와요.</p>
-            : emailQuery ? !error && <p className="send-empty" data-testid="send-email-hint">{EMAIL_SEARCH.test(email) ? '이메일 주소를 다 넣었어요. 찾기를 눌러 주세요.' : '이메일 주소는 끝까지 넣어야 찾을 수 있어요.'} 이메일로 찾기를 켠 회원만 나와요.</p> : <>
+          {error && <p className="itd-field-error" role="alert">{error}</p>}
+          {!typed && !phoneQuery && !emailQuery && <p className="send-demo-note">휴대폰 번호나 이메일 전체로도 찾을&nbsp;수 있어요. 체험용 번호&nbsp;<span className="nowrap">{formatPhone(SAMPLE_PHONE)}</span>, 이메일 <span className="nowrap">{SAMPLE_EMAIL}</span>{particle(SAMPLE_EMAIL, '을', '를')} 넣어 보세요.</p>}
+          {phoneQuery ? !error && <p className="send-empty" data-testid="send-phone-hint">{PHONE_SEARCH.test(digits) ? '번호를 다 넣었어요. 찾기를 눌러 주세요.' : '휴대폰 번호는 끝까지 넣어야 찾을\u00a0수 있어요.'} 번호로 찾기를 켠&nbsp;회원만 나와요.</p>
+            : emailQuery ? !error && <p className="send-empty" data-testid="send-email-hint">{EMAIL_SEARCH.test(email) ? '이메일 주소를 다 넣었어요. 찾기를 눌러 주세요.' : '이메일 주소는 끝까지 넣어야 찾을\u00a0수 있어요.'} 이메일로 찾기를 켠&nbsp;회원만 나와요.</p> : <>
             <p className="send-list-title">{typed ? '찾은 회원' : '체험용 회원'}</p>
-            {matches.length ? <ul className="send-members">{matches.map((item) => <li key={item.tag}><button type="button" data-testid={`send-pick-${item.tag}`} onClick={() => pick(item, 'tag')}><span className="send-avatar" aria-hidden="true">{item.name.charAt(0)}</span><span><strong>{maskName(item.name)}</strong><small>@{item.tag}</small></span></button></li>)}</ul> : <p className="send-empty">맞는 회원이 없어요. 태그 전체를 넣고 찾기를 눌러 주세요.</p>}
-            {!typed && <p className="send-demo-note">휴대폰 번호나 이메일 전체로도 찾을 수 있어요. 체험용 번호 <span className="nowrap">{formatPhone(SAMPLE_PHONE)}</span>, 이메일 <span className="nowrap">{SAMPLE_EMAIL}</span>{particle(SAMPLE_EMAIL, '을', '를')} 넣어 보세요.</p>}
+            {matches.length ? <ul className="send-members">{matches.map((item) => <li key={item.tag}><button type="button" data-testid={`send-pick-${item.tag}`} onClick={() => pick(item, 'tag')}><span className="send-avatar" aria-hidden="true">{item.name.charAt(0)}</span><span><strong>{maskName(item.name)}</strong><small>@{item.tag}</small></span></button></li>)}</ul> : !error && <p className="send-empty">맞는 회원이 없어요. 태그 전체를 넣고 찾기를 눌러 주세요.</p>}
           </>}
-          <button type="submit" className="itd-button itd-secondary send-find" data-testid="send-find" disabled={phoneQuery || emailQuery ? false : !typed}>{findLabel}</button>
+          <button type="submit" className="itd-button itd-primary send-find" data-testid="send-find" disabled={phoneQuery || emailQuery ? false : !typed}>{findLabel}</button>
         </form>}
 
         {step === 'scan' && <div data-testid="send-scan-step">
@@ -131,10 +129,9 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
 
         {step === 'amount' && member && <form onSubmit={(event) => { event.preventDefault(); if (value && !amountIssue) setStep('review'); }} noValidate>
           <div className="send-to"><span className="send-avatar" aria-hidden="true">{member.name.charAt(0)}</span><span><strong>{maskName(member.name)}</strong><small>@{member.tag}{FOUND_BY[origin]}</small></span></div>
-          <div className="itd-amount"><label htmlFor={`${uid}-amount`}>보낼 금액</label><div className="itd-input"><input id={`${uid}-amount`} data-testid="send-amount" type="number" inputMode="numeric" min={POLICY.minimumTopup} step={1} value={value} onChange={(event) => { setValue(event.target.value); setError(''); }} autoComplete="off" ref={amountInput} /><span>원</span></div>
-            <div className="itd-available"><span>보낼 수 있는 금액</span><strong>{money(state.spend)}</strong></div></div>
-          <div className="itd-presets">{[10_000, 30_000, 50_000].map((preset) => <button type="button" key={preset} disabled={preset > state.spend} onClick={() => setValue(String(preset))}>{won(preset)}원</button>)}</div>
-          {amountIssue && <p className="itd-error" role="alert">{amountIssue}</p>}
+          <div className="itd-amount"><label htmlFor={`${uid}-amount`}>보낼 금액</label><div className="itd-input"><AmountInput id={`${uid}-amount`} data-testid="send-amount" value={value} onValueChange={(next) => { setValue(next); setError(''); }} autoComplete="off" ref={amountInput} aria-invalid={Boolean(amountIssue)} /><span>원</span></div>
+            {amountIssue ? <p className="itd-field-error itd-in-place" role="alert">{amountIssue}</p> : <div className="itd-available"><span>보낼 수 있는 금액</span><strong>{money(state.spend)}</strong></div>}</div>
+          <div className="itd-presets">{[10_000, 30_000, 50_000].map((preset) => <button type="button" key={preset} disabled={preset > state.spend} onClick={() => { setValue(String(preset)); setError(''); }}>{won(preset)}원</button>)}</div>
           <button type="submit" className="itd-button itd-primary send-next" data-testid="send-next" disabled={!value || Boolean(amountIssue)}>다음</button>
         </form>}
 

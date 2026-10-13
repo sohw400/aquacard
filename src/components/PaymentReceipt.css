@@ -24,16 +24,16 @@
 .payment-receipt button { font-family: inherit; cursor: pointer; }
 .payment-receipt h2, .payment-receipt h3, .payment-receipt p { margin: 0; }
 .payment-receipt > .sheet-handle { display: block; }
-.receipt-header { display: flex; justify-content: flex-end; flex-shrink: 0; padding: 4px 12px 0; }
+.receipt-header { display: flex; justify-content: flex-end; flex-shrink: 0; padding: 4px 8px 0; }
 .receipt-close { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: var(--radius-sm); color: var(--ink-soft); }
-.receipt-body { min-height: 0; padding: 0 22px 18px; overflow-y: auto; overscroll-behavior: contain; }
+.receipt-body { min-height: 0; padding: 0 20px 18px; overflow-y: auto; overscroll-behavior: contain; }
 .receipt-headline { display: grid; justify-items: center; padding: 0 0 20px; text-align: center; }
 .receipt-check { display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 14px; border-radius: 50%; background: var(--primary); color: var(--on-primary); animation: receipt-pop .45s var(--ease) both; }
 .payment-receipt .receipt-headline h2 { color: var(--muted); font-size: 16px; font-weight: 600; line-height: 1.5; }
 .receipt-amount { display: block; margin-top: 2px; color: var(--ink); font-size: 34px; font-weight: 700; line-height: 1.3; letter-spacing: -.9px; font-variant-numeric: tabular-nums; }
 .payment-receipt .receipt-merchant { margin-top: 8px; color: var(--ink-soft); font-size: 16px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
 .payment-receipt .receipt-date { margin-top: 2px; color: var(--subtle); font-size: 13px; line-height: 1.5; }
-.receipt-breakdown, .receipt-reward-reconciliation { margin-top: 10px; padding: 10px 16px 12px; border-radius: var(--radius-md); background: var(--sunken); }
+.receipt-breakdown, .receipt-reward-reconciliation { margin-top: 12px; padding: 10px 16px 8px; border-radius: var(--radius-md); background: var(--sunken); }
 .receipt-breakdown h3, .receipt-reward-reconciliation h3 { margin: 0 0 4px; padding-top: 4px; color: var(--ink-soft); font-size: 14px; font-weight: 600; line-height: 1.5; }
 .receipt-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 34px; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .receipt-row > span { min-width: 0; }
@@ -46,7 +46,7 @@
 .receipt-row.total > strong { color: var(--accent); font-size: 20px; font-weight: 700; letter-spacing: -.4px; }
 .payment-receipt .receipt-note, .payment-receipt .receipt-explanation { margin-top: 12px; color: var(--subtle); font-size: 13px; line-height: 1.6; }
 .payment-receipt .receipt-explanation { margin-top: 4px; }
-.receipt-footer { flex-shrink: 0; padding: 12px 22px calc(16px + env(safe-area-inset-bottom)); background: var(--surface); }
+.receipt-footer { flex-shrink: 0; padding: 12px 20px calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--fill); background: var(--surface); }
 .receipt-confirm { display: block; width: 100%; min-height: 56px; padding: 12px 16px; border-radius: var(--radius-md); background: var(--primary); color: var(--on-primary); font-size: 17px; font-weight: 600; line-height: 1.4; transition: background-color .15s, transform .15s var(--ease); }
 .receipt-confirm:active { transform: scale(.98); }
 .payment-receipt button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -65,6 +65,6 @@
 }
 @media (prefers-reduced-motion: reduce) { .receipt-body { scroll-behavior: auto; } }
 @media (hover: hover) {
-  .receipt-close:hover { background: rgba(0, 0, 0, .04); }
+  .receipt-close:hover { background: var(--fill); }
   .receipt-confirm:hover { background: var(--primary-hover); }
 }

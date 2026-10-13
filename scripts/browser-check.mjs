@@ -166,7 +166,7 @@ try {
       await dialog.getByTestId('transfer-next').click();
       assert.deepEqual(ledgerSnapshot(await read()), before, '내부 이동 확인 단계에서는 원장을 변경하지 않는다');
       await dialog.getByTestId('transfer-back').click();
-      assert.equal(await dialog.getByTestId('action-amount').inputValue(), String(amount), '내부 이동 수정 단계로 돌아가도 입력값을 유지한다');
+      assert.equal(await dialog.getByTestId('action-amount').inputValue(), amount.toLocaleString('en-US'), '내부 이동 수정 단계로 돌아가도 입력값을 유지한다');
       assert.deepEqual(ledgerSnapshot(await read()), before, '이전 단계 버튼이 최종 제출을 실행하지 않는다');
       await dialog.getByTestId('transfer-next').click();
       await dialog.getByTestId('confirm-action').click();
@@ -344,7 +344,7 @@ try {
   assert.equal(await page.getByTestId('nav-wallet').count(), 0, '자산 탭은 없다');
   assert.equal(await page.getByTestId('nav-activity').count(), 1);
   assert.equal(await page.getByTestId('nav-home').getAttribute('aria-current'), 'page');
-  assert.match(await page.locator('.sidebar-note').innerText(), /체험판이에요.*이 브라우저에만 저장돼요/);
+  assert.match(await page.locator('.sidebar-note').innerText(), /체험판이에요.*이\s브라우저에만 저장돼요/);
   assert.equal(await displayedAmount(page.getByTestId('spend-balance')), START.spend);
   assert.equal(await displayedAmount(page.getByTestId('available-rewards')), START.rewards);
   assert.match(await page.getByTestId('open-reserve-card').innerText(), new RegExp(`${pattern(wonText(START.reserve))}[\\s\\S]*연 ${pattern(percentText(reserveTermsOf(state).rate))}`));
@@ -555,7 +555,7 @@ try {
   const reservePage = page.locator('.reserve-page');
   await reservePage.waitFor();
   assert.equal(await page.getByTestId('nav-benefits').getAttribute('aria-current'), 'page');
-  assert.match(await reservePage.innerText(), /보상은 1원이 될 때마다 리워드에 들어가요/);
+  assert.match(await reservePage.innerText(), /보상은 1원이 될\s때마다 리워드에 들어가요/);
   assert.equal(await displayedAmount(page.getByTestId('reserve-principal')), START.reserve - fromReserve);
   assert.match(await page.getByTestId('reserve-accrual').innerText(), /^\+\d/);
   assert.equal(await page.getByTestId('reserve-auto').getAttribute('aria-checked'), 'true', '전체에서 켠 리저브 결제를 리저브 화면에서도 보여준다');
@@ -958,7 +958,7 @@ try {
   assert.match(await sendSheet.innerText(), new RegExp(`수수료\\s*0원[\\s\\S]*보낸 뒤 잔액\\s*${pattern(wonText(START.spend - 30_000))}`));
   assert.deepEqual(ledgerSnapshot(await read(sendPage)), beforeSend, '검토 단계에서는 보내지 않는다');
   await sendSheet.getByRole('button', { name: '이전', exact: true }).click();
-  assert.equal(await sendAmount.inputValue(), '30000', '금액 단계로 돌아가도 입력값을 유지한다');
+  assert.equal(await sendAmount.inputValue(), '30,000', '금액 단계로 돌아가도 입력값을 유지한다');
   await sendSheet.getByRole('button', { name: '창 닫기', exact: true }).click();
   await sendSheet.waitFor({ state: 'hidden' });
   assert.deepEqual(ledgerSnapshot(await read(sendPage)), beforeSend, '닫으면 아무것도 보내지 않는다');
@@ -1042,7 +1042,7 @@ try {
   assert.match(await sendSheet.getByRole('alert').innerText(), /휴대폰 번호를 끝까지 넣어 주세요/);
   await tagInput.fill('010-0000-0103');
   await sendSheet.getByTestId('send-find').click();
-  assert.match(await sendSheet.getByRole('alert').innerText(), /이 번호로 찾을 수 있는 회원이 없어요/, '번호로 찾기를 끈 회원은 나오지 않는다');
+  assert.match(await sendSheet.getByRole('alert').innerText(), /이 번호로 찾을\s수 있는 회원이 없어요/, '번호로 찾기를 끈 회원은 나오지 않는다');
   await tagInput.fill(tagState.account.phone);
   await sendSheet.getByTestId('send-find').click();
   assert.match(await sendSheet.getByRole('alert').innerText(), /내 번호예요/);
@@ -1056,7 +1056,7 @@ try {
   assert.match(await sendSheet.getByRole('alert').innerText(), /이메일 주소를 끝까지 넣어 주세요/);
   await tagInput.fill('junho@aqua.example');
   await sendSheet.getByTestId('send-find').click();
-  assert.match(await sendSheet.getByRole('alert').innerText(), /이 이메일로 찾을 수 있는 회원이 없어요/, '이메일로 찾기를 끈 회원은 나오지 않는다');
+  assert.match(await sendSheet.getByRole('alert').innerText(), /이 이메일로 찾을\s수 있는 회원이 없어요/, '이메일로 찾기를 끈 회원은 나오지 않는다');
   await tagInput.fill(tagState.account.email);
   await sendSheet.getByTestId('send-find').click();
   assert.match(await sendSheet.getByRole('alert').innerText(), /내 이메일이에요/);
@@ -1120,7 +1120,7 @@ try {
   assert.equal(await statementPage.getByTestId('statement-received').innerText(), '1건 · 10,000원');
   assert.equal(await statementPage.getByTestId('statement-sent').innerText(), '1건 · 30,000원');
   assert.equal(await statementPage.getByTestId('statement-card').innerText(), '없음');
-  assert.match(await statementPage.innerText(), /코인을 원화 스테이블로 바꾼 충전은 가상자산을 판 것으로 볼 수 있어요/);
+  assert.match(await statementPage.innerText(), /코인을 원화 스테이블로 바꾼 충전은 가상자산을 판 것으로 볼\s수 있어요/);
   await statementPage.getByTestId('statement-copy').click();
   await statementPage.getByText('2건을 복사했어요.').waitFor();
   const copiedRows = (await sendPage.evaluate(() => navigator.clipboard.readText())).split('\n').map((line) => line.split('\t'));

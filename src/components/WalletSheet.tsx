@@ -53,7 +53,7 @@ export default function WalletSheet({ wallet, card, phone, onAdd, onClose }: {
         </>}
         {step === 'verify' && <>
           {code ? <>
-            <p className="wallet-code-note" data-testid="wallet-demo-code">체험판이라 문자는 보내지 않아요. 인증번호: <strong>{code}</strong></p>
+            <p className="wallet-code-note" data-testid="wallet-demo-code">체험판이라 문자는 보내지 않아요. 인증번호 <strong>{code}</strong></p>
             <div className="form-field"><label htmlFor={`${headingId}-code`}>인증번호 6자리</label><input id={`${headingId}-code`} data-testid="wallet-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={input} onChange={(event) => setInput(event.target.value.replace(/\D/g, ''))} /></div>
             {verified && <p className="wallet-verified"><Check size={16} strokeWidth={2.6} />인증을 마쳤어요.</p>}
           </> : <p className="wallet-code-note"><span className="nowrap">{maskPhone(phone)}</span> 번호로 인증번호를 보낼게요.</p>}
