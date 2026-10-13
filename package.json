@@ -14,7 +14,8 @@
     "preview:pages": "vite preview --host 0.0.0.0 --port 4173 --strictPort --base=/aquacard/",
     "test": "tsx --test src/lib/*.test.ts",
     "test:browser": "node scripts/browser-check.mjs",
-    "test:devices": "node scripts/device-check.mjs"
+    "test:devices": "node scripts/device-check.mjs",
+    "audit:screens": "node scripts/screen-audit.mjs"
   },
   "dependencies": {
     "lucide-react": "1.55.0",
