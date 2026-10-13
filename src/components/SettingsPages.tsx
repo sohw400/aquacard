@@ -27,7 +27,7 @@ export function LimitsPage({ state, onSave }: { state: AppState; onSave: (limits
 
   return <div className="page-stack settings-detail" data-testid="page-limits">
     <section className="panel">
-      <p className="panel-lead">한도를 낮춰 두면 카드 번호가 새어 나가도 피해를 줄일 수 있어요. 최대 한도까지는 언제든 다시 올릴&nbsp;수&nbsp;있어요.</p>
+      <p className="panel-lead">한도를 낮춰 두면 카드 번호가 새어 나가도 피해를 줄일&nbsp;수 있어요. 최대 한도까지는 언제든 다시 올릴&nbsp;수&nbsp;있어요.</p>
       <div className="limit-list">{rows.map((row) => <div className="limit-row" key={row.key}>
         <div className="limit-head"><label htmlFor={`limit-${row.key}`}>{row.label}</label><strong data-testid={`limit-value-${row.key}`}>{money(row.value)}</strong></div>
         <input id={`limit-${row.key}`} data-testid={`limit-${row.key}`} type="range" min={row.min} max={row.max} step={LIMIT_STEP} value={row.value} aria-valuetext={money(row.value)} onChange={(event) => row.set(Number(event.target.value))} />
@@ -71,13 +71,13 @@ const FAQ: [string, [string, string][]][] = [
   ['충전과 보내기', [
     ['어떤 코인으로 충전할 수 있나요?', '원화 스테이블코인, USDC, USDT, BTC, ETH로 충전할 수 있어요. 다른 코인은 받는 즉시 원화 스테이블로 바뀌어 잔액에 들어가요.'],
     ['충전하거나 보낼 때 수수료는 얼마인가요?', '충전 수수료는 없어요. 보낼 때는 네트워크 비용이 들어요. 다른 코인으로 바꿔 보내면 전환 수수료 0.5%가 붙어요.'],
-    ['거래소에서 바로 보낼 수 있나요?', '네. 충전 화면에서 국내 거래소를 고르면 주소와 보내는 방법을 알려 드려요. 100만원 이상 보낼 때 거래소가 받는 곳을 물으면 Aqua를 골라 주세요.'],
-    ['다른 Aqua 회원에게는 어떻게 보내나요?', '보내기 › Aqua 회원에게에서 태그, 휴대폰 번호, 이메일로 찾거나 QR 코드 찍기로 상대의 QR을 찍어 보내요. 수수료 없이 바로 가요. 휴대폰 번호와 이메일은 상대가 그 방법으로 찾기를 켰을 때만 찾을 수 있어요.'],
+    ['거래소에서 바로 보낼 수 있나요?', '네. 충전 화면에서 국내 거래소를 고르면 주소와 보내는 방법을 알려 드려요. 100만원 이상 보낼 때 거래소가 받는\u00a0곳을 물으면 Aqua를 골라 주세요.'],
+    ['다른 Aqua 회원에게는 어떻게 보내나요?', '보내기 › Aqua 회원에게에서 태그, 휴대폰 번호, 이메일로 찾거나 QR 코드 찍기로 상대의 QR을 찍어 보내요. 수수료 없이 바로 가요. 휴대폰 번호와 이메일은 상대가 그 방법으로 찾기를 켰을 때만 찾을\u00a0수 있어요.'],
   ]],
   ['리저브와 리워드', [
-    ['리저브 보상은 언제 받나요?', '1초마다 계산해서 1원이 될 때마다 리워드에 바로 더해요. 따로 받을 필요는 없어요.'],
+    ['리저브 보상은 언제 받나요?', '1초마다 계산해서 1원이 될\u00a0때마다 리워드에 바로 더해요. 따로 받을 필요는 없어요.'],
     ['리워드는 어디에 쓰나요?', '카드 결제에만 쓸 수 있어요. 결제하면 리워드에서 먼저 빠져요. 밖으로 보내거나 코인으로 바꿀 수는 없어요.'],
-    ['리저브는 예금인가요?', '예금이 아니라서 원금이 보장되지 않아요. 보상률은 바뀔 수 있어요. 실제 운용과 상환 조건은 제휴 후 정해요.'],
+    ['리저브는 예금인가요?', '예금이 아니라서 원금이 보장되지 않아요. 보상률은 바뀔 수 있어요. 실제 운용과 상환\u00a0조건은 제휴 후 정해요.'],
   ]],
   ['카드', [
     ['페이백은 언제 들어오나요?', `결제가 확정되면 리워드로 들어와요. 스탠다드 ${PLANS.standard.cashbackRate * 100}%, 프리미엄 ${PLANS.premium.cashbackRate * 100}%, 프라이빗 ${PLANS.private.cashbackRate * 100}%예요.`],

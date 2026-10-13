@@ -1,15 +1,17 @@
-.receive-sheet .receive-card { display: grid; justify-items: center; gap: 2px; padding: 22px 16px 18px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); text-align: center; }
-.receive-sheet .receive-card .qr-code { width: min(196px, 100%); margin-bottom: 14px; }
+.receive-sheet .receive-card { display: grid; justify-items: center; gap: 2px; padding: 4px 16px 22px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); text-align: center; }
+.receive-sheet .receive-card .qr-code { width: min(196px, 100%); margin-bottom: 2px; }
 .receive-sheet .receive-tag { max-width: 100%; color: var(--ink); font-size: 20px; font-weight: 700; line-height: 1.4; letter-spacing: -.01em; overflow-wrap: anywhere; user-select: all; }
 .receive-sheet .receive-name { color: var(--subtle); font-size: 14px; line-height: 1.5; }
-.receive-sheet .receive-help { margin: 14px 2px 0; color: var(--subtle); font-size: 14px; line-height: 1.6; }
+.receive-sheet .receive-help { margin: 14px 0 0; color: var(--subtle); font-size: 14px; line-height: 1.6; }
 .receive-sheet .receive-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
-.receive-sheet .receive-actions .itd-button { min-height: 52px; font-size: 16px; }
-.receive-sheet .receive-note { margin: 10px 2px 0; color: var(--accent-strong); font-size: 14px; line-height: 1.6; }
+.receive-sheet .receive-actions .itd-button { min-height: 48px; font-size: 16px; }
+.receive-sheet .receive-note { margin: 10px 0 0; color: var(--accent-strong); font-size: 14px; line-height: 1.6; }
 .receive-sheet .receive-available { display: flex; align-items: center; gap: 6px; }
+.receive-sheet .receive-status { min-height: 50px; }
+.receive-sheet .receive-status > p { margin-top: 8px; }
 .receive-sheet .receive-phone { margin-top: 18px; border-top: 1px solid var(--line); }
-.receive-sheet .receive-demo { display: flex; align-items: center; gap: 14px; margin-top: 18px; padding: 14px 14px 14px 16px; border-radius: var(--radius-md); background: var(--sunken); }
+.receive-sheet .receive-demo { display: flex; align-items: center; gap: 14px; margin-top: 18px; padding: 14px 16px; border-radius: var(--radius-md); background: var(--sunken); }
 .receive-sheet .receive-demo > p { flex: 1; min-width: 0; margin: 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
 .receive-sheet .receive-demo > p > strong { display: block; color: var(--ink); font-size: 15px; font-weight: 600; }
-.receive-sheet .receive-demo > .itd-button { flex: 0 0 auto; min-width: 76px; min-height: 48px; font-size: 16px; }
+.receive-sheet .receive-demo > .itd-button { flex: 0 0 auto; min-width: 0; min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--surface); font-size: 14px; }
 .receive-sheet .receive-rules { display: grid; gap: 4px; margin: 14px 0 0; padding-left: 18px; color: var(--subtle); font-size: 13px; line-height: 1.6; }

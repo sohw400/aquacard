@@ -55,13 +55,13 @@ export default function Statement({ state, now }: { state: AppState; now: number
 
     <section className="plain-section" aria-labelledby="statement-tax">
       <div className="section-title"><h2 id="statement-tax">세금 신고에 쓸 때</h2></div>
-      <p className="lead-text">코인을 원화 스테이블로 바꾼 충전은 가상자산을 판 것으로 볼 수 있어요. 아래에서 복사하는 내역에 바꾼 날짜, 코인, 수량, 원화 금액이 들어 있어요.</p>
+      <p className="lead-text">코인을 원화 스테이블로 바꾼 충전은 가상자산을 판 것으로 볼&nbsp;수 있어요. 아래에서 복사하는 내역에 바꾼 날짜, 코인, 수량, 원화 금액이 들어 있어요.</p>
       <p className="small-note">페이백과 리저브 보상을 어떻게 신고할지는 세무 전문가와 확인해 주세요.</p>
     </section>
 
     <section className="plain-section statement-copy" aria-labelledby="statement-copy">
       <div className="section-title"><h2 id="statement-copy">내역 복사</h2></div>
-      <p className="lead-text">{rows ? `${year}년 거래 ${rows}건을 복사해요. 엑셀이나 구글 시트에 붙여 넣으면 칸이 나뉘어요.` : `${year}년에는 거래가 없어요.`}</p>
+      <p className="lead-text">{rows ? `${year}년 거래 ${rows}건을 복사해요. 엑셀이나 구글 시트에 붙여넣으면 칸이 나뉘어요.` : `${year}년에는 거래가 없어요.`}</p>
       <button type="button" className="btn neutral block" data-testid="statement-copy" disabled={!rows} onClick={copyRows}><Copy size={18} aria-hidden="true" />내역 복사</button>
       {copied === 'done' && <p className="statement-copied" role="status"><Check size={16} strokeWidth={2.6} aria-hidden="true" />{rows}건을 복사했어요.</p>}
       {copied === 'failed' && <>

@@ -54,9 +54,12 @@ async function assertAmount(locator, expected, description) {
   assert.equal(amount, expected, description);
 }
 
+// Inside a transformed sheet Chromium measures in float32, so a 44px box far down the page can read 43.99994px.
+const MIN_TOUCH = 44 - 0.01;
+
 async function assertTouchTarget(locator, description) {
   const box = await locator.boundingBox();
-  assert.ok(box && box.width >= 44 && box.height >= 44, `${description}: touch target smaller than 44px (${JSON.stringify(box)})`);
+  assert.ok(box && box.width >= MIN_TOUCH && box.height >= MIN_TOUCH, `${description}: touch target smaller than 44px (${JSON.stringify(box)})`);
 }
 
 async function assertFontSize(locator, description) {
@@ -87,7 +90,7 @@ async function signUp(page, name) {
   const tapTarget = async (testId) => {
     const target = page.getByTestId(testId);
     const box = await target.boundingBox();
-    assert.ok(box && box.height >= 44, `${name} ${testId}: touch target smaller than 44px (${box?.height}px)`);
+    assert.ok(box && box.height >= MIN_TOUCH, `${name} ${testId}: touch target smaller than 44px (${box?.height}px)`);
     await target.tap();
   };
   await assertFits(page, `${name} welcome`);

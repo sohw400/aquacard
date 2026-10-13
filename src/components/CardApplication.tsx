@@ -53,12 +53,15 @@ function DeliverySteps({ delivery }: { delivery: DeliveryStage }) {
   return <ol className="cf-delivery-steps"><li className="cf-delivery-done">만드는 중</li><li className={delivery === 'shipped' || delivery === 'delivered' ? 'cf-delivery-done' : ''}>배송 중</li><li className={delivery === 'delivered' ? 'cf-delivery-done' : ''}>도착</li></ol>;
 }
 
+/** Facts joined by middle dots. Each fact wraps as a whole and carries the dot before it, so a dot never ends a line. */
+function Facts({ items, className }: { items: string[]; className?: string }) {
+  return <span className={className}>{items.map((fact, index) => <Fragment key={fact}>{index > 0 && ' '}<span className="nowrap">{index > 0 && '· '}{fact}</span></Fragment>)}</span>;
+}
+
 /** One line per tier: what it gives. */
 function TierFacts({ plan }: { plan: Plan }) {
   const terms = PLANS[plan];
-  const facts = [`페이백 ${percent(terms.cashbackRate)}`, ...(terms.reserveBonus ? [`리저브 +${percent(terms.reserveBonus)}p`] : []), terms.card];
-  // Each fact wraps as a whole so "메탈 카드" never splits across lines.
-  return <span className="cf-tier-facts">{facts.map((fact, index) => <Fragment key={fact}>{index > 0 && ' · '}<span className="nowrap">{fact}</span></Fragment>)}</span>;
+  return <Facts className="cf-tier-facts" items={[`페이백 ${percent(terms.cashbackRate)}`, ...(terms.reserveBonus ? [`리저브 +${percent(terms.reserveBonus)}p`] : []), terms.card]} />;
 }
 
 export default function CardApplication({ card, account, spend, controls, onOpenLimits, onOpenChannels, onPay, onChange, onAction, onDeposit, onNotify }: CardApplicationProps) {
@@ -232,7 +235,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
           <button type="button" className="cf-quick-button" data-testid="card-pay" disabled={card.locked} onClick={onPay}><span><CreditCard /></span>결제해 보기</button>
         </div>
         {revealed && <div className="cf-demo-details"><span className="cf-simulation-label">체험용 카드 정보예요. 실제로 결제되지 않아요.</span><dl><div><dt>카드번호</dt><dd>4242 4242 4242 {card.last4}</dd></div><div><dt>유효기간</dt><dd>12/30</dd></div><div><dt>CVC</dt><dd>123</dd></div></dl></div>}
-        {card.locked && <div className="cf-info-box cf-warning-box"><LockKeyhole size={18} /><p>잠근 동안 새 결제는 거절돼요. 이미 한 결제의 취소와 환불은 그대로 돼요.</p></div>}
+        {card.locked && <div className="cf-info-box cf-warning-box"><LockKeyhole size={18} /><p>잠근 동안 새 결제는 거절돼요. 이미 한 결제의 취소와&nbsp;환불은 그대로 돼요.</p></div>}
 
         <section className="cf-section" aria-labelledby="cf-wallets-title">
           <h3 id="cf-wallets-title">휴대폰 결제</h3>
@@ -245,7 +248,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
 
         <section className="cf-section" data-testid="card-plan" aria-labelledby="cf-plan-title">
           <h3 id="cf-plan-title">멤버십</h3>
-          <p className="cf-plan-now"><strong>{plan.short}</strong> · 페이백 {percent(plan.cashbackRate)} · 월 {won(plan.cashbackCap)}까지{plan.reserveBonus ? ` · 리저브 +${percent(plan.reserveBonus)}p` : ''}</p>
+          <p className="cf-plan-now"><strong>{plan.short}</strong> <Facts items={[`· 페이백 ${percent(plan.cashbackRate)}`, `월 ${won(plan.cashbackCap)}까지`, ...(plan.reserveBonus ? [`리저브 +${percent(plan.reserveBonus)}p`] : [])]} /></p>
           {card.billingAt !== null && <p className="cf-plan-renewal"><CalendarClock size={15} aria-hidden="true" />{card.nextPlan ? `${dateLabel(card.billingAt)}부터 ${ro(PLANS[card.nextPlan].short)} 바뀌어요` : <>다음 갱신일 <span data-testid="card-billing-date">{dateLabel(card.billingAt)}</span></>}</p>}
           <ul className="cf-plan-list">{PLAN_ORDER.map((key) => {
             const current = key === card.plan;
@@ -284,7 +287,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
         {sheet?.kind === 'plan' && planSheet(sheet.plan)}
         {sheet?.kind === 'physical' && pendingAddress && <CardActionSheet title={`${physicalName(card.plan)} 받기`} lead="가게 단말기에 꽂거나 대서 결제하는 카드예요." spend={spend} cost={plan.physicalFee || undefined} onDeposit={onDeposit} onClose={() => setSheet(null)}
           points={['가상카드와 같은 잔액으로 결제해요.', `${addressLine(pendingAddress)}로 보내 드려요. ${POLICY.deliveryEstimate}이 걸려요.`, '받은 뒤 앱에서 카드 비밀번호를 정하면 쓸 수 있어요.']}
-          confirmLabel={plan.physicalFee ? `${won(plan.physicalFee)} 내고 신청` : '신청하기'} onConfirm={() => onAction({ type: 'ADD_PHYSICAL_CARD', address: pendingAddress }, `${physicalName(card.plan)}를 신청했어요.`)} />}
+          confirmLabel={plan.physicalFee ? `${won(plan.physicalFee)} 내고 신청` : '신청하기'} onConfirm={() => onAction({ type: 'ADD_PHYSICAL_CARD', address: pendingAddress }, `${josa(physicalName(card.plan), '을', '를')} 신청했어요.`)} />}
         {sheet?.kind === 'replacement' && card.replacement && <CardActionSheet title={`새 ${physicalName(card.replacement.plan)} 쓰기 시작`} spend={spend} onDeposit={onDeposit} onClose={() => setSheet(null)}
           points={['카드 번호와 카드 비밀번호는 그대로예요.', '지금 쓰던 실물카드는 바로 결제가 막혀요. 잘라서 버려 주세요.', '가상카드와 휴대폰 결제는 그대로 써요.']}
           confirmLabel="쓰기 시작" onConfirm={() => onAction({ type: 'ACTIVATE_REPLACEMENT' }, `새 ${ro(physicalName(card.replacement!.plan))} 결제할 수 있어요.`)} />}
@@ -297,7 +300,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
       </div>}
 
       {pinSheet && <PinSheet mode={pinSheet === 'change' ? 'change' : 'activate'} onClose={() => setPinSheet(null)} onSubmit={(pin) => pinSheet === 'replacement'
-        ? onAction({ type: 'ACTIVATE_REPLACEMENT', pin }, '새 카드를 쓸 수 있어요.')
+        ? onAction({ type: 'ACTIVATE_REPLACEMENT', pin }, card.replacement ? `새 ${ro(physicalName(card.replacement.plan))} 결제할 수 있어요.` : '새 카드로 결제할 수 있어요.')
         : onAction(pinSheet === 'activate' ? { type: 'ACTIVATE_PHYSICAL', pin } : { type: 'SET_CARD_PIN', pin }, pinSheet === 'activate' ? '실물카드를 쓸 수 있어요.' : '카드 비밀번호를 바꿨어요.')} />}
       {addressSheet && <AddressSheet initial={addressSheet === 'physical' ? pendingAddress : card.address} holder={account.name} confirmLabel={addressSheet === 'physical' ? '다음' : '이 주소로 받기'} onClose={() => setAddressSheet(null)}
         onSave={(address) => {
@@ -314,7 +317,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
           {card.physical && card.delivery === 'preparing' && <button type="button" className="cf-button cf-secondary" data-testid="card-demo-shipped" onClick={() => patch({ delivery: 'shipped' })}><Truck size={16} /> 배송 시작</button>}
           {card.physical && card.delivery === 'shipped' && <button type="button" className="cf-button cf-secondary" data-testid="card-demo-delivered" onClick={() => patch({ delivery: 'delivered' })}><Package size={16} /> 배송 완료</button>}
           {card.replacement && card.replacement.delivery !== 'delivered' && <button type="button" className="cf-button cf-secondary" data-testid="card-demo-replacement" onClick={() => onAction({ type: 'ADVANCE_REPLACEMENT' }, card.replacement?.delivery === 'preparing' ? '새 카드를 보냈어요.' : '새 카드가 도착했어요.')}>{card.replacement.delivery === 'preparing' ? <><Truck size={16} /> 새 카드 배송 시작</> : <><Package size={16} /> 새 카드 배송 완료</>}</button>}
-          {card.billingAt === null && (!card.physical || card.delivery === 'delivered') && !card.replacement && <p>지금은 해 볼 단계가 없어요. 프리미엄으로 바꾸면 갱신일 이동을 해 볼 수 있어요.</p>}
+          {card.billingAt === null && (!card.physical || card.delivery === 'delivered') && !card.replacement && <p>지금은 해&nbsp;볼 단계가 없어요. 프리미엄으로 바꾸면 갱신일 이동을 해&nbsp;볼&nbsp;수 있어요.</p>}
         </div>}
       </details>}
     </section>

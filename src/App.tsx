@@ -3,6 +3,7 @@ import { CheckCircle2, ChevronLeft, Clock3, Info, X } from 'lucide-react';
 import CardApplication from './components/CardApplication';
 import Logo from './components/Logo';
 import TierCard from './components/TierCard';
+import { AmountInput } from './components/ui';
 import Onboarding from './components/Onboarding';
 import AccountClosureSheet from './components/AccountClosureSheet';
 import { PasswordSheet } from './components/SecuritySheets';
@@ -60,6 +61,19 @@ function NavIcon({ name }: { name: MainPage }) {
     {name === 'benefits' && <><path className="nav-shape" {...stroke} d="M6.6 5.6h10.8a2 2 0 0 1 2 2v2.1a2.3 2.3 0 0 0 0 4.6v2.1a2 2 0 0 1-2 2H6.6a2 2 0 0 1-2-2v-2.1a2.3 2.3 0 0 0 0-4.6V7.6a2 2 0 0 1 2-2Z" /><path className="nav-cut-line" d="M14.6 8.2v7.6" strokeWidth="1.8" strokeLinecap="round" strokeDasharray="1.4 2.4" /></>}
     {name === 'settings' && [[4.6, 4.6], [13.4, 4.6], [4.6, 13.4], [13.4, 13.4]].map(([x, y]) => <rect key={`${x}-${y}`} className="nav-shape" {...stroke} x={x} y={y} width="6" height="6" rx="1.8" />)}
   </svg>;
+}
+
+/** True while any modal sheet or dialog is on screen, including the ones the card page opens itself. */
+function useModalOpen(): boolean {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const check = () => setOpen(document.querySelector('[role="dialog"][aria-modal="true"]') !== null);
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true, subtree: true });
+    check();
+    return () => observer.disconnect();
+  }, []);
+  return open;
 }
 
 export default function App() {
@@ -138,11 +152,10 @@ export default function App() {
           cashbackOffset: beforeConfirmation.rewardDebt - result.rewardDebt,
           otherRewardDelta: beforeConfirmation.rewards - snapshot.rewardsAfterDebit,
         }]);
-        notify(`${payment.merchant} 결제를 마쳤어요${payment.cashback ? ` · 페이백 ${money(payment.cashback)}` : ''}`);
       }
     }, 450);
     confirmationTimers.current.add(timer);
-  }, [perform, notify]);
+  }, [perform]);
 
   useEffect(() => { saveState(state); }, [state]);
   useEffect(() => {
@@ -155,6 +168,19 @@ export default function App() {
     };
   }, [perform, confirmPayment]);
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+  const modalOpen = useModalOpen();
+  // A sheet whose body has scrolled shows a hairline under its header, so the content never looks cut off.
+  useEffect(() => {
+    const onScroll = (event: Event) => {
+      const body = event.target;
+      if (body instanceof HTMLElement && body.matches('.itd-body, .funding-body, .modal-body, .receipt-body')) body.closest('[role="dialog"]')?.toggleAttribute('data-scrolled', body.scrollTop > 0);
+    };
+    document.addEventListener('scroll', onScroll, true);
+    return () => document.removeEventListener('scroll', onScroll, true);
+  }, []);
+  // A sheet that opens takes over the screen: an earlier message would only reappear, out of context, after it closes.
+  useEffect(() => { if (modalOpen) setToast((current) => current?.type === 'error' ? current : null); }, [modalOpen]);
+  const toastView = toast && (!modalOpen || toast.type === 'error') && <div className={`toast ${toast.type}${modalOpen ? ' over-sheet' : ''}${state.signedIn ? '' : ' no-tabbar'}`} role={toast.type === 'error' ? 'alert' : 'status'}><span className="toast-icon">{toast.type === 'success' ? <CheckCircle2 /> : <Info />}</span><span className="toast-copy">{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={() => setToast(null)}><X size={18} /></button></div>;
   // Signing out leaves no screen, sheet or receipt behind for the next sign-in.
   useEffect(() => {
     if (state.signedIn) return;
@@ -196,7 +222,7 @@ export default function App() {
   }
 
   const account = state.account;
-  if (!account || !state.signedIn) return <Onboarding state={state} dispatch={dispatch} />;
+  if (!account || !state.signedIn) return <><Onboarding state={state} dispatch={dispatch} />{toastView}</>;
 
   const locked = state.card.locked && state.card.stage === 'active';
   const cardStatus = locked ? '잠금' : STAGE_NAMES[state.card.stage];
@@ -205,13 +231,12 @@ export default function App() {
   const openRefund = (payment: Payment) => setDialog({ type: 'refund', payment });
   const setRewardsAuto = (enabled: boolean) => perform({ type: 'SET_REWARDS_AUTO', enabled }, enabled ? '결제할 때 리워드를 먼저 써요.' : '리워드를 결제에 쓰지 않아요.');
   const setReserveAuto = (enabled: boolean) => perform({ type: 'SET_RESERVE_AUTO', enabled }, enabled ? '잔액이 모자라면 리저브에서 채워요.' : '리저브는 결제에 쓰지 않아요.');
-  const overlay = Boolean(dialog || funding || reserveMove || sending || receiving || receipts[0]);
 
   return <div className={`app-shell page-${page}${mainPage ? '' : ' detail'}`}>
     <header className="app-header">
       <button type="button" className="brand" onClick={() => navigate('home')} aria-label="Aqua 홈"><Logo size={26} /><span className="demo-tag">체험판</span></button>
       <nav className="primary-nav bottom-nav" aria-label="주 메뉴">{MAIN_PAGES.map((key) => <button type="button" key={key} className={`nav-item${activeTab === key ? ' active' : ''}`} aria-current={activeTab === key ? 'page' : undefined} data-testid={`nav-${key}`} onClick={() => navigate(key)}><NavIcon name={key} /><span>{PAGE_TITLES[key]}</span></button>)}</nav>
-      <p className="sidebar-note">체험판이에요. 잔액과 카드는 이 브라우저에만 저장돼요.</p>
+      <p className="sidebar-note">체험판이에요. 잔액과 카드는 이&nbsp;브라우저에만 저장돼요.</p>
     </header>
     <main className="main-content">
       <header className="topbar">
@@ -246,13 +271,13 @@ export default function App() {
     {passwordSheet && <PasswordSheet email={account.email} onClose={() => setPasswordSheet(false)} onSubmit={(currentHash, nextHash) => perform({ type: 'CHANGE_PASSWORD', currentHash, nextHash }, '비밀번호를 바꿨어요.') !== null} />}
     {detailItem && <TransactionSheet item={detailItem} payment={detailItem.kind === 'payment' && detailItem.paymentId ? state.payments.find((item) => item.id === detailItem.paymentId) : undefined} card={state.card} status={statusOf(detailItem)?.[0] ?? null} onRefund={openRefund} onFunding={openFundingOperation} onClose={() => setDetailItem(null)} />}
     {closingAccount && <AccountClosureSheet state={state} onClose={() => setClosingAccount(false)} onDelete={(passwordHash) => perform({ type: 'DELETE_ACCOUNT', passwordHash }, '탈퇴했어요. 그동안 이용해 주셔서 고마워요.') !== null} />}
-    {funding && <FundingDialog key={`${funding.mode}-${funding.symbol ?? 'default'}-${funding.operationId ?? 'new'}`} {...funding} account={account} state={state} onClose={closeFunding} dispatch={dispatch} notify={notify} />}
-    {sending && <SendSheet state={state} onClose={() => setSending(false)} onWallet={() => { setSending(false); setFunding({ mode: 'withdraw' }); }} onReceive={() => { setSending(false); setReceiving(true); }} dispatch={dispatch} notify={notify} />}
+    {funding && <FundingDialog key={`${funding.mode}-${funding.symbol ?? 'default'}-${funding.operationId ?? 'new'}`} {...funding} account={account} state={state} onClose={closeFunding} dispatch={dispatch} />}
+    {sending && <SendSheet state={state} onClose={() => setSending(false)} onWallet={() => { setSending(false); setFunding({ mode: 'withdraw' }); }} onReceive={() => { setSending(false); setReceiving(true); }} dispatch={dispatch} />}
     {receiving && <ReceiveSheet account={account} onClose={() => setReceiving(false)} dispatch={dispatch} notify={notify} />}
-    {reserveMove && <InternalTransferDialog mode="reserve" direction={reserveMove} state={state} onClose={closeReserveMove} dispatch={dispatch} notify={notify} />}
+    {reserveMove && <InternalTransferDialog mode="reserve" direction={reserveMove} state={state} onClose={closeReserveMove} dispatch={dispatch} />}
     {dialog && <ActionDialog dialog={dialog} state={state} onClose={closeDialog} dispatch={dispatch} notify={notify} onPaid={confirmPayment} onReset={resetDemo} />}
     {receipts[0] && !dialog && !funding && !reserveMove && !sending && !receiving && <PaymentReceipt key={receipts[0].payment.id} receipt={receipts[0]} onClose={closeReceipt} />}
-    {toast && !overlay && <div className={`toast ${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'}><span className="toast-icon">{toast.type === 'success' ? <CheckCircle2 /> : <Info />}</span><span className="toast-copy">{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={() => setToast(null)}><X size={18} /></button></div>}
+    {toastView}
   </div>;
 }
 
@@ -316,12 +341,12 @@ function ActionDialog({ dialog, state, onClose, dispatch, notify, onPaid, onRese
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal" ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="dialog-title" data-testid={`dialog-${dialog.type}`}>
     <div className="modal-head"><h2 id="dialog-title">{titles[dialog.type]}</h2><button type="button" className="icon-button" onClick={onClose} aria-label="창 닫기"><X size={22} /></button></div>
     <div className="modal-body">
-      {dialog.type === 'guide' ? <div className="guide-content"><p>KAST처럼 코인을 보내면 바로 원화 스테이블 잔액이 되고, 그 잔액으로 카드를 쓰는 서비스를 미리 만들어 본 화면이에요.</p><ol className="guide-steps"><li><strong>충전</strong><p>거래소나 지갑에서 코인을 보내는 과정을 따라가 봐요. 받은 코인은 바로 원화로 바뀌어요.</p></li><li><strong>카드</strong><p>가입 때 확인한 정보로 신청하면 가상카드가 바로 나와요.</p></li><li><strong>결제</strong><p>결제하면 리워드가 먼저 빠지고 페이백이 쌓이는 걸 볼 수 있어요.</p></li></ol><p className="small-note">실제 돈, 코인, 카드는 오가지 않아요. 데이터는 이 브라우저에만 남고 전체 › 체험 설정에서 지울 수 있어요.</p></div>
+      {dialog.type === 'guide' ? <div className="guide-content"><p>KAST처럼 코인을 보내면 바로 원화 스테이블 잔액이 되고, 그 잔액으로 카드를 쓰는 서비스를 미리 만들어 본 화면이에요.</p><ol className="guide-steps"><li><strong>충전</strong><p>거래소나 지갑에서 코인을 보내는 과정을 따라가 봐요. 받은 코인은 바로 원화로 바뀌어요.</p></li><li><strong>카드</strong><p>가입 때 확인한 정보로 신청하면 가상카드가 바로 나와요.</p></li><li><strong>결제</strong><p>결제하면 리워드가 먼저 빠지고 페이백이 쌓이는 걸 볼&nbsp;수 있어요.</p></li></ol><p className="small-note">실제 돈, 코인, 카드는 오가지 않아요. 데이터는 이&nbsp;브라우저에만 남고 전체 › 체험 설정에서 지울 수 있어요.</p></div>
       : dialog.type === 'reset' ? <div><p className="reset-copy">잔액, 카드 신청, 거래 내역을 처음 상태로 돌려요.</p><p className="small-note">이 브라우저에 남은 체험 데이터가 지워져요.</p></div>
       : <form id={formId} onSubmit={submit}>
         {dialog.type === 'payment' && <><div className="payment-card-tag"><TierCard plan={state.card.plan} className="payment-card-thumb" /><span>{PLANS[state.card.plan].name}</span><span>끝번호 {state.card.last4}</span></div><div className="form-field"><label htmlFor="merchant">결제할 곳</label><input id="merchant" value={merchant} onChange={(event) => setMerchant(event.target.value)} required maxLength={40} autoComplete="off" /></div></>}
         {dialog.type === 'refund' && <div className="dialog-route"><strong>{dialog.payment.merchant}</strong><span>환불할 수 있는 금액 {money(dialog.payment.amount - dialog.payment.refunded)}</span></div>}
-        <div className="form-field"><label htmlFor="action-amount">{dialog.type === 'refund' ? '환불할 금액' : '결제 금액'}</label><div className="input-affix"><input id="action-amount" data-testid="action-amount" type="number" inputMode="numeric" min={1} step={1} value={amount} onChange={(event) => { setAmount(event.target.value); setError(''); }} required /><span>원</span></div></div>
+        <div className="form-field"><label htmlFor="action-amount">{dialog.type === 'refund' ? '환불할 금액' : '결제 금액'}</label><div className="input-affix"><AmountInput id="action-amount" unit="원" data-testid="action-amount" value={amount} onValueChange={(next) => { setAmount(next); setError(''); }} required aria-invalid={Boolean(error)} /></div></div>
         {dialog.type === 'payment' && <div className="preset-amounts" aria-label="예시 결제">{PAYMENT_PRESETS.map(([name, value, kind]) => <button type="button" key={name} onClick={() => { setMerchant(name); setAmount(String(value)); setChannel(kind); setError(''); }}><span>{name}</span><b>{won(value)}원</b></button>)}</div>}
         {dialog.type === 'payment' && <fieldset className="channel-choice"><legend>어디서 결제하나요</legend><div className="segmented">{CHANNELS.map(([key, label]) => <button type="button" key={key} className={channel === key ? 'selected' : ''} aria-pressed={channel === key} data-testid={`pay-channel-${key}`} onClick={() => { setChannel(key); setError(''); }}>{label}</button>)}</div>{channel !== 'store' && !state.controls[channel] && <p className="channel-blocked">{channel === 'online' ? '온라인' : '해외'} 결제를 막아 두었어요. 전체 › 온라인·해외 결제에서 열 수 있어요.</p>}</fieldset>}
         {dialog.type === 'payment' && <div className="payment-sources"><h3>이렇게 빠져요</h3>{source.rewards > 0 && <div className="source-row"><span>리워드</span><strong>{money(source.rewards)}</strong></div>}{source.spend > 0 && <div className="source-row"><span>잔액</span><strong>{money(source.spend)}</strong></div>}{source.reserve > 0 && <div className="source-row"><span>리저브</span><strong>{money(source.reserve)}</strong></div>}{source.shortfall > 0 && <div className="form-error">{money(source.shortfall)}이 모자라요. 충전하거나 리저브 결제를 켜 주세요.</div>}<div className="quote-total"><span>받을 페이백</span><strong>{money(source.cashback)}</strong></div><p className="small-note">리워드로 낸 금액은 페이백에서 빠지고, 결제가 확정되면 쌓여요.</p></div>}
