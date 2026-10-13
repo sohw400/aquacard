@@ -29,7 +29,7 @@ export default function Benefits({ state, onReserve, onRewardsAuto }: { state: A
       <details className="rule-details"><summary>페이백 기준</summary>
         <p>리워드로 낸 금액을 뺀 결제액의 {percent(cashback.rate)}를 돌려드려요. 한 달에 {money(cashback.cap)}까지예요.</p>
         <p>결제가 확정되면 리워드에 들어가고, 환불하면 그만큼 줄어요.</p>
-        <p>지난달 결제가 이번 달에 확정되면 지난달 페이백으로 세요.</p>
+        <p>지난달 결제는 이번 달에 확정돼도 지난달 페이백으로 계산해요.</p>
       </details>
     </section>
 
