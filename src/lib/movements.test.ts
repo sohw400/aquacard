@@ -30,7 +30,7 @@ test('입금은 전환 수수료와 네트워크 수수료 없이 평가액 전�
       amountWon: 3_290, units: 2.35, feeWon: 0, networkFeeWon: 0, netWon: 3_290, outputUnits: 0,
     });
   }
-  assert.throws(() => createFundingQuote({ kind: 'deposit', source: 'holdings' as 'spend', symbol: 'USDC', network: 'polygon', units: 10 }), /결제 잔액으로만/);
+  assert.throws(() => createFundingQuote({ kind: 'deposit', source: 'holdings' as 'spend', symbol: 'USDC', network: 'polygon', units: 10 }), /잔액으로만/);
 });
 
 test('결제 잔액 출금에는 전환·네트워크 수수료를 모두 반영한다', () => {
@@ -123,7 +123,7 @@ test('입금 대기부터 출금 전송까지 처리 중으로 표시하고 종�
   const labels: Record<FundingOperation['status'], string> = {
     awaiting_deposit: '입금 대기', confirming: '네트워크 확인 중', converting: '원화 전환 중',
     reviewing: '출금 검토 중', broadcasting: '네트워크 전송 중',
-    completed: '완료', failed: '실패', cancelled: '취소',
+    completed: '완료', failed: '실패', cancelled: '취소됨',
   };
   for (const [status, label] of Object.entries(labels) as [FundingOperation['status'], string][]) {
     assert.equal(fundingStatusLabel(status), label);
@@ -156,7 +156,7 @@ test('원화 스테이블은 결제 잔액과 1:1이며 출금에는 네트워�
     amountWon: 10_000, units: 10_000, feeWon: 0, networkFeeWon: 140, netWon: 9_860, outputUnits: 9_860,
   });
   assert.equal(createFundingQuote({ kind: 'withdrawal', source: 'spend', symbol: 'USDC', network: 'polygon', amount: 10_000 }).feeWon, 50, '다른 코인으로 바꿔 보낼 때만 전환 수수료를 받는다');
-  assert.throws(() => createFundingQuote({ kind: 'withdrawal', source: 'holdings' as 'spend', symbol: 'KRWS', network: 'polygon', amount: 10_000 }), /결제 잔액으로만/);
+  assert.throws(() => createFundingQuote({ kind: 'withdrawal', source: 'holdings' as 'spend', symbol: 'KRWS', network: 'polygon', amount: 10_000 }), /잔액으로만/);
   assert.equal(validateFundingAddress('KRWS', 'polygon', 'aqua-preview:polygon:krws'), null);
   assert.deepEqual(getFundingNetworks('KRWS').map((item) => item.id), ['polygon', 'ethereum']);
 });

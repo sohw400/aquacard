@@ -29,8 +29,8 @@ const focusable = 'button:not([disabled]), input:not([disabled]), a[href], selec
 
 /** Moves won between the spend balance and the Reserve; no fee, no conversion. */
 export default function InternalTransferDialog({ direction, state, onClose, dispatch, notify }: InternalTransferDialogProps) {
-  const sourceName = direction === 'in' ? '결제 잔액' : '리저브';
-  const targetName = direction === 'in' ? '리저브' : '결제 잔액';
+  const sourceName = direction === 'in' ? '잔액' : '리저브';
+  const targetName = direction === 'in' ? '리저브' : '잔액';
   const title = direction === 'in' ? '리저브에 넣기' : '리저브에서 빼기';
   const available = direction === 'in' ? state.spend : state.reserve;
   const targetBefore = direction === 'in' ? state.reserve : state.spend;
@@ -58,9 +58,9 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
   const previewIssue = useMemo(() => {
     if (value.trim() === '') return '';
     if (!Number.isFinite(amount) || amount <= 0) return '0보다 큰 금액을 입력해 주세요.';
-    if (amount > available) return '이동할 잔액이 부족합니다.';
-    if (!Number.isSafeInteger(amount) || amount < POLICY.minimumTopup) return '1,000원 이상의 정수로 입력해 주세요.';
-    if (!Number.isSafeInteger(targetBefore + amount)) return '받을 잔액이 처리 한도를 넘습니다.';
+    if (amount > available) return '옮길 수 있는 금액보다 많아요.';
+    if (!Number.isSafeInteger(amount) || amount < POLICY.minimumTopup) return '1,000원 이상, 원 단위로 입력해 주세요.';
+    if (!Number.isSafeInteger(targetBefore + amount)) return '처리할 수 있는 금액을 넘었어요.';
     return '';
   }, [amount, available, targetBefore, value]);
   const valid = value.trim() !== '' && previewIssue === '';
@@ -135,15 +135,15 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
     } catch (failure) {
       submitting.current = false;
       setBusy(false);
-      const message = failure instanceof Error ? failure.message : '이동을 완료하지 못했습니다. 내용을 다시 확인해 주세요.';
+      const message = failure instanceof Error ? failure.message : '옮기지 못했어요. 금액을 다시 확인해 주세요.';
       setError(message);
       notify(message, 'error');
     }
   }
 
   const balanceChanges = (sourceBefore: number, sourceAfter: number, beforeTarget: number, afterTarget: number) => (
-    <section className="itd-balances" aria-label="잔액 변경">
-      <h3>{step === 'completed' ? '변경된 잔액' : '이동 후 잔액'}</h3>
+    <section className="itd-balances" aria-label="금액 변화">
+      <h3>{step === 'completed' ? '이렇게 바뀌었어요' : '옮기면 이렇게 바뀌어요'}</h3>
       <div className="itd-balance"><span>{sourceName}</span><div><span>{money(sourceBefore)}</span><ArrowRight size={13} aria-label="변경 후" /><strong data-testid="transfer-source-after">{money(sourceAfter)}</strong></div></div>
       <div className="itd-balance"><span>{targetName}</span><div><span>{money(beforeTarget)}</span><ArrowRight size={13} aria-label="변경 후" /><strong data-testid="transfer-target-after">{money(afterTarget)}</strong></div></div>
     </section>
@@ -152,7 +152,7 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
   return (
     <div className="itd-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="internal-transfer-dialog" ref={panel} role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1} data-testid="dialog-transfer">
-        <header className="itd-header"><div><h2 id={headingId} ref={heading} tabIndex={-1}>{step === 'completed' ? '이동 완료' : title}</h2>{step !== 'completed' && <p>{step === 'amount' ? '내 잔액 사이에서 이동합니다.' : '금액과 변경될 잔액을 확인해 주세요.'}</p>}</div><button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button></header>
+        <header className="itd-header"><div><h2 id={headingId} ref={heading} tabIndex={-1}>{step === 'completed' ? '이동 완료' : title}</h2>{step !== 'completed' && <p>{step === 'amount' ? '잔액과 리저브 사이에서 옮겨요.' : '금액을 확인해 주세요.'}</p>}</div><button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button></header>
 
         <div className="itd-body">
           {step !== 'completed' && <form id={formId} onSubmit={submit} noValidate>
@@ -166,22 +166,20 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
               <div className="itd-review-amount"><span>이동할 금액</span><strong data-testid="transfer-review-amount">{money(amount)}</strong></div>
               <dl className="itd-detail-list"><div><dt>수수료</dt><dd>0원</dd></div></dl>
               {balanceChanges(available, Math.max(0, available - amount), targetBefore, targetBefore + amount)}
-              <p className="itd-reserve-note">{direction === 'in' ? '이동한 금액부터 보상이 계산됩니다.' : '리저브에서 뺀 금액은 이후 보상 계산에서 제외됩니다. 이미 쌓인 보상은 유지됩니다.'}</p>
+              <p className="itd-reserve-note">{direction === 'in' ? '넣은 순간부터 보상이 쌓여요.' : '뺀 금액에는 이제 보상이 쌓이지 않아요. 이미 쌓인 보상은 그대로예요.'}</p>
             </>}
 
             {issue && <p className="itd-error" id={errorId} role="alert">{issue}</p>}
-            <p className="itd-demo-note">체험용 잔액에만 반영되며 실제 자금은 이동하지 않습니다.</p>
           </form>}
 
           {step === 'completed' && receipt && <div className="itd-completed" data-testid="transfer-completed">
             <span className="itd-result-icon"><Check size={27} strokeWidth={1.8} /></span>
-            <p>{targetName === '리저브' ? '리저브로 이동했습니다.' : '결제 잔액으로 이동했습니다.'}</p>
+            <p>{targetName === '리저브' ? '리저브로 옮겼어요.' : '잔액으로 옮겼어요.'}</p>
             <strong className="itd-result-amount">{money(receipt.targetAfter - receipt.targetBefore)}</strong>
             <div className="itd-route"><strong>{sourceName}</strong><ArrowRight size={16} aria-label="이동 대상" /><strong>{targetName}</strong></div>
             <dl className="itd-detail-list"><div><dt>수수료</dt><dd>0원</dd></div></dl>
             {balanceChanges(receipt.sourceBefore, receipt.sourceAfter, receipt.targetBefore, receipt.targetAfter)}
-            <dl className="itd-detail-list itd-receipt-meta"><div><dt>처리 시각</dt><dd>{shortDate(receipt.timestamp)}</dd></div><div><dt>체험 처리번호</dt><dd>{receipt.reference}</dd></div></dl>
-            <p className="itd-demo-note">체험용 잔액에만 반영되었습니다. 실제 자금은 이동하지 않았습니다.</p>
+            <dl className="itd-detail-list itd-receipt-meta"><div><dt>처리 시각</dt><dd>{shortDate(receipt.timestamp)}</dd></div><div><dt>처리 번호</dt><dd>{receipt.reference}</dd></div></dl>
           </div>}
         </div>
 

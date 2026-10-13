@@ -49,15 +49,15 @@ export function getFundingQuote(request: FundingQuoteRequest): FundingQuote {
     inputUnits = request.units;
   } else if (request.direction === 'withdraw') {
     if (!Number.isSafeInteger(request.amount) || request.amount < POLICY.minimumTopup) {
-      throw new Error('출금 금액은 1,000원 이상의 안전한 정수로 입력해 주세요.');
+      throw new Error('출금 금액은 1,000원 이상의 정수로 입력해 주세요.');
     }
     gross = BigInt(request.amount);
   } else {
     throw new Error('입출금 방향을 확인해 주세요.');
   }
 
-  if (gross < BigInt(POLICY.minimumTopup)) throw new Error('입출금 평가액은 최소 1,000원이어야 합니다.');
-  if (gross > MAX_WON) throw new Error('처리할 수 있는 원화 금액 범위를 초과했습니다.');
+  if (gross < BigInt(POLICY.minimumTopup)) throw new Error('입출금 금액은 원화로 최소 1,000원이어야 해요.');
+  if (gross > MAX_WON) throw new Error('처리할 수 있는 금액 범위를 넘었어요. 금액을 줄여 주세요.');
   const feeRate = decimalRatio(POLICY.conversionFee);
   // Incoming coins convert free, and the won stablecoin never converts; other outgoing coins round the fee up to won.
   const fee = request.direction === 'receive' || request.symbol === 'KRWS' ? 0n : (gross * feeRate.numerator + feeRate.denominator - 1n) / feeRate.denominator;
@@ -75,6 +75,6 @@ export function getFundingQuote(request: FundingQuoteRequest): FundingQuote {
 export function assertFundingQuoteFresh(quotedAt: number, wallNow = Date.now()): void {
   if (!Number.isFinite(quotedAt) || !Number.isFinite(wallNow) || quotedAt < 0 || wallNow < 0
     || quotedAt > wallNow || wallNow - quotedAt > POLICY.quoteTtlSeconds * 1_000) {
-    throw new Error('입출금 견적이 만료되었거나 올바르지 않습니다. 새 견적을 확인해 주세요.');
+    throw new Error('입출금 견적이 만료됐거나 올바르지 않아요. 새 견적을 확인해 주세요.');
   }
 }

@@ -1,9 +1,11 @@
 import { FUND_SOURCES, ID_TYPES, OCCUPATIONS, PURPOSES } from './auth';
-import { ASSETS, FUNDING_ASSETS, fundingLabel, PLANS, POLICY } from './policy';
+import { ASSETS, FUNDING_ASSETS, fundingLabel, PLAN_ORDER, PLANS, POLICY } from './policy';
+import { findMember, maskName } from './directory';
+import { josa, ro } from './format';
 import { assertFundingQuoteFresh, getFundingQuote, unitsToWon } from './funding';
 import { createFundingQuote, fundingStatusLabel, getFundingNetworks, validateFundingAddress } from './movements';
 import { validAddress } from './address';
-import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, FundingOperation, FundingSymbol, NotificationSettings, Payment, PaymentControls, Transaction } from './types';
+import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, FundingOperation, FundingSymbol, NotificationSettings, Payment, PaymentControls, Plan, Transaction } from './types';
 
 export const STORAGE_KEY = 'aqua-card:poc:v1';
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -35,7 +37,7 @@ export function createInitialState(now = Date.now()): AppState {
     version: 1, account: null, signedIn: false, spend: 128_500, reserve: 1_250_000, rewards: 4_280, accrued: 0, rewardDebt: 0,
     reserveAuto: false, rewardsAuto: true, reserveRate: POLICY.reserveAnnualRate,
     rateHistory: [{ rate: POLICY.reserveAnnualRate, timestamp: now }],
-    card: { stage: 'not_applied', plan: 'basic', physical: false, delivery: 'none',
+    card: { stage: 'not_applied', plan: 'standard', physical: false, delivery: 'none',
       identityVerified: false, locked: false, physicalActive: false, last4: '2048', reference: '',
       submittedAt: null, issuedAt: null, wallets: [], chargedFee: 0, billingAt: null, nextPlan: null, address: null, pinSet: false },
     controls: defaultControls(), notifications: defaultNotifications(),
@@ -55,7 +57,7 @@ const manWon = (value: number) => `${(value / 10_000).toLocaleString('ko-KR')}�
 /** Four digits that are not all the same and not a straight run up or down. */
 export function pinIssue(pin: string): string {
   if (!/^\d{4}$/.test(pin)) return '숫자 4자리를 넣어 주세요.';
-  if (/^(\d)\1{3}$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin)) return '같거나 이어지는 숫자는 쓸 수 없습니다.';
+  if (/^(\d)\1{3}$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin)) return '같거나 이어지는 숫자는 쓸 수 없어요.';
   return '';
 }
 
@@ -73,7 +75,7 @@ function integer(value: number, minimum = 1): void {
 
 function safeAdd(left: number, right: number): number {
   const value = left + right;
-  if (!Number.isSafeInteger(value) || value < 0) throw new Error('처리할 수 있는 금액 범위를 초과했습니다.');
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error('처리할 수 있는 금액 범위를 넘었어요.');
   return value;
 }
 
@@ -100,9 +102,9 @@ function updateFundingTransaction(state: AppState, operation: FundingOperation):
   item.status = ['completed', 'failed', 'cancelled'].includes(operation.status) ? operation.status as Transaction['status'] : 'pending';
   item.note = `${fundingStatusLabel(operation.status)} · ${fundingLabel(operation.symbol)} / ${operation.network}. `
     + `전환 수수료 ${operation.feeWon.toLocaleString('ko-KR')}원 · 네트워크 비용 ${operation.networkFeeWon.toLocaleString('ko-KR')}원. `
-    + (operation.kind === 'deposit' ? `완료 시 결제 잔액 ${operation.netWon.toLocaleString('ko-KR')}원 반영.`
+    + (operation.kind === 'deposit' ? `충전 금액 ${operation.netWon.toLocaleString('ko-KR')}원.`
       : `출금 원금 ${operation.amountWon.toLocaleString('ko-KR')}원 · 예상 ${operation.outputUnits.toLocaleString('en-US', { maximumFractionDigits: 12 })} ${fundingLabel(operation.symbol)}.`)
-    + (operation.failureReason ? ` ${operation.failureReason}` : '') + ' 실제 외부 송금은 실행하지 않습니다.';
+    + (operation.failureReason ? ` ${operation.failureReason}` : '') + ' 실제로 코인이 오가지는 않아요.';
 }
 
 function restoreFundingHold(state: AppState, operation: FundingOperation): void {
@@ -120,7 +122,7 @@ function progressFunding(state: AppState, wallNow: number): void {
       if (operation.status === 'confirming') {
         if (operation.simulation === 'failure') {
           operation.status = 'failed'; operation.stageDueAt = null;
-          operation.failureReason = '모의 입금 확인에 실패했습니다. 결제 잔액에는 반영되지 않았습니다.';
+          operation.failureReason = '입금을 확인하지 못했어요. 잔액에는 더하지 않았어요.';
         } else { operation.status = 'converting'; operation.stageDueAt = dueAt + FUNDING_STAGE_MS; }
       } else if (operation.status === 'converting') {
         try {
@@ -128,14 +130,14 @@ function progressFunding(state: AppState, wallNow: number): void {
           operation.status = 'completed';
         } catch {
           operation.status = 'failed';
-          operation.failureReason = '충전 가능한 원화 금액 범위를 초과해 입금을 반영하지 못했습니다.';
+          operation.failureReason = '충전할 수 있는 금액 범위를 넘어서 잔액에 더하지 못했어요.';
         }
         operation.stageDueAt = null;
       } else if (operation.status === 'reviewing') {
         if (operation.simulation === 'failure') {
           restoreFundingHold(state, operation);
           operation.status = 'failed'; operation.stageDueAt = null;
-          operation.failureReason = '모의 출금 검토에 실패해 보류한 원금과 비용을 모두 복원했습니다.';
+          operation.failureReason = '출금을 진행하지 못했어요. 보류한 원금과 비용은 모두 잔액으로 돌려드렸어요.';
         } else { operation.status = 'broadcasting'; operation.stageDueAt = dueAt + FUNDING_STAGE_MS; }
       } else if (operation.status === 'broadcasting') {
         operation.status = 'completed'; operation.stageDueAt = null;
@@ -146,37 +148,37 @@ function progressFunding(state: AppState, wallNow: number): void {
 }
 
 function startFunding(state: AppState, action: Extract<Action, { type: 'START_FUNDING' }>, wallNow: number): void {
-  if (typeof action.requestId !== 'string' || !REQUEST_ID.test(action.requestId)) throw new Error('올바른 입출금 요청 번호가 필요합니다.');
-  if (!Number.isFinite(action.quotedAt) || action.quotedAt < 0 || action.quotedAt > wallNow) throw new Error('입출금 견적 시각을 확인해 주세요.');
+  if (typeof action.requestId !== 'string' || !REQUEST_ID.test(action.requestId)) throw new Error('입출금 요청 번호가 올바르지 않아요. 다시 시도해 주세요.');
+  if (!Number.isFinite(action.quotedAt) || action.quotedAt < 0 || action.quotedAt > wallNow) throw new Error('입출금 견적 시각이 올바르지 않아요. 새 견적을 확인해 주세요.');
   if (action.simulation !== undefined && !['success', 'failure'].includes(action.simulation)) throw new Error('모의 처리 결과를 확인해 주세요.');
-  if (action.source !== 'spend') throw new Error('입출금은 결제 잔액으로만 처리합니다.');
-  if (action.kind === 'deposit' ? action.amount !== undefined : action.units !== undefined) throw new Error('입출금 원금과 코인 수량을 함께 요청할 수 없습니다.');
+  if (action.source !== 'spend') throw new Error('입출금은 잔액으로만 할 수 있어요.');
+  if (action.kind === 'deposit' ? action.amount !== undefined : action.units !== undefined) throw new Error('원금과 코인 수량은 함께 요청할 수 없어요. 하나만 입력해 주세요.');
   const quote = createFundingQuote(action);
   const address = action.address === undefined && action.kind === 'deposit' ? `aqua-preview:${action.network}:${action.symbol.toLowerCase()}` : action.address;
   if (typeof address !== 'string') throw new Error('받는 지갑 주소를 입력해 주세요.');
   const normalizedAddress = address.trim();
   const addressError = validateFundingAddress(action.symbol, action.network, normalizedAddress);
   if (addressError) throw new Error(addressError);
-  if (action.recipient !== undefined && typeof action.recipient !== 'string') throw new Error('수신자 정보를 확인해 주세요.');
+  if (action.recipient !== undefined && typeof action.recipient !== 'string') throw new Error('받는 사람 정보를 확인해 주세요.');
   const recipient = (action.recipient ?? '').trim();
-  if (recipient.length > 100 || (action.kind === 'withdrawal' && recipient.length === 0)) throw new Error('수신자 이름 또는 지갑 별명을 입력해 주세요.');
-  if (action.retryOf !== undefined && (typeof action.retryOf !== 'string' || !action.retryOf)) throw new Error('재시도할 요청을 확인해 주세요.');
+  if (recipient.length > 100 || (action.kind === 'withdrawal' && recipient.length === 0)) throw new Error('받는 사람 이름이나 지갑 별명을 입력해 주세요.');
+  if (action.retryOf !== undefined && (typeof action.retryOf !== 'string' || !action.retryOf)) throw new Error('다시 시도할 요청을 확인해 주세요.');
   const simulation = action.simulation ?? 'success';
   const existing = state.fundingOperations.find((item) => item.requestId === action.requestId);
   if (existing) {
     const matches = existing.kind === action.kind && existing.source === action.source && existing.symbol === action.symbol && existing.network === action.network
       && existing.amountWon === quote.amountWon && existing.units === quote.units && existing.address === normalizedAddress
       && existing.recipient === recipient && existing.simulation === simulation && existing.retryOf === action.retryOf;
-    if (!matches) throw new Error('같은 요청 번호에 다른 입출금 내용이 있습니다. 새 요청 번호로 진행해 주세요.');
+    if (!matches) throw new Error('같은 요청 번호에 다른 입출금 내용이 있어요. 새 요청 번호로 진행해 주세요.');
     return;
   }
   assertFundingQuoteFresh(action.quotedAt, wallNow);
   if (action.retryOf) {
     const original = state.fundingOperations.find((item) => item.id === action.retryOf);
-    if (!original || !['failed', 'cancelled'].includes(original.status)) throw new Error('실패 또는 취소된 요청만 새 요청으로 재시도할 수 있습니다.');
+    if (!original || !['failed', 'cancelled'].includes(original.status)) throw new Error('실패하거나 취소된 요청만 새 요청으로 다시 시도할 수 있어요.');
   }
   if (action.kind === 'withdrawal') {
-    if (state.spend < quote.amountWon) throw new Error('결제 잔액이 부족합니다. 리워드와 리저브는 출금에 쓰지 않습니다.');
+    if (state.spend < quote.amountWon) throw new Error('잔액이 부족해요. 리워드와 리저브는 출금에 쓸 수 없어요.');
     state.spend -= quote.amountWon;
   }
   const operation: FundingOperation = {
@@ -201,24 +203,40 @@ function transaction(state: AppState, now: number, fields: Omit<Transaction, 'id
 export const RESERVE_REWARD_TITLE = '리저브 보상';
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1_000;
-const monthDay = (timestamp: number) => new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', timeZone: 'Asia/Seoul' }).format(timestamp);
+const fullDate = (timestamp: number) => new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Seoul' }).format(timestamp);
 const wonText = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 
-/** Same day next month in Korea; short months clamp to their last day. */
-export function addMonth(timestamp: number): number {
+/** Same date next year in Korea; 29 February becomes 28 February. */
+export function addYear(timestamp: number): number {
   const kst = new Date(timestamp + KST_OFFSET_MS);
-  const year = kst.getUTCFullYear(), month = kst.getUTCMonth();
-  const lastDay = new Date(Date.UTC(year, month + 2, 0)).getUTCDate();
-  return Date.UTC(year, month + 1, Math.min(kst.getUTCDate(), lastDay), kst.getUTCHours(), kst.getUTCMinutes(), kst.getUTCSeconds(), kst.getUTCMilliseconds()) - KST_OFFSET_MS;
+  const year = kst.getUTCFullYear() + 1, month = kst.getUTCMonth();
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return Date.UTC(year, month, Math.min(kst.getUTCDate(), lastDay), kst.getUTCHours(), kst.getUTCMinutes(), kst.getUTCSeconds(), kst.getUTCMilliseconds()) - KST_OFFSET_MS;
 }
 
-/** What applying costs, paid from the spend balance: the first Plus month and the physical card. */
+/** What applying costs, paid from the spend balance: the first year of a paid membership and a Standard physical card. */
 export function cardApplicationFee(card: Pick<CardState, 'plan' | 'physical'>): number {
-  return PLANS[card.plan].monthlyFee + (card.physical ? POLICY.physicalIssueFee : 0);
+  return PLANS[card.plan].annualFee + (card.physical ? PLANS[card.plan].physicalFee : 0);
+}
+
+const rank = (plan: Plan) => PLAN_ORDER.indexOf(plan);
+
+/** The Reserve rate and how much of the Reserve earns it; only an active card's membership counts. */
+export function reserveTerms(state: Pick<AppState, 'card' | 'reserveRate'>): { rate: number; cap: number } {
+  const plan = PLANS[state.card.stage === 'active' ? state.card.plan : 'standard'];
+  return { rate: state.reserveRate + plan.reserveBonus, cap: plan.reserveCap };
+}
+const reservePerMs = (state: AppState) => { const { rate, cap } = reserveTerms(state); return Math.min(state.reserve, cap) * rate / YEAR_MS; };
+
+/** Adds what the Reserve earned since the last accrual, at the terms in force, up to `until`. */
+function earnReserve(state: AppState, until: number): void {
+  if (until <= state.lastAccruedAt) return;
+  state.accrued += reservePerMs(state) * (until - state.lastAccruedAt);
+  state.lastAccruedAt = until;
 }
 
 function chargeSpend(state: AppState, amount: number, purpose: string): void {
-  if (state.spend < amount) throw new Error(`결제 잔액이 ${wonText(amount - state.spend)} 부족합니다. 충전한 뒤 ${purpose}.`);
+  if (state.spend < amount) throw new Error(`잔액이 ${wonText(amount - state.spend)} 부족해요. 충전한 뒤 ${purpose}.`);
   state.spend -= amount;
 }
 
@@ -231,26 +249,32 @@ function freshLast4(state: AppState, previous: string): string {
 function refundCardFee(state: AppState, now: number, card: CardState, reason: string): void {
   if (card.chargedFee <= 0) return;
   creditSpend(state, card.chargedFee);
-  transaction(state, now, { kind: 'card', title: '카드 신청 비용 환불', amount: card.chargedFee, status: 'completed', note: `${reason} 낸 비용을 결제 잔액으로 돌려드렸습니다.` });
+  transaction(state, now, { kind: 'card', title: '카드 신청 비용 환불', amount: card.chargedFee, status: 'completed', note: `${reason} 낸 비용을 잔액으로 돌려드렸어요.` });
   card.chargedFee = 0;
 }
 
-/** Plus renews from the spend balance on its billing date; a scheduled change or a short balance moves the card to Basic. */
+/** Paid memberships renew yearly from the spend balance. A scheduled lower tier starts that day; a short balance drops to Standard. */
 function settleCardBilling(state: AppState, now: number): void {
   const card = state.card;
-  const fee = PLANS.plus.monthlyFee;
-  while (card.stage === 'active' && card.plan === 'plus' && card.billingAt !== null && card.billingAt <= now) {
+  while (card.stage === 'active' && PLANS[card.plan].annualFee > 0 && card.billingAt !== null && card.billingAt <= now) {
     const due = card.billingAt;
-    if (card.nextPlan === 'basic' || state.spend < fee) {
-      const scheduled = card.nextPlan === 'basic';
-      card.plan = 'basic'; card.nextPlan = null; card.billingAt = null;
-      transaction(state, now, { kind: 'card', title: 'Aqua Basic으로 변경', amount: 0, status: 'completed', note: scheduled
-        ? `예약한 대로 ${monthDay(due)}부터 Basic이 되었습니다. 이용료는 더 나가지 않습니다.`
-        : `${monthDay(due)} 결제일에 결제 잔액이 부족해 Plus 이용료를 내지 못했습니다. Basic이 되었고, 충전한 뒤 다시 Plus로 바꿀 수 있습니다.` });
+    earnReserve(state, due); // The current membership's Reserve terms run until the renewal date.
+    const scheduled = card.nextPlan !== null;
+    const target = card.nextPlan ?? card.plan;
+    const fee = PLANS[target].annualFee;
+    card.nextPlan = null;
+    if (fee === 0 || state.spend < fee) {
+      const missed = PLANS[target].short;
+      card.plan = 'standard'; card.billingAt = null;
+      transaction(state, now, { kind: 'card', title: '스탠다드로 변경', amount: 0, status: 'completed', note: fee === 0
+        ? `예약한 대로 ${fullDate(due)}부터 스탠다드가 됐어요. 연회비는 더 나가지 않아요.`
+        : `${fullDate(due)} 갱신일에 잔액이 부족해 ${missed} 연회비를 내지 못했어요. 스탠다드로 바뀌었고, 충전한 뒤 다시 바꿀 수 있어요.` });
     } else {
       state.spend -= fee;
-      card.billingAt = addMonth(due);
-      transaction(state, now, { kind: 'card', title: 'Aqua Plus 이용료', amount: -fee, status: 'completed', note: `${monthDay(due)} 결제일 이용료를 결제 잔액에서 냈습니다. 다음 결제일은 ${monthDay(card.billingAt)}입니다.` });
+      card.plan = target;
+      card.billingAt = addYear(due);
+      transaction(state, now, { kind: 'card', title: `${PLANS[target].short} 연회비`, amount: -fee, status: 'completed',
+        note: `${scheduled ? `예약한 대로 ${ro(PLANS[target].short)} 바뀌었어요. ` : ''}${fullDate(due)} 갱신일 연회비를 잔액에서 냈어요. 다음 갱신일은 ${fullDate(card.billingAt)}이에요.` });
     }
   }
 }
@@ -259,10 +283,10 @@ function settleCardBilling(state: AppState, now: number): void {
 export function accountClosureBlockers(state: AppState): string[] {
   const blockers: string[] = [];
   if (!['not_applied', 'rejected'].includes(state.card.stage)) blockers.push(state.card.stage === 'active' ? '카드를 먼저 해지해 주세요.' : '진행 중인 카드 신청을 마치거나 취소해 주세요.');
-  if (state.payments.some((item) => item.status === 'pending')) blockers.push('확정되지 않은 카드 결제가 끝나야 합니다.');
-  if (state.fundingOperations.some((item) => !['completed', 'failed', 'cancelled'].includes(item.status))) blockers.push('진행 중인 입출금이 끝나야 합니다.');
-  if (state.spend > 0) blockers.push('결제 잔액을 모두 출금해 주세요.');
-  if (state.reserve > 0) blockers.push('리저브를 결제 잔액으로 빼서 출금해 주세요.');
+  if (state.payments.some((item) => item.status === 'pending')) blockers.push('확정되지 않은 카드 결제가 끝날 때까지 기다려 주세요.');
+  if (state.fundingOperations.some((item) => !['completed', 'failed', 'cancelled'].includes(item.status))) blockers.push('진행 중인 입출금이 끝날 때까지 기다려 주세요.');
+  if (state.spend > 0) blockers.push('잔액을 모두 출금해 주세요.');
+  if (state.reserve > 0) blockers.push('리저브에서 잔액으로 옮긴 뒤 출금해 주세요.');
   return blockers;
 }
 
@@ -274,42 +298,41 @@ function sweepAccrued(state: AppState, now: number): void {
   state.accrued = Math.max(0, state.accrued - amount);
   const offset = creditRewards(state, amount);
   const { day } = dateParts(now);
-  const note = '리저브 잔액에서 실시간으로 쌓인 보상입니다. 리워드에 바로 더해져 카드 결제에 먼저 사용됩니다.';
+  const note = '리저브에서 실시간으로 쌓인 보상이에요. 리워드에 바로 더해져 카드 결제에 먼저 쓰여요.';
   const entry = state.transactions.find((item) => item.kind === 'reward' && item.title === RESERVE_REWARD_TITLE && dateParts(item.timestamp).day === day);
   if (entry) {
     entry.amount = safeAdd(entry.amount, amount);
-    if (offset) entry.note = `${note} 이전 페이백 조정분을 먼저 상계했습니다.`;
+    if (offset) entry.note = `${note} 이전 페이백 조정분을 먼저 차감했어요.`;
   } else {
-    transaction(state, now, { kind: 'reward', title: RESERVE_REWARD_TITLE, amount, status: 'completed', note: offset ? `${note} 이전 페이백 조정분을 먼저 상계했습니다.` : note });
+    transaction(state, now, { kind: 'reward', title: RESERVE_REWARD_TITLE, amount, status: 'completed', note: offset ? `${note} 이전 페이백 조정분을 먼저 차감했어요.` : note });
   }
 }
 
 /** Every action accrues the old balance/rate before it changes either one. */
 function accrue(state: AppState, wallNow: number): number {
-  if (!Number.isFinite(wallNow) || wallNow < 0) throw new Error('유효한 시간이 필요합니다.');
+  if (!Number.isFinite(wallNow) || wallNow < 0) throw new Error('시간 정보가 올바르지 않아요. 다시 시도해 주세요.');
   const now = Math.max(state.lastAccruedAt, wallNow + state.clockOffsetMs);
-  const elapsed = now - state.lastAccruedAt;
-  state.accrued += Math.min(state.reserve, POLICY.reserveEligibleCap) * state.reserveRate * elapsed / YEAR_MS;
-  state.lastAccruedAt = now;
+  // Renewal dates passed on the way settle first, so the Reserve earns each stretch at the membership it had.
+  settleCardBilling(state, now);
+  earnReserve(state, now);
   const { day, month } = dateParts(now);
   if (state.spendingDay !== day) { state.spendingDay = day; state.dailySpent = 0; }
   if (state.spendingMonth !== month) { state.spendingMonth = month; state.monthlySpent = 0; }
   if (state.cashbackMonth !== month) { state.cashbackMonth = month; state.monthlyCashback = 0; }
   sweepAccrued(state, now);
-  settleCardBilling(state, now);
   return now;
 }
 
 /** Live reward figure between engine ticks; the fraction is display-only until it becomes a whole won. */
 export function liveRewards(state: AppState, wallNow = Date.now()): number {
   const now = Math.max(state.lastAccruedAt, wallNow + state.clockOffsetMs);
-  return state.rewards + state.accrued + Math.min(state.reserve, POLICY.reserveEligibleCap) * state.reserveRate * (now - state.lastAccruedAt) / YEAR_MS;
+  return state.rewards + state.accrued + reservePerMs(state) * (now - state.lastAccruedAt);
 }
 
 /** Reserve rewards credited so far plus the remainder still accruing. */
 export function reserveEarnings(state: AppState, wallNow = Date.now()): { total: number; today: number } {
   const now = Math.max(state.lastAccruedAt, wallNow + state.clockOffsetMs);
-  const pending = state.accrued + Math.min(state.reserve, POLICY.reserveEligibleCap) * state.reserveRate * (now - state.lastAccruedAt) / YEAR_MS;
+  const pending = state.accrued + reservePerMs(state) * (now - state.lastAccruedAt);
   const { day } = dateParts(now);
   const credits = state.transactions.filter((item) => item.kind === 'reward' && item.title === RESERVE_REWARD_TITLE);
   const total = credits.reduce((sum, item) => sum + item.amount, 0) + pending;
@@ -355,25 +378,25 @@ function signupAccount(action: Extract<Action, { type: 'COMPLETE_SIGNUP' }>, wal
   const today = new Date(wallNow);
   const age = today.getUTCFullYear() - birth.getUTCFullYear() - (today.getUTCMonth() < birth.getUTCMonth()
     || (today.getUTCMonth() === birth.getUTCMonth() && today.getUTCDate() < birth.getUTCDate()) ? 1 : 0);
-  if (age < ADULT_AGE) throw new Error(`만 ${ADULT_AGE}세 이상만 가입할 수 있습니다.`);
+  if (age < ADULT_AGE) throw new Error(`만 ${ADULT_AGE}세 이상만 가입할 수 있어요.`);
   if (age > 120) throw new Error('생년월일을 확인해 주세요.');
   const { idType, occupation, purpose, source } = action.kyc;
   return { email, passwordHash: action.passwordHash, name, birthDate, phone: action.phone, kyc: { idType, occupation, purpose, source }, verifiedAt: wallNow };
 }
 
 function validateCardChange(previous: CardState, next: CardState): void {
-  if (!validCard(next)) throw new Error('카드 정보가 올바르지 않습니다.');
+  if (!validCard(next)) throw new Error('카드 정보가 올바르지 않아요. 다시 시도해 주세요.');
   if (next.stage !== previous.stage && !TRANSITIONS[previous.stage].includes(next.stage)) {
-    throw new Error('카드 신청 순서에 따라 다음 단계를 진행해 주세요.');
+    throw new Error('카드 신청은 순서대로 진행해 주세요.');
   }
   if (['plan', 'details', 'review', 'submitted', 'needs_info', 'approved', 'issued', 'active'].includes(next.stage) && !next.identityVerified) {
-    throw new Error('본인 확인을 먼저 완료해 주세요.');
+    throw new Error('본인 확인을 먼저 마쳐 주세요.');
   }
-  if (['issued', 'active'].includes(next.stage) && next.issuedAt === null) throw new Error('카드 발급을 먼저 완료해 주세요.');
+  if (['issued', 'active'].includes(next.stage) && next.issuedAt === null) throw new Error('카드 발급을 먼저 마쳐 주세요.');
   if (next.physicalActive && (!next.physical || next.delivery !== 'delivered' || next.stage !== 'active')) {
-    throw new Error('실물 카드를 수령한 뒤 활성화해 주세요.');
+    throw new Error('실물카드를 수령한 뒤 활성화해 주세요.');
   }
-  if (!next.physical && next.delivery !== 'none') throw new Error('실물 카드 신청 정보를 확인해 주세요.');
+  if (!next.physical && next.delivery !== 'none') throw new Error('실물카드 신청 정보를 확인해 주세요.');
   if (next.wallets.length && next.stage !== 'active') throw new Error('카드를 발급하고 활성화한 뒤 휴대폰에 추가해 주세요.');
   if (next.wallets.some((wallet) => !previous.wallets.includes(wallet)) && next.locked) throw new Error('카드 잠금을 해제한 뒤 휴대폰에 추가해 주세요.');
 }
@@ -386,20 +409,20 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
   switch (action.type) {
     case 'TICK': return state;
     case 'COMPLETE_SIGNUP':
-      if (state.account) throw new Error('이미 가입을 마쳤습니다. 로그인해 주세요.');
+      if (state.account) throw new Error('이미 가입한 계정이 있어요. 로그인해 주세요.');
       state.account = signupAccount(action, wallNow);
       state.signedIn = true;
       return state;
     case 'SIGN_IN':
-      if (!state.account || normalizeEmail(action.email) !== state.account.email) throw new Error('가입한 이메일이 아닙니다.');
-      if (action.passwordHash !== state.account.passwordHash) throw new Error('비밀번호가 맞지 않습니다.');
+      if (!state.account || normalizeEmail(action.email) !== state.account.email) throw new Error('가입한 이메일이 아니에요. 이메일 주소를 다시 확인해 주세요.');
+      if (action.passwordHash !== state.account.passwordHash) throw new Error('비밀번호가 맞지 않아요. 다시 입력해 주세요.');
       state.signedIn = true;
       return state;
     case 'SIGN_OUT':
       state.signedIn = false;
       return state;
     case 'RESET_PASSWORD':
-      if (!state.account || normalizeEmail(action.email) !== state.account.email) throw new Error('가입한 이메일이 아닙니다.');
+      if (!state.account || normalizeEmail(action.email) !== state.account.email) throw new Error('가입한 이메일이 아니에요. 이메일 주소를 다시 확인해 주세요.');
       if (typeof action.passwordHash !== 'string' || !HASH_PATTERN.test(action.passwordHash)) throw new Error('새 비밀번호를 다시 정해 주세요.');
       state.account.passwordHash = action.passwordHash;
       state.signedIn = false;
@@ -407,30 +430,30 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
     case 'ADVANCE_DAY': {
       state.clockOffsetMs += DAY_MS;
       now = accrue(state, wallNow);
-      transaction(state, now, { kind: 'rate', title: '하루 지나기 체험', amount: 0, status: 'completed', note: '체험 시간을 24시간 앞당겼습니다. 그동안 쌓인 리저브 보상은 리워드에 바로 더해졌습니다.' });
+      transaction(state, now, { kind: 'rate', title: '하루 지나기 체험', amount: 0, status: 'completed', note: '체험 시간이 24시간 흘렀어요. 그동안 쌓인 리저브 보상은 리워드에 바로 더했어요.' });
       return state;
     }
     case 'CHANGE_RATE': {
-      if (!Number.isFinite(action.rate) || action.rate < 0 || action.rate > 1) throw new Error('보상률은 0%부터 100% 사이로 설정해 주세요.');
+      if (!Number.isFinite(action.rate) || action.rate < 0 || action.rate > 1) throw new Error('보상률은 0%에서 100% 사이로 정해 주세요.');
       if (action.rate === state.reserveRate) return state;
       state.reserveRate = action.rate;
       state.rateHistory.push({ rate: action.rate, timestamp: now });
-      transaction(state, now, { kind: 'rate', title: '리저브 보상률 변경', amount: 0, status: 'completed', note: `변경 시점부터 연 ${(action.rate * 100).toFixed(1)}%를 적용합니다. 이전 적립은 유지됩니다.` });
+      transaction(state, now, { kind: 'rate', title: '리저브 보상률 변경', amount: 0, status: 'completed', note: `바꾼 시점부터 연 ${(action.rate * 100).toFixed(1)}%를 적용해요. 그전에 쌓인 보상은 그대로예요.` });
       return state;
     }
     case 'START_FUNDING': startFunding(state, action, wallNow); return state;
     case 'SIMULATE_FUNDING_DEPOSIT': {
       const operation = state.fundingOperations.find((item) => item.id === action.id);
-      if (!operation || operation.kind !== 'deposit') throw new Error('입금 요청을 찾을 수 없습니다.');
+      if (!operation || operation.kind !== 'deposit') throw new Error('입금 요청을 찾을 수 없어요.');
       if (operation.status !== 'awaiting_deposit') return state;
       operation.status = 'confirming'; operation.updatedAt = Math.max(operation.updatedAt, wallNow); operation.stageDueAt = operation.updatedAt + FUNDING_STAGE_MS;
       updateFundingTransaction(state, operation); return state;
     }
     case 'CANCEL_FUNDING': {
       const operation = state.fundingOperations.find((item) => item.id === action.id);
-      if (!operation) throw new Error('입출금 요청을 찾을 수 없습니다.');
+      if (!operation) throw new Error('입출금 요청을 찾을 수 없어요.');
       if (operation.status === 'cancelled') return state;
-      if (!['awaiting_deposit', 'reviewing'].includes(operation.status)) throw new Error('입금 확인 또는 네트워크 전송이 시작된 요청은 취소할 수 없습니다.');
+      if (!['awaiting_deposit', 'reviewing'].includes(operation.status)) throw new Error('입금 확인이나 네트워크 전송이 시작된 요청은 취소할 수 없어요.');
       restoreFundingHold(state, operation);
       operation.status = 'cancelled'; operation.stageDueAt = null; operation.updatedAt = Math.max(operation.updatedAt, wallNow);
       updateFundingTransaction(state, operation); return state;
@@ -440,11 +463,21 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       if (action.direction !== 'in' && action.direction !== 'out') throw new Error('이동 방향을 선택해 주세요.');
       const source = action.direction === 'in' ? 'spend' : 'reserve';
       const target = action.direction === 'in' ? 'reserve' : 'spend';
-      if (state[source] < action.amount) throw new Error('이동할 지갑의 잔액이 부족합니다.');
+      if (state[source] < action.amount) throw new Error('옮길 수 있는 금액이 부족해요. 금액을 줄여 주세요.');
       if (target === 'spend') creditSpend(state, action.amount);
       else state.reserve = safeAdd(state.reserve, action.amount);
       state[source] -= action.amount;
-      transaction(state, now, { kind: 'transfer', title: action.direction === 'in' ? '리저브로 이동' : '결제 잔액으로 이동', amount: action.amount, status: 'completed', note: '수수료 없이 옮겼습니다. 옮긴 시점부터 보상 계산에 반영합니다.' });
+      transaction(state, now, { kind: 'transfer', title: action.direction === 'in' ? '리저브로 이동' : '잔액으로 이동', amount: action.amount, status: 'completed', note: '수수료 없이 옮겼어요. 보상은 옮긴 시점부터 바뀐 금액으로 계산해요.' });
+      return state;
+    }
+    case 'SEND_TO_MEMBER': {
+      const member = typeof action.tag === 'string' ? findMember(action.tag) : undefined;
+      if (!member) throw new Error('받을 회원을 찾지 못했어요. 태그를 다시 확인해 주세요.');
+      integer(action.amount, POLICY.minimumTopup);
+      if (state.spend < action.amount) throw new Error('잔액이 부족해요. 보낼 금액을 줄여 주세요.');
+      state.spend -= action.amount;
+      transaction(state, now, { kind: 'transfer', title: `${maskName(member.name)}님에게 보냄`, amount: -action.amount, status: 'completed',
+        note: `@${member.tag}에게 수수료 없이 바로 보냈어요. 체험판이라 실제로 보내지는 않아요.` });
       return state;
     }
     case 'SET_RESERVE_AUTO':
@@ -455,24 +488,24 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       state.rewardsAuto = action.enabled; return state;
     case 'SET_CARD': {
       const previous = state.card;
-      if (!record(action.card)) throw new Error('카드 정보가 올바르지 않습니다.');
+      if (!record(action.card)) throw new Error('카드 정보가 올바르지 않아요. 다시 시도해 주세요.');
       // Money-bearing fields only move through the actions below.
       const next: CardState = { ...structuredClone(action.card), chargedFee: previous.chargedFee, billingAt: previous.billingAt, nextPlan: previous.nextPlan, pinSet: previous.pinSet };
       if (next.physicalActive !== previous.physicalActive) throw new Error('실물카드는 카드 비밀번호를 정해 활성화해 주세요.');
       if (next.stage === 'submitted' && previous.stage !== 'submitted') throw new Error('신청 확인 화면에서 신청해 주세요.');
       if (['submitted', 'approved', 'issued', 'active'].includes(previous.stage) && (next.plan !== previous.plan || next.physical !== previous.physical)) {
-        throw new Error('플랜과 실물카드는 카드 관리에서 바꿔 주세요.');
+        throw new Error('멤버십과 실물카드는 카드 화면에서 바꿔 주세요.');
       }
       if (JSON.stringify(next.address) !== JSON.stringify(previous.address)
         && !(['plan', 'details', 'review'].includes(next.stage) || (next.stage === 'active' && previous.delivery === 'preparing'))) {
-        throw new Error('배송이 시작되면 배송지를 바꿀 수 없습니다.');
+        throw new Error('배송이 시작되면 배송지를 바꿀 수 없어요.');
       }
       validateCardChange(previous, next);
       if (previous.stage === 'submitted' && next.stage === 'needs_info') refundCardFee(state, now, next, '보완 요청으로 신청이 돌아와');
       if (previous.stage === 'submitted' && next.stage === 'rejected') refundCardFee(state, now, next, '신청이 승인되지 않아');
       if (previous.stage === 'issued' && next.stage === 'active') {
         next.chargedFee = 0;
-        if (next.plan === 'plus') next.billingAt = addMonth(now);
+        if (PLANS[next.plan].annualFee > 0) next.billingAt = addYear(now);
       }
       state.card = next;
       return state;
@@ -480,88 +513,92 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
     case 'SUBMIT_CARD': {
       const card = state.card;
       if (card.stage !== 'review') throw new Error('신청 내용을 확인한 뒤 신청해 주세요.');
+      if (card.plan !== 'standard' && !card.physical) throw new Error(`${josa(PLANS[card.plan].short, '은', '는')} ${PLANS[card.plan].card}가 함께 나와요. 받을 주소를 입력해 주세요.`);
       if (card.physical && !card.address) throw new Error('실물카드를 받을 주소를 입력해 주세요.');
       const fee = cardApplicationFee(card);
       const next: CardState = { ...card, stage: 'submitted', reference: card.reference || `AQ-DEMO-${String(wallNow).slice(-8)}`, submittedAt: now, chargedFee: fee };
       validateCardChange(card, next);
       if (fee > 0) {
         chargeSpend(state, fee, '신청해 주세요');
-        const parts = [card.plan === 'plus' ? `Aqua Plus 첫 달 이용료 ${wonText(PLANS.plus.monthlyFee)}` : '', card.physical ? `실물카드 발급비 ${wonText(POLICY.physicalIssueFee)}` : ''].filter(Boolean);
-        transaction(state, now, { kind: 'card', title: '카드 신청 비용', amount: -fee, status: 'completed', note: `${parts.join(' · ')}. 승인되지 않으면 돌려드립니다.` });
+        const parts = [PLANS[card.plan].annualFee ? `${PLANS[card.plan].short} 첫해 연회비 ${wonText(PLANS[card.plan].annualFee)}` : '', card.physical && PLANS[card.plan].physicalFee ? `실물카드 발급비 ${wonText(PLANS[card.plan].physicalFee)}` : ''].filter(Boolean);
+        transaction(state, now, { kind: 'card', title: '카드 신청 비용', amount: -fee, status: 'completed', note: `${parts.join(' · ')}. 승인되지 않으면 돌려드려요.` });
       }
       state.card = next;
       return state;
     }
     case 'CHANGE_PLAN': {
       const card = state.card;
-      if (card.stage !== 'active') throw new Error('카드를 발급받은 뒤 플랜을 바꿀 수 있습니다.');
-      if (action.plan !== 'basic' && action.plan !== 'plus') throw new Error('플랜을 선택해 주세요.');
-      if (action.plan === 'plus') {
-        if (card.plan === 'plus') {
-          if (card.nextPlan !== 'basic') throw new Error('이미 Plus를 쓰고 있습니다.');
-          state.card = { ...card, nextPlan: null };
-          transaction(state, now, { kind: 'card', title: 'Basic 변경 취소', amount: 0, status: 'completed', note: `Plus를 계속 씁니다. ${monthDay(card.billingAt ?? now)}에 다음 이용료가 나갑니다.` });
-          return state;
-        }
-        chargeSpend(state, PLANS.plus.monthlyFee, '바꿔 주세요');
-        const billingAt = addMonth(now);
-        state.card = { ...card, plan: 'plus', billingAt, nextPlan: null };
-        transaction(state, now, { kind: 'card', title: 'Aqua Plus 이용료', amount: -PLANS.plus.monthlyFee, status: 'completed', note: `Plus로 바꿨습니다. 페이백 ${PLANS.plus.cashbackRate * 100}%가 바로 적용되고 다음 결제일은 ${monthDay(billingAt)}입니다.` });
+      if (card.stage !== 'active') throw new Error('카드를 발급받은 뒤 멤버십을 바꿀 수 있어요.');
+      if (!PLAN_ORDER.includes(action.plan)) throw new Error('멤버십을 선택해 주세요.');
+      const target = PLANS[action.plan];
+      if (action.plan === card.plan) {
+        if (card.nextPlan === null) throw new Error(`이미 ${josa(target.short, '을', '를')} 쓰고 있어요.`);
+        state.card = { ...card, nextPlan: null };
+        transaction(state, now, { kind: 'card', title: '멤버십 변경 취소', amount: 0, status: 'completed', note: `${josa(target.short, '을', '를')} 계속 써요. ${fullDate(card.billingAt ?? now)}에 다음 연회비가 나가요.` });
         return state;
       }
-      if (card.plan === 'basic') throw new Error('이미 Basic을 쓰고 있습니다.');
-      if (card.nextPlan === 'basic') throw new Error('Basic 변경이 이미 예약되어 있습니다.');
-      state.card = { ...card, nextPlan: 'basic' };
-      transaction(state, now, { kind: 'card', title: 'Basic 변경 예약', amount: 0, status: 'completed', note: `${monthDay(card.billingAt ?? now)}까지 Plus 혜택을 쓰고 그날부터 Basic이 됩니다. 이용료는 더 나가지 않습니다.` });
+      if (rank(action.plan) > rank(card.plan)) {
+        chargeSpend(state, target.annualFee, '바꿔 주세요');
+        const billingAt = addYear(now);
+        state.card = { ...card, plan: action.plan, billingAt, nextPlan: null };
+        transaction(state, now, { kind: 'card', title: `${target.short} 연회비`, amount: -target.annualFee, status: 'completed',
+          note: `${ro(target.short)} 바꿨어요. 페이백 ${target.cashbackRate * 100}%와 리저브 추가 보상이 바로 적용돼요.${PLANS[card.plan].annualFee ? ' 이전 멤버십의 남은 기간 연회비는 돌려드리지 않아요.' : ''} 다음 갱신일은 ${fullDate(billingAt)}이에요.` });
+        return state;
+      }
+      if (card.nextPlan === action.plan) throw new Error(`${target.short} 변경은 이미 예약돼 있어요.`);
+      state.card = { ...card, nextPlan: action.plan };
+      transaction(state, now, { kind: 'card', title: `${target.short} 변경 예약`, amount: 0, status: 'completed',
+        note: `${fullDate(card.billingAt ?? now)}까지 ${PLANS[card.plan].short} 혜택을 쓰고 그날부터 ${ro(target.short)} 바뀌어요.${target.annualFee ? ` 그날 ${target.short} 연회비 ${wonText(target.annualFee)}이 나가요.` : ' 연회비는 더 나가지 않아요.'}` });
       return state;
     }
     case 'ADVANCE_TO_BILLING': {
-      if (state.card.stage !== 'active' || state.card.billingAt === null) throw new Error('다가오는 카드 결제일이 없습니다.');
+      if (state.card.stage !== 'active' || state.card.billingAt === null) throw new Error('다가오는 멤버십 갱신일이 없어요.');
       state.clockOffsetMs += Math.max(0, state.card.billingAt - now);
       now = accrue(state, wallNow);
-      transaction(state, now, { kind: 'rate', title: '결제일로 이동 체험', amount: 0, status: 'completed', note: '체험 시간을 다음 카드 결제일로 옮겼습니다. 그동안 쌓인 리저브 보상도 리워드에 더해졌습니다.' });
+      transaction(state, now, { kind: 'rate', title: '갱신일로 이동 체험', amount: 0, status: 'completed', note: '체험 시간을 다음 멤버십 갱신일로 옮겼어요. 그동안 쌓인 리저브 보상도 리워드에 더했어요.' });
       return state;
     }
     case 'ADD_PHYSICAL_CARD': {
       const card = state.card;
       if (card.stage !== 'active') throw new Error('카드를 발급받은 뒤 신청해 주세요.');
-      if (card.physical) throw new Error('이미 실물카드를 신청했습니다.');
+      if (card.physical) throw new Error('이미 실물카드를 신청했어요.');
       if (!validAddress(action.address)) throw new Error('실물카드를 받을 주소를 입력해 주세요.');
-      chargeSpend(state, POLICY.physicalIssueFee, '신청해 주세요');
+      const fee = PLANS[card.plan].physicalFee;
+      if (fee) chargeSpend(state, fee, '신청해 주세요');
       state.card = { ...card, physical: true, delivery: 'preparing', physicalActive: false, address: { zip: action.address.zip, road: action.address.road.trim(), detail: action.address.detail.trim() } };
-      transaction(state, now, { kind: 'card', title: '실물카드 발급비', amount: -POLICY.physicalIssueFee, status: 'completed', note: `실물카드를 신청했습니다. 배송까지 ${POLICY.deliveryEstimate}이 걸립니다.` });
+      transaction(state, now, { kind: 'card', title: fee ? '실물카드 발급비' : `${PLANS[card.plan].card} 신청`, amount: fee ? -fee : 0, status: 'completed', note: `${card.plan === 'standard' ? '실물카드' : PLANS[card.plan].card}를 신청했어요. 배송까지 ${POLICY.deliveryEstimate}이 걸려요.` });
       return state;
     }
     case 'REISSUE_CARD': {
       const card = state.card;
-      if (card.stage !== 'active') throw new Error('사용 중인 카드만 재발급할 수 있습니다.');
-      const fee = card.physical ? POLICY.physicalIssueFee : 0;
+      if (card.stage !== 'active') throw new Error('사용 중인 카드만 재발급할 수 있어요.');
+      const fee = card.physical ? PLANS[card.plan].physicalFee : 0;
       if (fee) chargeSpend(state, fee, '재발급해 주세요');
       const last4 = freshLast4(state, card.last4);
       state.card = { ...card, last4, locked: false, wallets: [], issuedAt: now, delivery: card.physical ? 'preparing' : 'none', physicalActive: false };
       transaction(state, now, { kind: 'card', title: '카드 재발급', amount: fee ? -fee : 0, status: 'completed',
-        note: `끝번호 ${card.last4} 카드는 바로 막혔고 새 끝번호는 ${last4}입니다.${card.wallets.length ? ' 휴대폰 결제는 새 카드로 다시 추가해 주세요.' : ''}${fee ? ` 실물카드 재발급비 ${wonText(fee)}을 냈습니다.` : ''}` });
+        note: `끝번호 ${card.last4} 카드는 바로 막혔어요. 새 카드(끝번호 ${last4})를 발급했어요.${card.wallets.length ? ' 휴대폰 결제는 새 카드로 다시 추가해 주세요.' : ''}${fee ? ` 실물카드 재발급비 ${wonText(fee)}을 냈어요.` : ''}` });
       return state;
     }
     case 'CLOSE_CARD': {
       const card = state.card;
-      if (card.stage !== 'active') throw new Error('사용 중인 카드가 없습니다.');
+      if (card.stage !== 'active') throw new Error('사용 중인 카드가 없어요.');
       state.card = { ...createInitialState(now).card, last4: freshLast4(state, card.last4) };
       transaction(state, now, { kind: 'card', title: '카드 해지', amount: 0, status: 'completed',
-        note: `끝번호 ${card.last4} 카드와 휴대폰 결제가 모두 멈췄습니다. 결제 잔액·리저브·리워드는 그대로 남습니다.${card.plan === 'plus' ? ' 이미 낸 이번 달 이용료는 돌려드리지 않습니다.' : ''}` });
+        note: `끝번호 ${card.last4} 카드와 휴대폰 결제가 모두 멈췄어요. 잔액, 리저브, 리워드는 그대로 남아 있어요.${PLANS[card.plan].annualFee ? ` ${PLANS[card.plan].short} 멤버십도 끝나고, 이미 낸 연회비는 돌려드리지 않아요.` : ''}` });
       return state;
     }
     case 'ACTIVATE_PHYSICAL': {
       const card = state.card;
-      if (card.stage !== 'active' || !card.physical || card.delivery !== 'delivered') throw new Error('실물 카드를 수령한 뒤 활성화해 주세요.');
-      if (card.physicalActive) throw new Error('이미 활성화한 실물카드입니다.');
+      if (card.stage !== 'active' || !card.physical || card.delivery !== 'delivered') throw new Error('실물카드를 수령한 뒤 활성화해 주세요.');
+      if (card.physicalActive) throw new Error('이미 활성화한 실물카드예요.');
       const issue = pinIssue(action.pin);
       if (issue) throw new Error(issue);
       state.card = { ...card, physicalActive: true, pinSet: true };
       return state;
     }
     case 'SET_CARD_PIN': {
-      if (state.card.stage !== 'active' || !state.card.physical) throw new Error('실물카드가 있을 때 비밀번호를 정할 수 있습니다.');
+      if (state.card.stage !== 'active' || !state.card.physical) throw new Error('실물카드가 있어야 비밀번호를 정할 수 있어요.');
       const issue = pinIssue(action.pin);
       if (issue) throw new Error(issue);
       state.card = { ...state.card, pinSet: true };
@@ -586,32 +623,32 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       state.notifications = { ...state.notifications, [action.key]: action.enabled, ...(action.key === 'marketing' ? { marketingChangedAt: wallNow } : {}) };
       return state;
     case 'CHANGE_PASSWORD':
-      if (!state.account || !state.signedIn) throw new Error('로그인한 뒤 바꿀 수 있습니다.');
-      if (action.currentHash !== state.account.passwordHash) throw new Error('지금 비밀번호가 맞지 않습니다.');
+      if (!state.account || !state.signedIn) throw new Error('로그인한 뒤 바꿀 수 있어요.');
+      if (action.currentHash !== state.account.passwordHash) throw new Error('지금 비밀번호가 맞지 않아요. 다시 입력해 주세요.');
       if (typeof action.nextHash !== 'string' || !HASH_PATTERN.test(action.nextHash)) throw new Error('새 비밀번호를 다시 정해 주세요.');
       if (action.nextHash === state.account.passwordHash) throw new Error('지금과 다른 비밀번호로 정해 주세요.');
       state.account.passwordHash = action.nextHash;
       return state;
     case 'DELETE_ACCOUNT': {
-      if (!state.account || !state.signedIn) throw new Error('로그인한 뒤 탈퇴할 수 있습니다.');
-      if (action.passwordHash !== state.account.passwordHash) throw new Error('비밀번호가 맞지 않습니다.');
+      if (!state.account || !state.signedIn) throw new Error('로그인한 뒤 탈퇴할 수 있어요.');
+      if (action.passwordHash !== state.account.passwordHash) throw new Error('비밀번호가 맞지 않아요. 다시 입력해 주세요.');
       const blockers = accountClosureBlockers(state);
       if (blockers.length) throw new Error(blockers[0]);
       return createInitialState(wallNow);
     }
     case 'PAY': {
       integer(action.amount);
-      if (state.card.stage !== 'active') throw new Error('카드 신청과 발급을 완료한 뒤 결제해 주세요.');
+      if (state.card.stage !== 'active') throw new Error('카드 신청과 발급을 마친 뒤 결제해 주세요.');
       if (state.card.locked) throw new Error('카드 잠금을 해제한 뒤 결제해 주세요.');
       if (typeof action.merchant !== 'string' || !action.merchant.trim()) throw new Error('결제처를 입력해 주세요.');
       const channel = action.channel ?? 'store';
       if (!['store', 'online', 'overseas'].includes(channel)) throw new Error('결제 방식을 확인해 주세요.');
-      if (channel === 'online' && !state.controls.online) throw new Error('온라인 결제를 막아 두었습니다. 결제 설정에서 풀 수 있습니다.');
-      if (channel === 'overseas' && !state.controls.overseas) throw new Error('해외 결제를 막아 두었습니다. 결제 설정에서 풀 수 있습니다.');
-      if (action.amount > state.controls.perPayment) throw new Error(`1회 결제 한도는 ${manWon(state.controls.perPayment)}입니다.`);
-      if (state.dailySpent + action.amount > state.controls.daily) throw new Error(`일 결제 한도 ${manWon(state.controls.daily)}을 넘습니다.`);
-      if (state.monthlySpent + action.amount > state.controls.monthly) throw new Error(`월 결제 한도 ${manWon(state.controls.monthly)}을 넘습니다.`);
-      if (availableToSpend(state) < action.amount) throw new Error(state.reserveAuto ? '사용 가능한 잔액이 부족합니다.' : '결제 잔액이 부족합니다. 충전하거나 리저브 자동 사용을 켜 주세요.');
+      if (channel === 'online' && !state.controls.online) throw new Error('온라인 결제를 막아 두었어요. 결제 설정에서 풀 수 있어요.');
+      if (channel === 'overseas' && !state.controls.overseas) throw new Error('해외 결제를 막아 두었어요. 결제 설정에서 풀 수 있어요.');
+      if (action.amount > state.controls.perPayment) throw new Error(`1회 결제 한도는 ${manWon(state.controls.perPayment)}이에요.`);
+      if (state.dailySpent + action.amount > state.controls.daily) throw new Error(`일 결제 한도 ${manWon(state.controls.daily)}을 넘어요.`);
+      if (state.monthlySpent + action.amount > state.controls.monthly) throw new Error(`월 결제 한도 ${manWon(state.controls.monthly)}을 넘어요.`);
+      if (availableToSpend(state) < action.amount) throw new Error(state.reserveAuto ? '쓸 수 있는 금액이 부족해요. 충전한 뒤 다시 결제해 주세요.' : '잔액이 부족해요. 충전하거나 리저브 자동 사용을 켜 주세요.');
       const fromRewards = state.rewardsAuto ? Math.min(state.rewards, action.amount) : 0;
       const fromSpend = Math.min(state.spend, action.amount - fromRewards);
       const fromReserve = action.amount - fromRewards - fromSpend;
@@ -629,12 +666,12 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
         refunded: 0, rewardsRestored: 0, principalRestored: 0, cashbackReversed: 0, cashbackMonth: state.cashbackMonth, timestamp: now, status: 'pending', channel };
       state.payments.unshift(payment);
       transaction(state, now, { kind: 'payment', title: payment.merchant, amount: -payment.amount, status: 'pending', paymentId: id,
-        note: `리워드 ${fromRewards.toLocaleString('ko-KR')}원 · 결제 잔액 ${fromSpend.toLocaleString('ko-KR')}원 · 리저브 ${fromReserve.toLocaleString('ko-KR')}원을 썼습니다. 페이백은 결제가 확정되면 쌓입니다.` });
+        note: `리워드 ${fromRewards.toLocaleString('ko-KR')}원, 잔액 ${fromSpend.toLocaleString('ko-KR')}원, 리저브 ${fromReserve.toLocaleString('ko-KR')}원을 썼어요. 페이백은 결제가 확정되면 쌓여요.` });
       return state;
     }
     case 'CONFIRM_PAYMENT': {
       const payment = state.payments.find((item) => item.id === action.id);
-      if (!payment) throw new Error('결제 내역을 찾을 수 없습니다.');
+      if (!payment) throw new Error('결제 내역을 찾을 수 없어요.');
       if (payment.status !== 'pending') return state;
       payment.status = 'completed';
       const purchase = state.transactions.find((item) => item.kind === 'payment' && item.paymentId === payment.id);
@@ -642,18 +679,18 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       if (payment.cashback > 0) {
         const offset = creditRewards(state, payment.cashback);
         transaction(state, now, { kind: 'payback', title: `${payment.merchant} 페이백`, amount: payment.cashback, status: 'completed', paymentId: payment.id,
-          note: `리워드 사용분을 제외한 원금 결제액 기준.${offset ? ` 이전 페이백 조정 ${offset.toLocaleString('ko-KR')}원을 먼저 반영했습니다.` : ''}` });
+          note: `페이백은 리워드로 낸 금액을 빼고 계산했어요.${offset ? ` 이전 페이백 조정분 ${offset.toLocaleString('ko-KR')}원을 먼저 차감했어요.` : ''}` });
       }
       return state;
     }
     case 'REFUND': {
       const payment = state.payments.find((item) => item.id === action.id);
-      if (!payment) throw new Error('결제 내역을 찾을 수 없습니다.');
-      if (payment.status === 'pending') throw new Error('결제 확정 후 환불할 수 있습니다.');
-      if (payment.status === 'refunded') throw new Error('이미 전액 환불된 결제입니다.');
+      if (!payment) throw new Error('결제 내역을 찾을 수 없어요.');
+      if (payment.status === 'pending') throw new Error('결제 확정 후 환불할 수 있어요.');
+      if (payment.status === 'refunded') throw new Error('이미 전액 환불한 결제예요.');
       const amount = action.amount ?? payment.amount - payment.refunded;
       integer(amount);
-      if (amount > payment.amount - payment.refunded) throw new Error('남은 결제 금액보다 많이 환불할 수 없습니다.');
+      if (amount > payment.amount - payment.refunded) throw new Error('남은 결제 금액보다 많이 환불할 수 없어요.');
       const cumulative = payment.refunded + amount;
       const rewardsRestored = Math.floor(payment.fromRewards * cumulative / payment.amount);
       const principalRestored = cumulative - rewardsRestored;
@@ -674,7 +711,7 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       const purchase = state.transactions.find((item) => item.kind === 'payment' && item.paymentId === payment.id);
       if (purchase) purchase.status = payment.status;
       transaction(state, now, { kind: 'refund', title: `${payment.merchant} ${refundStatus === 'refunded' ? '전액' : '부분'} 환불`, amount, status: 'completed', paymentId: payment.id,
-        note: `결제 잔액 ${principalRefund.toLocaleString('ko-KR')}원 · 리워드 ${rewardRefund.toLocaleString('ko-KR')}원 반환. 페이백 ${reversed.toLocaleString('ko-KR')}원 조정${reversed > deduction ? ' (부족분은 향후 리워드에서 상계)' : ''}. 원금에서 페이백을 차감하지 않습니다.` });
+        note: `잔액 ${principalRefund.toLocaleString('ko-KR')}원과 리워드 ${rewardRefund.toLocaleString('ko-KR')}원을 돌려드렸어요. 페이백은 ${reversed.toLocaleString('ko-KR')}원 조정했어요.${reversed > deduction ? ' 모자란 만큼은 앞으로 쌓일 리워드에서 차감해요.' : ''} 환불 원금에서는 페이백을 빼지 않았어요.` });
       return state;
     }
   }
@@ -686,7 +723,7 @@ function whole(value: unknown): value is number { return nonnegative(value) && N
 function timestamp(value: unknown): value is number { return nonnegative(value) && value <= 8.64e15; }
 function validCard(value: unknown): value is CardState {
   if (!record(value)) return false;
-  return STAGES.includes(value.stage as CardStage) && ['basic', 'plus'].includes(value.plan as string)
+  return STAGES.includes(value.stage as CardStage) && PLAN_ORDER.includes(value.plan as Plan)
     && ['none', 'preparing', 'shipped', 'delivered'].includes(value.delivery as string)
     && ['physical', 'identityVerified', 'locked', 'physicalActive'].every((key) => typeof value[key] === 'boolean')
     && typeof value.last4 === 'string' && /^\d{4}$/.test(value.last4) && typeof value.reference === 'string'
@@ -694,7 +731,7 @@ function validCard(value: unknown): value is CardState {
     && Array.isArray(value.wallets) && value.wallets.every((wallet) => wallet === 'samsung' || wallet === 'apple')
     && new Set(value.wallets).size === value.wallets.length
     && whole(value.chargedFee) && (value.billingAt === null || timestamp(value.billingAt))
-    && (value.nextPlan === null || value.nextPlan === 'basic' || value.nextPlan === 'plus')
+    && (value.nextPlan === null || PLAN_ORDER.includes(value.nextPlan as Plan))
     && (value.address === null || validAddress(value.address)) && typeof value.pinSet === 'boolean';
 }
 
@@ -705,8 +742,8 @@ function cardConsistent(value: CardState): boolean {
   if (value.physicalActive && (!value.physical || value.delivery !== 'delivered' || value.stage !== 'active')) return false;
   if (value.wallets.length && value.stage !== 'active') return false;
   if (value.chargedFee > 0 && !['submitted', 'approved', 'issued'].includes(value.stage)) return false;
-  if ((value.billingAt !== null) !== (value.stage === 'active' && value.plan === 'plus')) return false;
-  if (value.nextPlan !== null && (value.nextPlan !== 'basic' || value.billingAt === null)) return false;
+  if ((value.billingAt !== null) !== (value.stage === 'active' && PLANS[value.plan].annualFee > 0)) return false;
+  if (value.nextPlan !== null && (rank(value.nextPlan) >= rank(value.plan) || value.billingAt === null)) return false;
   if (value.physical && value.address === null && ['submitted', 'approved', 'issued', 'active'].includes(value.stage)) return false;
   if (value.physicalActive && !value.pinSet) return false;
   return true;
@@ -838,8 +875,16 @@ function convertHeldCoins(candidate: Record<string, unknown>): Record<string, un
   if (won <= 0 || !whole(rest.spend) || !whole(rest.sequence) || !timestamp(rest.lastAccruedAt) || !Array.isArray(transactions)) return cleaned;
   const sequence = rest.sequence + 1;
   const entry: Transaction = { id: `tx-${sequence}`, kind: 'convert', title: '보유 코인 자동 전환', amount: won, timestamp: rest.lastAccruedAt, status: 'completed',
-    note: '이전 체험에서 남아 있던 코인을 원화 스테이블로 바꿔 결제 잔액에 더했습니다.' };
+    note: '이전 체험에서 남아 있던 코인을 원화 스테이블로 바꿔 잔액에 더했어요.' };
   return { ...cleaned, spend: rest.spend + won, sequence, transactions: [entry, ...transactions] };
+}
+
+/** Older saves: fill fields added later, and move Basic and Plus to Standard (the monthly Plus fee is not carried over). */
+function migrateCard(card: Record<string, unknown>): Record<string, unknown> {
+  const filled: Record<string, unknown> = { wallets: [], chargedFee: 0, nextPlan: null, billingAt: null,
+    address: card.physical ? { zip: '04500', road: '서울특별시 중구 아쿠아로 1', detail: '데모동 101호' } : null, pinSet: Boolean(card.physicalActive), ...card };
+  if (filled.plan === 'basic' || filled.plan === 'plus') Object.assign(filled, { plan: 'standard', nextPlan: null, billingAt: null });
+  return filled;
 }
 
 export function loadState(): AppState {
@@ -850,9 +895,7 @@ export function loadState(): AppState {
       const migrated = record(candidate) && candidate.version === 1
         ? convertHeldCoins({ ...candidate, fundingOperations: candidate.fundingOperations ?? [], account: candidate.account ?? null, signedIn: candidate.signedIn ?? false,
           controls: candidate.controls ?? defaultControls(), notifications: candidate.notifications ?? defaultNotifications(),
-          card: record(candidate.card) ? { wallets: [], chargedFee: 0, nextPlan: null,
-            address: candidate.card.physical ? { zip: '04500', road: '서울특별시 중구 아쿠아로 1', detail: '데모동 101호' } : null, pinSet: Boolean(candidate.card.physicalActive),
-            billingAt: candidate.card.stage === 'active' && candidate.card.plan === 'plus' ? addMonth(Date.now()) : null, ...candidate.card } : candidate.card }) : candidate;
+          card: record(candidate.card) ? migrateCard(candidate.card) : candidate.card }) : candidate;
       if (validState(migrated)) return applyAction(migrated, { type: 'TICK' });
     }
   } catch { /* Disabled storage or corrupt snapshots reset safely to demo balances. */ }

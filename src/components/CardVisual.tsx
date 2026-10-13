@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
+import { PLANS } from '../lib/policy';
 import type { CardState } from '../lib/types';
 import { Wordmark } from './Logo';
 import './CardVisual.css';
@@ -19,7 +20,6 @@ export default function CardVisual({ card, revealed = false, compact = false, va
   const chipId = useId().replaceAll(':', '');
   const interactive = variant === 'hero' && !compact && !revealed;
   const issued = card.stage === 'issued' || card.stage === 'active';
-  const plan = card.plan === 'plus' ? 'Plus' : 'Basic';
   const number = compact
     ? issued ? `•• ${card.last4}` : '•• ••••'
     : revealed && issued ? `4242 4242 4242 ${card.last4}` : `••••  ••••  ••••  ${issued ? card.last4 : '••••'}`;
@@ -92,10 +92,10 @@ export default function CardVisual({ card, revealed = false, compact = false, va
   return (
     <div
       ref={face}
-      className={`aqua-card-visual${card.plan === 'plus' ? ' acv-plus' : ''}${compact ? ' acv-compact' : ''}${variant === 'hero' && !compact ? ' acv-hero' : ''}${motionAllowed && interactive ? ' acv-interactive' : ''}${revealed ? ' acv-revealed' : ''}`}
+      className={`aqua-card-visual acv-${card.plan}${compact ? ' acv-compact' : ''}${variant === 'hero' && !compact ? ' acv-hero' : ''}${motionAllowed && interactive ? ' acv-interactive' : ''}${revealed ? ' acv-revealed' : ''}`}
       role="img"
-      aria-label={`Aqua ${plan} 체험 카드${issued ? `, 끝번호 ${card.last4}` : ', 디자인 미리보기'}`}
-      aria-description={interactive && motionAllowed ? '방향키로 카드 각도를 조절하고 Esc로 되돌릴 수 있습니다.' : undefined}
+      aria-label={`${PLANS[card.plan].name} 카드${issued ? `, 끝번호 ${card.last4}` : ''}`}
+      aria-description={interactive && motionAllowed ? '방향키로 카드를 기울이고 Esc로 되돌릴 수 있어요.' : undefined}
       aria-keyshortcuts={interactive && motionAllowed ? 'ArrowLeft ArrowRight ArrowUp ArrowDown Escape' : undefined}
       tabIndex={interactive && motionAllowed ? 0 : undefined}
       onPointerMove={move}
@@ -105,7 +105,7 @@ export default function CardVisual({ card, revealed = false, compact = false, va
     >
       <span className="acv-reflection" aria-hidden="true" />
       <svg className="acv-contour" viewBox="0 0 300 220" fill="none" aria-hidden="true"><path d="M11 237C12 135 191 157 222 67C238 22 241-22 301-37" /><path d="M42 250C37 157 217 176 245 86C261 38 263-2 315-17" /></svg>
-      <div className="acv-top"><span className="acv-brand" role="img" aria-label="aqua"><Wordmark /></span><span className="acv-plan">{plan.toUpperCase()}</span></div>
+      <div className="acv-top"><span className="acv-brand" role="img" aria-label="aqua"><Wordmark /></span><span className="acv-plan">{card.plan.toUpperCase()}</span></div>
       <svg className="acv-chip" viewBox="0 0 42 32" aria-hidden="true">
         <defs><linearGradient id={`acv-metal-${chipId}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#e8ece7" /><stop offset=".37" stopColor="#b5bfbe" /><stop offset=".62" stopColor="#dce1db" /><stop offset="1" stopColor="#a8b4b4" /></linearGradient></defs>
         <rect x=".5" y=".5" width="41" height="31" rx="5" fill={`url(#acv-metal-${chipId})`} stroke="#8e9da3" strokeWidth=".6" />
@@ -114,7 +114,7 @@ export default function CardVisual({ card, revealed = false, compact = false, va
         <path d="M2 2.5H12M30 2.5H39" stroke="#f4f6f0" strokeOpacity=".7" strokeWidth=".5" />
       </svg>
       <div className="acv-number">{number}</div>
-      <div className="acv-bottom"><span className="acv-holder">AQUA MEMBER</span><span className="acv-demo">{issued ? '체험 카드' : compact ? '미리보기' : '디자인 미리보기'}</span></div>
+      <div className="acv-bottom"><span className="acv-holder">AQUA MEMBER</span></div>
     </div>
   );
 }

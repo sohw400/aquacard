@@ -31,15 +31,15 @@ export function PinSheet({ mode, onSubmit, onClose }: { mode: 'activate' | 'chan
   const issue = pin.length === 4 ? pinIssue(pin) : '';
   const ready = pin.length === 4 && !issue && again === pin;
   const digits = (value: string) => value.replace(/\D/g, '').slice(0, 4);
-  return <Sheet testId="pin-sheet" title={mode === 'activate' ? '실물카드 활성화' : '카드 비밀번호 변경'} lead={mode === 'activate' ? '매장에서 카드를 꽂아 결제할 때 쓸 비밀번호를 정합니다.' : '새 비밀번호는 바로 적용됩니다.'} onClose={onClose}
-    onSubmit={(event) => { event.preventDefault(); if (!ready) { setError(again !== pin ? '두 번 넣은 비밀번호가 다릅니다.' : issue); return; } if (onSubmit(pin)) onClose(); }}
-    footer={<button type="submit" className="itd-button itd-primary" data-testid="pin-submit" disabled={!ready}>{mode === 'activate' ? '활성화' : '바꾸기'}</button>}>
+  return <Sheet testId="pin-sheet" title={mode === 'activate' ? '실물카드 활성화' : '카드 비밀번호 변경'} lead={mode === 'activate' ? '매장에서 카드를 꽂아 결제할 때 쓸 비밀번호를 정해요.' : '새 비밀번호는 바로 적용돼요.'} onClose={onClose}
+    onSubmit={(event) => { event.preventDefault(); if (!ready) { setError(again !== pin ? '입력한 비밀번호가 서로 달라요.' : issue); return; } if (onSubmit(pin)) onClose(); }}
+    footer={<button type="submit" className="itd-button itd-primary" data-testid="pin-submit" disabled={!ready}>{mode === 'activate' ? '활성화하기' : '바꾸기'}</button>}>
     <div className="form-field"><label htmlFor={`${id}-pin`}>카드 비밀번호 4자리</label><input id={`${id}-pin`} data-testid="pin-input" type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={pin} onChange={(event) => { setPin(digits(event.target.value)); setError(''); }} /></div>
     {issue && <p className="sheet-hint bad">{issue}</p>}
     <div className="form-field"><label htmlFor={`${id}-again`}>한 번 더</label><input id={`${id}-again`} data-testid="pin-again" type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={again} onChange={(event) => { setAgain(digits(event.target.value)); setError(''); }} /></div>
-    {again.length === 4 && again !== pin && <p className="sheet-hint bad">두 번 넣은 비밀번호가 다릅니다.</p>}
+    {again.length === 4 && again !== pin && <p className="sheet-hint bad">입력한 비밀번호가 서로 달라요.</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
-    <p className="itd-demo-note">같은 숫자나 이어지는 숫자는 쓸 수 없습니다. 비밀번호는 Aqua에 저장하지 않습니다.</p>
+    <p className="itd-demo-note">같은 숫자나 이어지는 숫자는 쓸 수 없어요. 비밀번호는 Aqua에 저장하지 않아요.</p>
   </Sheet>;
 }
 
@@ -59,12 +59,12 @@ export function PasswordSheet({ email, onSubmit, onClose }: { email: string; onS
     setBusy(false);
     if (done) onClose();
   }
-  return <Sheet testId="password-sheet" title="비밀번호 변경" lead="로그인과 출금 확인에 쓰는 비밀번호입니다." onClose={onClose} onSubmit={submit}
+  return <Sheet testId="password-sheet" title="비밀번호 변경" lead="로그인할 때 쓰는 비밀번호예요." onClose={onClose} onSubmit={submit}
     footer={<button type="submit" className="itd-button itd-primary" data-testid="password-submit" disabled={!ready}>바꾸기</button>}>
     <div className="form-field"><label htmlFor={`${id}-current`}>지금 비밀번호</label><input id={`${id}-current`} data-testid="password-current" type="password" autoComplete="current-password" value={current} onChange={(event) => setCurrent(event.target.value)} /></div>
     <div className="form-field"><label htmlFor={`${id}-next`}>새 비밀번호</label><input id={`${id}-next`} data-testid="password-next" type="password" autoComplete="new-password" value={next} onChange={(event) => setNext(event.target.value)} /></div>
     <p className={`sheet-hint${issue ? ' bad' : ''}`}>{issue || '영문과 숫자를 섞어 8자 이상'}</p>
     <div className="form-field"><label htmlFor={`${id}-confirm`}>새 비밀번호 확인</label><input id={`${id}-confirm`} data-testid="password-confirm" type="password" autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} /></div>
-    {confirm && confirm !== next && <p className="sheet-hint bad">새 비밀번호가 서로 다릅니다.</p>}
+    {confirm && confirm !== next && <p className="sheet-hint bad">새 비밀번호가 서로 달라요.</p>}
   </Sheet>;
 }

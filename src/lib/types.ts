@@ -1,7 +1,8 @@
 export type AssetSymbol = 'USDC' | 'USDT' | 'BTC' | 'ETH';
 /** Coins that move in and out. KRWS is the won stablecoin that backs the spend balance one to one. */
 export type FundingSymbol = 'KRWS' | AssetSymbol;
-export type Plan = 'basic' | 'plus';
+/** Membership tiers, as KAST has them: the tier sets payback, the Reserve boost and the card. */
+export type Plan = 'standard' | 'premium' | 'private';
 export type CardStage = 'not_applied' | 'identity' | 'plan' | 'details' | 'review' | 'submitted' | 'needs_info' | 'approved' | 'issued' | 'active' | 'rejected';
 export type DeliveryStage = 'none' | 'preparing' | 'shipped' | 'delivered';
 export type MobileWallet = 'samsung' | 'apple';
@@ -93,7 +94,7 @@ export interface CardState {
   chargedFee: number;
   /** Next Plus fee date on the demo clock; null while no monthly fee is due. */
   billingAt: number | null;
-  /** Plan that takes over on the next billing date (a scheduled move to Basic). */
+  /** A lower tier that takes over on the next renewal date. */
   nextPlan: Plan | null;
   /** Where the physical card goes; editable until it ships. */
   address: ShippingAddress | null;
@@ -175,6 +176,7 @@ export type Action =
   | { type: 'SIMULATE_FUNDING_DEPOSIT'; id: string }
   | { type: 'CANCEL_FUNDING'; id: string }
   | { type: 'TRANSFER_RESERVE'; direction: 'in' | 'out'; amount: number }
+  | { type: 'SEND_TO_MEMBER'; tag: string; amount: number }
   | { type: 'PAY'; merchant: string; amount: number; channel?: PaymentChannel }
   | { type: 'CONFIRM_PAYMENT'; id: string }
   | { type: 'REFUND'; id: string; amount?: number }

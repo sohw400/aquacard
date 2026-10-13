@@ -15,9 +15,28 @@ export const POLICY = {
   deliveryEstimate: '5~7영업일',
 } as const;
 
-export const PLANS: Record<Plan, { name: string; monthlyFee: number; cashbackRate: number; cashbackCap: number }> = {
-  basic: { name: 'Aqua Basic', monthlyFee: 0, cashbackRate: 0.01, cashbackCap: 10_000 },
-  plus: { name: 'Aqua Plus', monthlyFee: 4_900, cashbackRate: 0.015, cashbackCap: 30_000 },
+export interface PlanTerms {
+  name: string;
+  short: string;
+  /** Charged up front from the spend balance and again on each yearly renewal. */
+  annualFee: number;
+  cashbackRate: number;
+  /** Monthly purchases that earn payback; the cap is rate times this. */
+  spendCap: number;
+  cashbackCap: number;
+  /** Added to the base Reserve rate while the membership is active. */
+  reserveBonus: number;
+  reserveCap: number;
+  card: string;
+  physicalFee: number;
+}
+
+export const PLAN_ORDER: Plan[] = ['standard', 'premium', 'private'];
+/** KAST's Standard, Premium and Private terms at about 1,400 won to the dollar. */
+export const PLANS: Record<Plan, PlanTerms> = {
+  standard: { name: 'Aqua 스탠다드', short: '스탠다드', annualFee: 0, cashbackRate: 0.015, spendCap: 3_000_000, cashbackCap: 45_000, reserveBonus: 0, reserveCap: 10_000_000, card: '가상카드, 실물카드 선택', physicalFee: 9_900 },
+  premium: { name: 'Aqua 프리미엄', short: '프리미엄', annualFee: 1_400_000, cashbackRate: 0.02, spendCap: 14_000_000, cashbackCap: 280_000, reserveBonus: 0.02, reserveCap: 70_000_000, card: '메탈 카드', physicalFee: 0 },
+  private: { name: 'Aqua 프라이빗', short: '프라이빗', annualFee: 14_000_000, cashbackRate: 0.03, spendCap: 56_000_000, cashbackCap: 1_680_000, reserveBonus: 0.04, reserveCap: 280_000_000, card: '골드 카드', physicalFee: 0 },
 };
 
 export const ASSETS: Record<AssetSymbol, { name: string; price: number; color: string; network: string; decimals: number }> = {

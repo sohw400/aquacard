@@ -1,17 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { accountClosureBlockers, applyAction, availableToSpend, createInitialState, loadState, portfolioValue, saveState, STORAGE_KEY } from './engine';
+import { accountClosureBlockers, addYear, applyAction, availableToSpend, cardApplicationFee, createInitialState, loadState, portfolioValue, reserveTerms, saveState, STORAGE_KEY } from './engine';
+import { josa, ro } from './format';
 import { assertFundingQuoteFresh, getFundingQuote } from './funding';
 import { getFundingNetworks, getHeldFundingWon } from './movements';
-import type { Action, AppState, AssetSymbol, CardState } from './types';
+import { PLAN_ORDER, PLANS } from './policy';
+import type { Action, AppState, AssetSymbol, CardState, Plan } from './types';
 
 const NOW = Date.UTC(2026, 9, 13, 3);
 const SAMPLE_ADDRESS = { zip: '04500', road: '서울특별시 중구 아쿠아로 1', detail: '101호' };
 const DAY = 86_400_000;
 const YEAR = 365 * DAY;
-function activeState(now = NOW): AppState {
+/** An issued, active card. A paid membership started at `now`, so it renews a year later. */
+function activeState(now = NOW, plan: Plan = 'standard'): AppState {
   const state = createInitialState(now);
-  state.card = { ...state.card, stage: 'active', identityVerified: true, submittedAt: now, issuedAt: now };
+  state.card = { ...state.card, stage: 'active', plan, identityVerified: true, submittedAt: now, issuedAt: now, billingAt: PLANS[plan].annualFee ? addYear(now) : null };
   return state;
 }
 function confirm(state: AppState, now = NOW): AppState {
@@ -68,10 +71,10 @@ test('결제는 리워드→결제 지갑→옵트인 Reserve 순서이며 확�
   assert.equal(pending.spend, 0);
   assert.equal(pending.reserve, 1_247_280);
   assert.equal(pending.payments[0].fromReserve, 2_720);
-  assert.equal(pending.payments[0].cashback, 57);
+  assert.equal(pending.payments[0].cashback, 85, '리워드로 낸 4,280원을 뺀 5,720원의 스탠다드 1.5%');
   assert.equal(pending.payments[0].status, 'pending');
   const completed = confirm(pending);
-  assert.equal(completed.rewards, 57);
+  assert.equal(completed.rewards, 85);
   assert.equal(completed.payments[0].status, 'completed');
   assert.equal(completed.transactions.find((item) => item.kind === 'payment')?.status, 'completed');
   assert.deepEqual(confirm(completed), completed, '동일한 확정 요청은 보상을 중복 지급하지 않는다');
@@ -95,9 +98,9 @@ test('리워드로 결제한 금액에는 페이백이 없다', () => {
   assert.equal(confirm(pending).rewards, 280);
 });
 
-test('5,800원 반복 결제의 잔액 57원은 실제 리워드 차감 후 새 페이백을 받은 결과다', () => {
+test('5,800원 반복 결제의 잔액 85원은 실제 리워드 차감 후 새 페이백을 받은 결과다', () => {
   let state = activeState();
-  for (const [before, cashback] of [[4_280, 15], [15, 57], [57, 57]]) {
+  for (const [before, cashback] of [[4_280, 22], [22, 86], [86, 85], [85, 85]]) {
     assert.equal(state.rewards, before);
     const pending = applyAction(state, { type: 'PAY', merchant: '한강커피', amount: 5_800 }, NOW);
     assert.equal(pending.payments[0].fromRewards, before);
@@ -109,10 +112,10 @@ test('5,800원 반복 결제의 잔액 57원은 실제 리워드 차감 후 새 
     const repeatedConfirmation = confirm(state);
     assert.deepEqual(repeatedConfirmation, state, '확정 재요청은 새 페이백을 중복 지급하지 않는다');
   }
-  assert.equal(state.rewards, 57);
-  assert.equal(state.spend, 115_452);
-  assert.equal(state.monthlyCashback, 129);
-  assert.equal(state.transactions.filter((item) => item.kind === 'payback').length, 3);
+  assert.equal(state.rewards, 85);
+  assert.equal(state.spend, 109_773);
+  assert.equal(state.monthlyCashback, 278);
+  assert.equal(state.transactions.filter((item) => item.kind === 'payback').length, 4);
 });
 
 const earned = (state: AppState, rewardsBefore = 4_280) => state.rewards - rewardsBefore + state.accrued;
@@ -194,20 +197,27 @@ test('일·월 결제 한도는 서울 날짜 경계에 갱신되며 건별 한�
 test('페이백 한도는 승인 시 예약해서 미확정 결제로 한도를 초과하지 않는다', () => {
   let state = activeState();
   state.spend = 3_000_000; state.rewardsAuto = false;
-  state.monthlyCashback = 9_900;
+  state.monthlyCashback = 44_900;
   state = applyAction(state, { type: 'PAY', merchant: 'A', amount: 20_000 }, NOW);
-  assert.equal(state.payments[0].cashback, 100);
+  assert.equal(state.payments[0].cashback, 100, '1.5%인 300원 중 스탠다드 월 상한 45,000원까지 남은 100원만 예약한다');
   state = applyAction(state, { type: 'PAY', merchant: 'B', amount: 20_000 }, NOW);
   assert.equal(state.payments[0].cashback, 0);
-  assert.equal(state.monthlyCashback, 10_000);
+  assert.equal(state.monthlyCashback, 45_000);
 });
 
-test('Plus 페이백과 월 상한을 적용하되 Reserve 보상률은 동일하다', () => {
-  let state = activeState();
-  state.card.plan = 'plus'; state.rewardsAuto = false;
-  state = applyAction(state, { type: 'PAY', merchant: '상점', amount: 10_000 }, NOW);
-  assert.equal(state.payments[0].cashback, 150);
-  assert.equal(state.reserveRate, 0.05);
+test('프리미엄·프라이빗 페이백과 월 상한을 적용하되 리저브 기본 보상률은 그대로 두고 멤버십 추가 보상만 더한다', () => {
+  for (const [plan, cashback, cap, reserveRate] of [['premium', 200, 280_000, 0.07], ['private', 300, 1_680_000, 0.09]] as const) {
+    let state = activeState(NOW, plan);
+    state.rewardsAuto = false;
+    state = applyAction(state, { type: 'PAY', merchant: '상점', amount: 10_000 }, NOW);
+    assert.equal(state.payments[0].cashback, cashback);
+    state.monthlyCashback = cap - 100;
+    state = applyAction(state, { type: 'PAY', merchant: '상점', amount: 10_000 }, NOW);
+    assert.equal(state.payments[0].cashback, 100, `${plan} 월 상한까지 남은 금액만 예약한다`);
+    assert.equal(state.monthlyCashback, cap);
+    assert.equal(state.reserveRate, 0.05, '멤버십은 리저브 기본 보상률을 바꾸지 않는다');
+    close(reserveTerms(state).rate, reserveRate);
+  }
 });
 
 test('부분 환불을 누적 배분해 원금·리워드를 복구하고 전액 환불 후 중복 환불을 막는다', () => {
@@ -255,9 +265,9 @@ test('전월 결제 환불은 현재 월 페이백 한도를 복구하지 않는
   const januaryId = state.payments[0].id;
   const february = Date.UTC(2026, 1, 2, 3);
   state = applyAction(state, { type: 'PAY', merchant: '2월 상점', amount: 20_000 }, february);
-  assert.equal(state.monthlyCashback, 200);
+  assert.equal(state.monthlyCashback, 300);
   state = applyAction(state, { type: 'REFUND', id: januaryId }, february);
-  assert.equal(state.monthlyCashback, 200);
+  assert.equal(state.monthlyCashback, 300);
   assert.equal(state.payments.find((item) => item.id === januaryId)?.cashbackMonth, '2026-01');
 });
 
@@ -318,7 +328,7 @@ test('원화 결제 잔액을 코인으로 출금하며 수수료를 제외한 �
   assert.equal(withdrawn.rewards, initial.rewards);
   assert.equal(withdrawn.transactions[0].amount, -14_000);
   assert.match(withdrawn.transactions[0].note, /예상 7\.95 USDT/);
-  assert.match(withdrawn.transactions[0].note, /실제 외부 송금은 실행하지 않습니다/);
+  assert.match(withdrawn.transactions[0].note, /실제로 코인이 오가지는 않아요/);
   withdrawn = applyAction(withdrawn, { type: 'TICK' }, NOW + 6_000);
   assert.equal(withdrawn.fundingOperations[0].status, 'completed');
   assert.equal(portfolioValue(withdrawn), portfolioValue(initial) - 14_000);
@@ -334,7 +344,7 @@ test('출금은 결제 잔액까지만 허용하고 리워드·Reserve 자동 �
   const insufficient = { ...initial, spend: 999, reserveAuto: true, rewardsAuto: true };
   const snapshot = structuredClone(insufficient);
   assert.ok(availableToSpend(insufficient) > 1_000);
-  assert.throws(() => applyAction(insufficient, withdrawalRequest({ amount: 1_000 }), NOW), /결제 잔액이 부족/);
+  assert.throws(() => applyAction(insufficient, withdrawalRequest({ amount: 1_000 }), NOW), /잔액이 부족해요/);
   assert.deepEqual(insufficient, snapshot, '출금 실패는 원금·리워드·거래 내역을 변경하지 않는다');
 });
 
@@ -464,7 +474,7 @@ test('출금 보류 원금은 카드 사용 가능액에서 빠지지만 완료 
   state = applyAction(state, { type: 'TICK' }, NOW + 3_000);
   assert.equal(state.fundingOperations[0].status, 'broadcasting');
   assert.equal(getHeldFundingWon(state), 14_000);
-  assert.throws(() => applyAction(state, { type: 'CANCEL_FUNDING', id: state.fundingOperations[0].id }, NOW + 3_001), /취소할 수 없습니다/);
+  assert.throws(() => applyAction(state, { type: 'CANCEL_FUNDING', id: state.fundingOperations[0].id }, NOW + 3_001), /취소할 수 없어요/);
   state = applyAction(state, { type: 'TICK' }, NOW + 6_000);
   assert.equal(state.fundingOperations[0].status, 'completed');
   assert.equal(getHeldFundingWon(state), 0);
@@ -491,7 +501,7 @@ test('검토 중 취소는 예약 수수료까지 전액 복원하고 재취소�
   assert.equal(state.transactions.length, 1);
   assert.equal(getHeldFundingWon(state), 0);
   const pending = applyAction(initial, withdrawalRequest(), NOW);
-  assert.throws(() => applyAction(pending, { type: 'CANCEL_FUNDING', id: pending.fundingOperations[0].id }, NOW + 3_000), /취소할 수 없습니다/);
+  assert.throws(() => applyAction(pending, { type: 'CANCEL_FUNDING', id: pending.fundingOperations[0].id }, NOW + 3_000), /취소할 수 없어요/);
 });
 
 test('출금 실패는 송신 전에 원금 전체를 복원하고 재시도는 새 요청·새 견적의 별도 기록이다', () => {
@@ -502,7 +512,7 @@ test('출금 실패는 송신 전에 원금 전체를 복원하고 재시도는 
   state = applyAction(state, { type: 'TICK' }, NOW + 3_000);
   assert.equal(state.fundingOperations[0].status, 'failed');
   assert.equal(state.spend, initial.spend);
-  assert.match(state.fundingOperations[0].failureReason!, /모두 복원/);
+  assert.match(state.fundingOperations[0].failureReason!, /원금과 비용은 모두 잔액으로 돌려드렸어요/);
   assert.equal(state.transactions[0].status, 'failed');
   state = applyAction(state, failedRequest, NOW + 40_000);
   assert.equal(state.spend, initial.spend, '동일 요청 재전송은 실패 요청을 다시 활성화하지 않는다');
@@ -551,7 +561,7 @@ test('같은 요청 키의 재전송은 동일 효과만 유지하고 내용 변
     assert.equal(initial.fundingOperations.length, 0);
   }
   for (const request of [depositRequest(), withdrawalRequest()]) {
-    assert.throws(() => applyAction(initial, { ...request, source: 'holdings' as 'spend' }, NOW), /결제 잔액으로만/);
+    assert.throws(() => applyAction(initial, { ...request, source: 'holdings' as 'spend' }, NOW), /잔액으로만/);
   }
   assert.throws(() => applyAction(initial, depositRequest({ units: undefined }), NOW), /수량/);
 });
@@ -688,8 +698,8 @@ test('카드 신청은 단계별로 진행하며 본인 확인·발급·실물 �
     state = applyAction(state, { type: 'SET_CARD', card: { ...state.card, stage, issuedAt: ['issued', 'active'].includes(stage) ? NOW : null } }, NOW);
   }
   assert.equal(state.card.stage, 'active');
-  assert.equal(state.spend, initial.spend, 'Basic 가상카드는 비용이 없다');
-  assert.throws(() => applyAction(state, { type: 'SET_CARD', card: { ...state.card, physical: true } }, NOW), /카드 관리/);
+  assert.equal(state.spend, initial.spend, '스탠다드 가상카드는 비용이 없다');
+  assert.throws(() => applyAction(state, { type: 'SET_CARD', card: { ...state.card, physical: true } }, NOW), /카드 화면/);
   const physical = applyAction(state, { type: 'ADD_PHYSICAL_CARD', address: SAMPLE_ADDRESS }, NOW);
   assert.throws(() => applyAction(physical, { type: 'SET_CARD', card: { ...physical.card, physicalActive: true } }, NOW), /비밀번호/);
   const shipped = applyAction(physical, { type: 'SET_CARD', card: { ...physical.card, delivery: 'shipped' } }, NOW);
@@ -848,54 +858,73 @@ function activate(state: AppState): AppState {
 }
 
 test('카드 신청 비용은 결제 잔액에서 내고 반려·보완 요청이면 돌려준다', () => {
-  const short = reviewState('plus', true);
-  short.spend = 10_000;
-  assert.throws(() => applyAction(short, { type: 'SUBMIT_CARD' }, NOW), /4,800원 부족/);
-  const submitted = applyAction(reviewState('plus', true), { type: 'SUBMIT_CARD' }, NOW);
-  assert.equal(submitted.spend, 128_500 - 14_800);
-  assert.equal(submitted.card.chargedFee, 14_800);
-  assert.deepEqual([submitted.transactions[0].kind, submitted.transactions[0].amount], ['card', -14_800]);
-  assert.match(submitted.transactions[0].note, /첫 달 이용료 4,900원 · 실물카드 발급비 9,900원/);
+  const short = reviewState('premium', true);
+  short.spend = 1_000_000;
+  const snapshot = structuredClone(short);
+  assert.throws(() => applyAction(short, { type: 'SUBMIT_CARD' }, NOW), /400,000원 부족/);
+  assert.deepEqual(short, snapshot, '잔액이 모자라면 신청 상태와 잔액을 바꾸지 않는다');
+  const funded = reviewState('premium', true);
+  funded.spend = 1_528_500;
+  const submitted = applyAction(funded, { type: 'SUBMIT_CARD' }, NOW);
+  assert.equal(submitted.spend, 128_500);
+  assert.equal(submitted.card.chargedFee, 1_400_000);
+  assert.deepEqual([submitted.transactions[0].kind, submitted.transactions[0].amount], ['card', -1_400_000]);
+  assert.equal(submitted.transactions[0].note, '프리미엄 첫해 연회비 1,400,000원. 승인되지 않으면 돌려드려요.', '메탈 카드에는 발급비가 없다');
   const approved = applyAction(submitted, { type: 'SET_CARD', card: { ...submitted.card, stage: 'approved', chargedFee: 0 } }, NOW);
-  assert.equal(approved.card.chargedFee, 14_800, '화면에서 보낸 값으로 비용 기록을 지우지 못한다');
+  assert.equal(approved.card.chargedFee, 1_400_000, '화면에서 보낸 값으로 비용 기록을 지우지 못한다');
   for (const stage of ['rejected', 'needs_info'] as const) {
     const returned = applyAction(submitted, { type: 'SET_CARD', card: { ...submitted.card, stage } }, NOW);
-    assert.equal(returned.spend, 128_500);
+    assert.equal(returned.spend, 1_528_500);
     assert.equal(returned.card.chargedFee, 0);
-    assert.deepEqual([returned.transactions[0].title, returned.transactions[0].amount], ['카드 신청 비용 환불', 14_800]);
+    assert.deepEqual([returned.transactions[0].title, returned.transactions[0].amount], ['카드 신청 비용 환불', 1_400_000]);
   }
+  const standard = applyAction(reviewState('standard', true), { type: 'SUBMIT_CARD' }, NOW);
+  assert.deepEqual([standard.spend, standard.card.chargedFee, standard.transactions[0].amount], [128_500 - 9_900, 9_900, -9_900]);
+  assert.equal(standard.transactions[0].note, '실물카드 발급비 9,900원. 승인되지 않으면 돌려드려요.');
 });
 
-test('Plus는 발급한 날부터 한 달마다 결제 잔액에서 이용료를 내고 모자라면 Basic이 된다', () => {
-  let state = activate(reviewState('plus', false));
-  assert.equal(state.spend, 128_500 - 4_900);
+test('프리미엄은 카드를 활성화한 날부터 1년마다 잔액에서 연회비를 내고 모자라면 스탠다드가 된다', () => {
+  const review = reviewState('premium', true);
+  review.spend = 3_000_000;
+  let state = activate(review);
+  assert.equal(state.spend, 3_000_000 - 1_400_000);
   assert.equal(state.card.chargedFee, 0);
-  assert.equal(state.card.billingAt, Date.UTC(2026, 10, 13, 3));
+  assert.equal(state.card.billingAt, Date.UTC(2027, 9, 13, 3));
   state = applyAction(state, { type: 'ADVANCE_TO_BILLING' }, NOW);
-  assert.equal(state.spend, 128_500 - 9_800);
-  assert.equal(state.card.billingAt, Date.UTC(2026, 11, 13, 3));
-  assert.ok(state.transactions.some((item) => item.title === 'Aqua Plus 이용료' && item.amount === -4_900));
+  assert.equal(state.spend, 3_000_000 - 2_800_000);
+  assert.equal(state.card.billingAt, Date.UTC(2028, 9, 13, 3));
+  assert.ok(state.transactions.some((item) => item.title === '프리미엄 연회비' && item.amount === -1_400_000));
   state.spend = 1_000;
   state = applyAction(state, { type: 'ADVANCE_TO_BILLING' }, NOW);
-  assert.deepEqual([state.card.plan, state.card.billingAt, state.spend], ['basic', null, 1_000]);
-  assert.match(state.transactions.find((item) => item.kind === 'card')!.note, /부족해/);
-  assert.throws(() => applyAction(state, { type: 'ADVANCE_TO_BILLING' }, NOW), /결제일이 없습니다/);
+  assert.deepEqual([state.card.plan, state.card.billingAt, state.card.nextPlan, state.spend], ['standard', null, null, 1_000]);
+  assert.match(state.transactions.find((item) => item.kind === 'card')!.note, /부족해 프리미엄 연회비를 내지 못했어요/);
+  assert.throws(() => applyAction(state, { type: 'ADVANCE_TO_BILLING' }, NOW), /갱신일이 없어요/);
 });
 
-test('Plus로는 바로 내고 바뀌고, Basic은 다음 결제일에 이용료 없이 바뀐다', () => {
+test('더 높은 멤버십은 연회비를 바로 내고 바뀌고, 스탠다드는 다음 갱신일에 연회비 없이 바뀐다', () => {
   const short = activeState();
-  short.spend = 3_000;
-  assert.throws(() => applyAction(short, { type: 'CHANGE_PLAN', plan: 'plus' }, NOW), /1,900원 부족/);
-  assert.throws(() => applyAction(activeState(), { type: 'SET_CARD', card: { ...activeState().card, plan: 'plus' } }, NOW), /카드 관리/);
-  let state = applyAction(activeState(), { type: 'CHANGE_PLAN', plan: 'plus' }, NOW);
-  assert.deepEqual([state.card.plan, state.spend, state.card.billingAt], ['plus', 123_600, Date.UTC(2026, 10, 13, 3)]);
-  assert.throws(() => applyAction(state, { type: 'CHANGE_PLAN', plan: 'plus' }, NOW), /이미 Plus/);
-  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'basic' }, NOW);
-  assert.deepEqual([state.card.plan, state.card.nextPlan], ['plus', 'basic']);
-  const kept = applyAction(state, { type: 'CHANGE_PLAN', plan: 'plus' }, NOW);
-  assert.deepEqual([kept.card.nextPlan, kept.spend], [null, 123_600]);
+  short.spend = 1_000_000;
+  const snapshot = structuredClone(short);
+  assert.throws(() => applyAction(short, { type: 'CHANGE_PLAN', plan: 'premium' }, NOW), /400,000원 부족/);
+  assert.deepEqual(short, snapshot, '연회비가 모자라면 멤버십과 잔액을 바꾸지 않는다');
+  assert.throws(() => applyAction(activeState(), { type: 'SET_CARD', card: { ...activeState().card, plan: 'premium' } }, NOW), /카드 화면/);
+  const funded = activeState();
+  funded.spend = 1_528_500; funded.rewardsAuto = false;
+  let state = applyAction(funded, { type: 'CHANGE_PLAN', plan: 'premium' }, NOW);
+  assert.deepEqual([state.card.plan, state.spend, state.card.billingAt, state.card.nextPlan], ['premium', 128_500, Date.UTC(2027, 9, 13, 3), null]);
+  assert.deepEqual([state.transactions[0].title, state.transactions[0].amount], ['프리미엄 연회비', -1_400_000]);
+  assert.equal(applyAction(state, { type: 'PAY', merchant: '카페', amount: 10_000 }, NOW).payments[0].cashback, 200, '바꾼 직후 결제부터 2% 페이백');
+  close(reserveTerms(state).rate, 0.07);
+  assert.throws(() => applyAction(state, { type: 'CHANGE_PLAN', plan: 'premium' }, NOW), /이미 프리미엄을 쓰고 있어요/);
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'standard' }, NOW);
+  assert.deepEqual([state.card.plan, state.card.nextPlan, state.spend], ['premium', 'standard', 128_500]);
+  assert.throws(() => applyAction(state, { type: 'CHANGE_PLAN', plan: 'standard' }, NOW), /이미 예약/);
+  const kept = applyAction(state, { type: 'CHANGE_PLAN', plan: 'premium' }, NOW);
+  assert.deepEqual([kept.card.nextPlan, kept.spend, kept.card.billingAt], [null, 128_500, Date.UTC(2027, 9, 13, 3)]);
+  assert.equal(kept.transactions[0].title, '멤버십 변경 취소');
   state = applyAction(state, { type: 'ADVANCE_TO_BILLING' }, NOW);
-  assert.deepEqual([state.card.plan, state.card.nextPlan, state.card.billingAt, state.spend], ['basic', null, null, 123_600]);
+  assert.deepEqual([state.card.plan, state.card.nextPlan, state.card.billingAt, state.spend], ['standard', null, null, 128_500]);
+  assert.throws(() => applyAction(state, { type: 'CHANGE_PLAN', plan: 'standard' }, NOW), /이미 스탠다드를 쓰고 있어요/);
 });
 
 test('실물카드 추가·분실 재발급·해지는 비용과 카드 상태를 함께 바꾸고 잔액은 남긴다', () => {
@@ -930,15 +959,15 @@ test('회원 탈퇴는 카드 해지와 잔액 정리를 마친 뒤 비밀번호
   assert.deepEqual([deleted.account, deleted.signedIn, deleted.transactions.length], [null, false, 0]);
 });
 
-test('카드 비용 항목이 없던 저장 데이터도 불러오고 Plus는 다음 결제일을 새로 잡는다', () => withFundingStorage(({ values }) => {
-  const legacy = structuredClone(activeState()) as AppState;
-  legacy.card.plan = 'plus';
+test('카드 비용 항목이 없던 Plus 저장 데이터도 불러오고 연회비 없는 스탠다드로 옮긴다', () => withFundingStorage(({ values }) => {
+  const original = activeState();
+  const legacy = structuredClone(original);
+  (legacy.card as { plan: string }).plan = 'plus';
   for (const key of ['chargedFee', 'billingAt', 'nextPlan'] as const) delete (legacy.card as Partial<CardState>)[key];
   values.set(STORAGE_KEY, JSON.stringify(legacy));
   const loaded = loadState();
-  assert.equal(loaded.card.plan, 'plus');
-  assert.equal(loaded.card.chargedFee, 0);
-  assert.ok(loaded.card.billingAt !== null && loaded.card.billingAt > Date.now());
+  assert.deepEqual([loaded.card.plan, loaded.card.chargedFee, loaded.card.billingAt, loaded.card.nextPlan], ['standard', 0, null, null]);
+  assert.deepEqual(loaded.card, original.card, '빠진 항목만 채우고 나머지 카드 정보는 그대로 둔다');
 }));
 
 test('이전 체험에 남은 보유 코인은 불러올 때 한 번만 원화로 바꿔 결제 잔액에 더하고 진행 중이던 코인 출금도 원화로 돌려준다', () => withFundingStorage(({ values }) => {
@@ -948,7 +977,7 @@ test('이전 체험에 남은 보유 코인은 불러올 때 한 번만 원화�
   assert.equal(loaded.spend, saved.spend + 627_500);
   assert.equal(loaded.sequence, saved.sequence + 1);
   assert.deepEqual(loaded.transactions[0], { id: `tx-${saved.sequence + 1}`, kind: 'convert', title: '보유 코인 자동 전환', amount: 627_500,
-    timestamp: saved.lastAccruedAt, status: 'completed', note: '이전 체험에서 남아 있던 코인을 원화 스테이블로 바꿔 결제 잔액에 더했습니다.' });
+    timestamp: saved.lastAccruedAt, status: 'completed', note: '이전 체험에서 남아 있던 코인을 원화 스테이블로 바꿔 잔액에 더했어요.' });
   assert.ok(!('holdings' in loaded));
   assert.equal(loaded.account?.email, 'tester@aqua.example');
   saveState(loaded);
@@ -989,10 +1018,10 @@ test('기본 보유 코인(USDC 100·BTC 0.0012·ETH 0.08)은 1원도 잃지 않
 }));
 
 test('실물카드는 배송지가 있어야 접수하고 배송이 시작되기 전까지만 배송지를 바꾼다', () => {
-  const noAddress = reviewState('basic', true);
+  const noAddress = reviewState('standard', true);
   noAddress.card.address = null;
   assert.throws(() => applyAction(noAddress, { type: 'SUBMIT_CARD' }, NOW), /주소/);
-  let state = activate(reviewState('basic', true));
+  let state = activate(reviewState('standard', true));
   const moved = { ...SAMPLE_ADDRESS, detail: '202호' };
   state = applyAction(state, { type: 'SET_CARD', card: { ...state.card, address: moved } }, NOW);
   assert.equal(state.card.address?.detail, '202호');
@@ -1002,7 +1031,7 @@ test('실물카드는 배송지가 있어야 접수하고 배송이 시작되기
 });
 
 test('실물카드는 쉬운 비밀번호를 거절하고 비밀번호를 정해야 활성화하며 비밀번호 자체는 저장하지 않는다', () => {
-  let state = activate(reviewState('basic', true));
+  let state = activate(reviewState('standard', true));
   state = applyAction(state, { type: 'SET_CARD', card: { ...state.card, delivery: 'shipped' } }, NOW);
   state = applyAction(state, { type: 'SET_CARD', card: { ...state.card, delivery: 'delivered' } }, NOW);
   for (const pin of ['1111', '1234', '9876', '12a4', '123']) assert.throws(() => applyAction(state, { type: 'ACTIVATE_PHYSICAL', pin }, NOW), /숫자/);
@@ -1045,4 +1074,276 @@ test('비밀번호 변경은 지금 비밀번호를 확인하고, 광고성 정�
   assert.deepEqual(state.notifications, { payments: true, funding: true, marketing: false, marketingChangedAt: null });
   state = applyAction(state, { type: 'SET_NOTIFICATION', key: 'marketing', enabled: true }, NOW + 5_000);
   assert.deepEqual([state.notifications.marketing, state.notifications.marketingChangedAt], [true, NOW + 5_000]);
+});
+
+test('멤버십은 스탠다드·프리미엄·프라이빗 순서이고 새 카드는 연회비 없는 스탠다드로 시작한다', () => {
+  assert.deepEqual(PLAN_ORDER, ['standard', 'premium', 'private']);
+  assert.deepEqual(PLAN_ORDER.map((plan) => {
+    const { annualFee, cashbackRate, cashbackCap, reserveBonus, reserveCap, physicalFee } = PLANS[plan];
+    return { plan, annualFee, cashbackRate, cashbackCap, reserveBonus, reserveCap, physicalFee };
+  }), [
+    { plan: 'standard', annualFee: 0, cashbackRate: 0.015, cashbackCap: 45_000, reserveBonus: 0, reserveCap: 10_000_000, physicalFee: 9_900 },
+    { plan: 'premium', annualFee: 1_400_000, cashbackRate: 0.02, cashbackCap: 280_000, reserveBonus: 0.02, reserveCap: 70_000_000, physicalFee: 0 },
+    { plan: 'private', annualFee: 14_000_000, cashbackRate: 0.03, cashbackCap: 1_680_000, reserveBonus: 0.04, reserveCap: 280_000_000, physicalFee: 0 },
+  ]);
+  for (const plan of PLAN_ORDER) {
+    assert.equal(Math.round(PLANS[plan].spendCap * PLANS[plan].cashbackRate), PLANS[plan].cashbackCap, `${plan} 월 상한은 페이백 대상 결제액에 지급률을 곱한 값이다`);
+  }
+  const initial = createInitialState(NOW);
+  assert.deepEqual([initial.card.plan, initial.card.billingAt, initial.card.nextPlan], ['standard', null, null]);
+  assert.deepEqual(reserveTerms(initial), { rate: 0.05, cap: 10_000_000 });
+});
+
+test('신청 비용은 첫해 연회비와 스탠다드 실물카드 발급비이고 프리미엄·프라이빗은 배송지를 받아 실물카드를 꼭 함께 보낸다', () => {
+  assert.equal(cardApplicationFee({ plan: 'standard', physical: false }), 0);
+  assert.equal(cardApplicationFee({ plan: 'standard', physical: true }), 9_900);
+  assert.equal(cardApplicationFee({ plan: 'premium', physical: true }), 1_400_000);
+  assert.equal(cardApplicationFee({ plan: 'private', physical: true }), 14_000_000);
+  assert.equal(cardApplicationFee({ plan: 'premium', physical: false }), 1_400_000, '연회비는 실물카드 여부와 관계없다');
+  for (const [plan, message] of [
+    ['premium', '프리미엄은 메탈 카드가 함께 나와요. 받을 주소를 입력해 주세요.'],
+    ['private', '프라이빗은 골드 카드가 함께 나와요. 받을 주소를 입력해 주세요.'],
+  ] as const) {
+    const virtual = reviewState(plan, false);
+    virtual.spend = 20_000_000;
+    const snapshot = structuredClone(virtual);
+    assert.throws(() => applyAction(virtual, { type: 'SUBMIT_CARD' }, NOW), { message });
+    assert.deepEqual(virtual, snapshot, '거절된 신청은 비용을 받지 않는다');
+    const noAddress = reviewState(plan, true);
+    noAddress.spend = 20_000_000;
+    noAddress.card.address = null;
+    assert.throws(() => applyAction(noAddress, { type: 'SUBMIT_CARD' }, NOW), /받을 주소/);
+  }
+  const review = reviewState('private', true);
+  review.spend = 14_128_500;
+  const submitted = applyAction(review, { type: 'SUBMIT_CARD' }, NOW);
+  assert.deepEqual([submitted.card.stage, submitted.card.chargedFee, submitted.spend], ['submitted', 14_000_000, 128_500]);
+  assert.equal(submitted.transactions[0].note, '프라이빗 첫해 연회비 14,000,000원. 승인되지 않으면 돌려드려요.');
+  const free = applyAction(reviewState('standard', false), { type: 'SUBMIT_CARD' }, NOW);
+  assert.deepEqual([free.card.chargedFee, free.spend, free.transactions.length], [0, 128_500, 0], '스탠다드 가상카드는 비용 기록도 남기지 않는다');
+});
+
+test('유료 멤버십 갱신일은 카드를 활성화한 날부터 1년 뒤이고 화면에서 보낸 값으로 갱신일과 예약을 바꾸지 못한다', () => {
+  const review = reviewState('premium', true);
+  review.spend = 1_528_500;
+  let state = applyAction(review, { type: 'SUBMIT_CARD' }, NOW);
+  state = applyAction(state, { type: 'SET_CARD', card: { ...state.card, stage: 'approved' } }, NOW);
+  state = applyAction(state, { type: 'SET_CARD', card: { ...state.card, stage: 'issued', issuedAt: NOW, delivery: 'preparing' } }, NOW);
+  assert.deepEqual([state.card.billingAt, state.card.chargedFee], [null, 1_400_000], '활성화 전에는 갱신일이 없다');
+  const activatedAt = NOW + 3 * DAY;
+  state = applyAction(state, { type: 'SET_CARD', card: { ...state.card, stage: 'active' } }, activatedAt);
+  assert.deepEqual([state.card.billingAt, state.card.chargedFee, state.spend], [Date.UTC(2027, 9, 16, 3), 0, 128_500]);
+  assert.equal(state.card.billingAt, addYear(activatedAt));
+  const tampered = applyAction(state, { type: 'SET_CARD', card: { ...state.card, locked: true, billingAt: null, nextPlan: 'standard' } }, activatedAt);
+  assert.deepEqual([tampered.card.locked, tampered.card.billingAt, tampered.card.nextPlan], [true, Date.UTC(2027, 9, 16, 3), null]);
+  assert.equal(activate(reviewState('standard', true)).card.billingAt, null, '스탠다드는 갱신일이 없다');
+});
+
+test('유료 멤버십을 쓰는 활성 카드만 갱신일을 저장하고 예약은 갱신일이 있는 더 낮은 멤버십만 불러온다', () => withFundingStorage(({ values }) => {
+  const loads = (state: AppState, card: Partial<CardState>) => {
+    values.set(STORAGE_KEY, JSON.stringify({ ...state, card: { ...state.card, ...card } }));
+    return loadState().spend === state.spend;
+  };
+  const [standard, premium, privateCard] = PLAN_ORDER.map((plan) => ({ ...activeState(NOW, plan), spend: 777_000 }));
+  assert.ok(loads(standard, {}));
+  assert.ok(loads(premium, {}));
+  assert.ok(loads(premium, { nextPlan: 'standard' }));
+  assert.ok(loads(privateCard, { nextPlan: 'premium' }));
+  assert.ok(!loads(premium, { billingAt: null }), '갱신일 없는 프리미엄');
+  assert.ok(!loads(standard, { billingAt: addYear(NOW) }), '갱신일 있는 스탠다드');
+  assert.ok(!loads(premium, { stage: 'issued' }), '활성화 전 카드의 갱신일');
+  assert.ok(!loads(premium, { nextPlan: 'premium' }), '같은 멤버십 예약');
+  assert.ok(!loads(premium, { nextPlan: 'private' }), '더 높은 멤버십 예약');
+  assert.ok(!loads(standard, { nextPlan: 'standard' }), '갱신일 없는 예약');
+}));
+
+test('갱신일 전에는 연회비가 나가지 않고, 갱신일이 지나서 처리돼도 다음 갱신일은 원래 갱신일에서 1년 뒤다', () => {
+  let state = activeState(NOW, 'premium');
+  state.spend = 1_500_000;
+  const due = state.card.billingAt!;
+  state = applyAction(state, { type: 'TICK' }, due - 1);
+  assert.deepEqual([state.card.plan, state.card.billingAt, state.spend], ['premium', due, 1_500_000]);
+  state = applyAction(state, { type: 'TICK' }, due + 10 * DAY);
+  assert.deepEqual([state.card.plan, state.card.billingAt, state.spend], ['premium', Date.UTC(2028, 9, 13, 3), 100_000]);
+  const fee = state.transactions.find((item) => item.kind === 'card')!;
+  assert.deepEqual([fee.title, fee.amount, fee.status], ['프리미엄 연회비', -1_400_000, 'completed']);
+  assert.equal(fee.note, '2027년 10월 13일 갱신일 연회비를 잔액에서 냈어요. 다음 갱신일은 2028년 10월 13일이에요.');
+});
+
+test('여러 해가 한 번에 지나면 해마다 연회비를 내고 낼 수 없는 해부터 스탠다드가 된다', () => {
+  let state = activeState(NOW, 'premium');
+  state.spend = 3_000_000;
+  state = applyAction(state, { type: 'TICK' }, Date.UTC(2029, 9, 20, 3));
+  assert.deepEqual([state.card.plan, state.card.billingAt, state.card.nextPlan, state.spend], ['standard', null, null, 200_000]);
+  assert.equal(state.transactions.filter((item) => item.title === '프리미엄 연회비').length, 2);
+  assert.equal(state.transactions.find((item) => item.title === '스탠다드로 변경')!.note,
+    '2029년 10월 13일 갱신일에 잔액이 부족해 프리미엄 연회비를 내지 못했어요. 스탠다드로 바뀌었고, 충전한 뒤 다시 바꿀 수 있어요.');
+});
+
+test('프라이빗에서 예약한 프리미엄 변경은 갱신일에 프리미엄 연회비를 내고 적용되며 낼 수 없으면 스탠다드가 된다', () => {
+  const privateCard = activeState(NOW, 'private');
+  privateCard.spend = 2_000_000;
+  const scheduled = applyAction(privateCard, { type: 'CHANGE_PLAN', plan: 'premium' }, NOW);
+  assert.deepEqual([scheduled.card.plan, scheduled.card.nextPlan, scheduled.card.billingAt, scheduled.spend], ['private', 'premium', Date.UTC(2027, 9, 13, 3), 2_000_000]);
+  assert.deepEqual([scheduled.transactions[0].title, scheduled.transactions[0].amount], ['프리미엄 변경 예약', 0]);
+  assert.equal(scheduled.transactions[0].note, '2027년 10월 13일까지 프라이빗 혜택을 쓰고 그날부터 프리미엄으로 바뀌어요. 그날 프리미엄 연회비 1,400,000원이 나가요.');
+  const renewed = applyAction(scheduled, { type: 'ADVANCE_TO_BILLING' }, NOW);
+  assert.deepEqual([renewed.card.plan, renewed.card.nextPlan, renewed.card.billingAt, renewed.spend], ['premium', null, Date.UTC(2028, 9, 13, 3), 600_000]);
+  assert.match(renewed.transactions.find((item) => item.title === '프리미엄 연회비')!.note, /^예약한 대로 프리미엄으로 바뀌었어요\. 2027년 10월 13일 갱신일 연회비를/);
+  const short = structuredClone(scheduled);
+  short.spend = 1_399_999;
+  const lapsed = applyAction(short, { type: 'ADVANCE_TO_BILLING' }, NOW);
+  assert.deepEqual([lapsed.card.plan, lapsed.card.nextPlan, lapsed.card.billingAt, lapsed.spend], ['standard', null, null, 1_399_999]);
+  assert.match(lapsed.transactions.find((item) => item.title === '스탠다드로 변경')!.note, /잔액이 부족해 프리미엄 연회비를 내지 못했어요/);
+});
+
+test('프리미엄에서 프라이빗으로 올리면 연회비 전액을 새로 내고 갱신일은 바꾼 날부터 1년 뒤이며, 하위 예약은 바꾸거나 취소할 수 있다', () => {
+  let state = activeState(NOW, 'premium');
+  state.spend = 15_000_000;
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'standard' }, NOW);
+  const upgradedAt = NOW + 100 * DAY;
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'private' }, upgradedAt);
+  assert.deepEqual([state.card.plan, state.card.nextPlan, state.card.billingAt, state.spend], ['private', null, Date.UTC(2028, 0, 21, 3), 1_000_000]);
+  assert.equal(state.card.billingAt, addYear(upgradedAt));
+  assert.deepEqual([state.transactions[0].title, state.transactions[0].amount], ['프라이빗 연회비', -14_000_000]);
+  assert.match(state.transactions[0].note, /^프라이빗으로 바꿨어요\. 페이백 3%와 리저브 추가 보상이 바로 적용돼요\. 이전 멤버십의 남은 기간 연회비는 돌려드리지 않아요\./);
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'premium' }, upgradedAt);
+  assert.throws(() => applyAction(state, { type: 'CHANGE_PLAN', plan: 'premium' }, upgradedAt), /프리미엄 변경은 이미 예약돼 있어요/);
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'standard' }, upgradedAt);
+  assert.equal(state.card.nextPlan, 'standard', '예약한 하위 멤버십을 다른 하위 멤버십으로 바꿀 수 있다');
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'private' }, upgradedAt);
+  assert.deepEqual([state.card.plan, state.card.nextPlan, state.spend], ['private', null, 1_000_000]);
+  assert.throws(() => applyAction(state, { type: 'CHANGE_PLAN', plan: 'private' }, upgradedAt), /이미 프라이빗을 쓰고 있어요/);
+  assert.throws(() => applyAction(createInitialState(NOW), { type: 'CHANGE_PLAN', plan: 'premium' }, NOW), /카드를 발급받은 뒤/);
+  assert.throws(() => applyAction(state, { type: 'CHANGE_PLAN', plan: 'plus' as string as Plan }, upgradedAt), /멤버십을 선택/);
+});
+
+test('갱신일로 이동 체험은 데모 시계를 갱신일로 옮겨 그날 갱신을 처리한다', () => {
+  const state = activeState(NOW, 'premium');
+  state.spend = 1_400_000;
+  const due = state.card.billingAt!;
+  const next = applyAction(state, { type: 'ADVANCE_TO_BILLING' }, NOW);
+  assert.deepEqual([next.clockOffsetMs, next.lastAccruedAt], [due - NOW, due]);
+  assert.deepEqual([next.card.plan, next.card.billingAt, next.spend], ['premium', addYear(due), 0]);
+  assert.deepEqual([next.transactions[0].kind, next.transactions[0].title], ['rate', '갱신일로 이동 체험']);
+  assert.throws(() => applyAction(activeState(), { type: 'ADVANCE_TO_BILLING' }, NOW), /갱신일이 없어요/, '스탠다드는 갱신일이 없다');
+});
+
+test('리저브 보상은 사용 중인 카드 멤버십의 추가 보상률과 보상 대상 한도로 쌓이고 활성화 전에는 스탠다드 조건이다', () => {
+  for (const [plan, reserve, yearly] of [
+    ['standard', 20_000_000, 10_000_000 * 0.05],
+    ['premium', 1_250_000, 1_250_000 * 0.07],
+    ['premium', 100_000_000, 70_000_000 * 0.07],
+    ['private', 300_000_000, 280_000_000 * 0.09],
+  ] as const) {
+    const state = activeState(NOW, plan);
+    state.reserve = reserve;
+    close(earned(applyAction(state, { type: 'TICK' }, NOW + DAY)), yearly / 365);
+  }
+  const review = reviewState('premium', true);
+  review.spend = 1_528_500; review.reserve = 100_000_000;
+  const submitted = applyAction(review, { type: 'SUBMIT_CARD' }, NOW);
+  assert.deepEqual(reserveTerms(submitted), { rate: 0.05, cap: 10_000_000 }, '심사 중인 프리미엄 신청은 아직 추가 보상이 없다');
+  close(earned(applyAction(submitted, { type: 'TICK' }, NOW + DAY)), 10_000_000 * 0.05 / 365);
+  const raised = applyAction(activeState(NOW, 'private'), { type: 'CHANGE_RATE', rate: 0.08 }, NOW);
+  assert.equal(raised.reserveRate, 0.08);
+  close(reserveTerms(raised).rate, 0.12);
+  assert.equal(reserveTerms(raised).cap, 280_000_000);
+});
+
+test('갱신일에 멤버십이 바뀌면 리저브 보상은 갱신일까지만 이전 조건으로 쌓이고 그 뒤로는 새 멤버십 조건이다', () => {
+  const lapsing = activeState(NOW, 'premium');
+  lapsing.spend = 0;
+  const due = lapsing.card.billingAt!;
+  const lapsed = applyAction(lapsing, { type: 'TICK' }, due + 10 * DAY);
+  assert.equal(lapsed.card.plan, 'standard');
+  close(earned(lapsed), 1_250_000 * 0.07 + 1_250_000 * 0.05 * 10 / 365);
+  const stepping = activeState(NOW, 'private');
+  stepping.spend = 1_400_000; stepping.reserve = 300_000_000;
+  const scheduled = applyAction(stepping, { type: 'CHANGE_PLAN', plan: 'premium' }, NOW);
+  const stepped = applyAction(scheduled, { type: 'TICK' }, due + 10 * DAY);
+  assert.deepEqual([stepped.card.plan, stepped.spend], ['premium', 0]);
+  close(earned(stepped), 280_000_000 * 0.09 + 70_000_000 * 0.07 * 10 / 365);
+});
+
+test('프리미엄·프라이빗은 메탈·골드 카드 추가와 재발급이 무료이고 해지하면 연회비 없는 스탠다드 처음 카드로 돌아간다', () => {
+  for (const [plan, title] of [['premium', '메탈 카드 신청'], ['private', '골드 카드 신청']] as const) {
+    let state = activeState(NOW, plan);
+    state = applyAction(state, { type: 'ADD_PHYSICAL_CARD', address: SAMPLE_ADDRESS }, NOW);
+    assert.deepEqual([state.spend, state.card.physical, state.card.delivery], [128_500, true, 'preparing']);
+    assert.deepEqual([state.transactions[0].title, state.transactions[0].amount], [title, 0]);
+    state = applyAction(state, { type: 'REISSUE_CARD' }, NOW);
+    assert.deepEqual([state.spend, state.card.delivery, state.transactions[0].amount], [128_500, 'preparing', 0]);
+    state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'standard' }, NOW);
+    const closed = applyAction(state, { type: 'CLOSE_CARD' }, NOW);
+    assert.deepEqual(closed.card, { ...createInitialState(NOW).card, last4: closed.card.last4 });
+    assert.notEqual(closed.card.last4, state.card.last4);
+    assert.deepEqual([closed.spend, closed.reserve, closed.rewards], [state.spend, state.reserve, state.rewards], '이미 낸 연회비는 돌려주지 않고 잔액은 그대로 둔다');
+    assert.deepEqual(reserveTerms(closed), { rate: 0.05, cap: 10_000_000 });
+    assert.match(closed.transactions[0].note, /멤버십도 끝나고, 이미 낸 연회비는 돌려드리지 않아요/);
+  }
+});
+
+test('회원 태그로 잔액을 보내면 이름을 가린 이체 내역을 남기고, 없는 태그·1,000원 미만·잔액 초과는 아무것도 바꾸지 않는다', () => withFundingStorage(() => {
+  const initial = createInitialState(NOW);
+  const snapshot = structuredClone(initial);
+  const sent = applyAction(initial, { type: 'SEND_TO_MEMBER', tag: ' @Minji.K ', amount: 10_000 }, NOW);
+  assert.deepEqual([sent.spend, sent.reserve, sent.rewards], [118_500, 1_250_000, 4_280]);
+  const { kind, title, amount, status, note } = sent.transactions[0];
+  assert.deepEqual({ kind, title, amount, status }, { kind: 'transfer', title: '김*지님에게 보냄', amount: -10_000, status: 'completed' });
+  assert.match(note, /^@minji\.k에게 수수료 없이 바로 보냈어요/);
+  assert.equal(applyAction(initial, { type: 'SEND_TO_MEMBER', tag: 'aqua.coffee', amount: 1_000 }, NOW).transactions[0].title, '아***피님에게 보냄');
+  assert.equal(applyAction(initial, { type: 'SEND_TO_MEMBER', tag: 'junho', amount: initial.spend }, NOW).spend, 0, '잔액 전부를 보낼 수 있다');
+  const autoFunded = { ...initial, spend: 5_000, reserveAuto: true };
+  for (const [state, tag, amount, error] of [
+    [initial, 'nobody', 10_000, /찾지 못했어요/],
+    [initial, '@', 10_000, /찾지 못했어요/],
+    [initial, 'minji', 10_000, /찾지 못했어요/],
+    [initial, 'junho', 999, /1,000원 이상/],
+    [initial, 'junho', 1_000.5, /정수/],
+    [initial, 'junho', initial.spend + 1, /잔액이 부족/],
+    [autoFunded, 'junho', 10_000, /잔액이 부족/],
+  ] as const) {
+    assert.throws(() => applyAction(state, { type: 'SEND_TO_MEMBER', tag, amount }, NOW), error, `${tag} ${amount}`);
+  }
+  assert.deepEqual(initial, snapshot, '거절된 송금은 잔액과 내역을 바꾸지 않는다');
+  saveState(sent);
+  assert.deepEqual(loadState().transactions, sent.transactions, '보낸 내역도 저장 후 다시 불러온다');
+}));
+
+test('Basic·Plus로 저장된 카드는 갱신일과 예약 없이 스탠다드로 불러오고 잔액·카드·결제 내역은 그대로 둔다', () => withFundingStorage(({ values }) => {
+  let saved = activeState();
+  saved.spend = 777_000;
+  saved.card = { ...saved.card, physical: true, delivery: 'delivered', physicalActive: true, pinSet: true, address: SAMPLE_ADDRESS, wallets: ['apple'], last4: '7310' };
+  saved = confirm(applyAction(saved, { type: 'PAY', merchant: '카페', amount: 5_000 }, NOW));
+  values.set(STORAGE_KEY, JSON.stringify({ ...saved, card: { ...saved.card, plan: 'plus', billingAt: Date.UTC(2026, 10, 13, 3), nextPlan: 'basic' } }));
+  const plus = loadState();
+  assert.deepEqual([plus.card.plan, plus.card.billingAt, plus.card.nextPlan], ['standard', null, null]);
+  assert.deepEqual(plus.card, saved.card, '멤버십 말고는 카드 정보를 그대로 둔다');
+  assert.deepEqual([plus.spend, plus.reserve, plus.rewards, plus.monthlyCashback], [saved.spend, saved.reserve, saved.rewards, saved.monthlyCashback]);
+  assert.deepEqual(plus.payments, saved.payments);
+  assert.deepEqual(plus.transactions, saved.transactions);
+  const review = reviewState('standard', true);
+  values.set(STORAGE_KEY, JSON.stringify({ ...review, card: { ...review.card, plan: 'basic' } }));
+  assert.deepEqual(loadState().card, review.card, '신청 중이던 Basic 카드도 스탠다드로 이어서 신청한다');
+}));
+
+test('갱신일은 한국 날짜로 1년 뒤 같은 날 같은 시각이고 2월 29일은 2월 28일로 맞춘다', () => {
+  assert.equal(addYear(NOW), Date.UTC(2027, 9, 13, 3));
+  assert.equal(addYear(NOW + 1_234), Date.UTC(2027, 9, 13, 3) + 1_234, '밀리초까지 그대로 둔다');
+  assert.equal(addYear(Date.UTC(2027, 2, 1, 3)) - Date.UTC(2027, 2, 1, 3), 366 * DAY, '2월 29일을 지나는 해는 366일 뒤다');
+  assert.equal(addYear(Date.UTC(2028, 1, 29, 3)), Date.UTC(2029, 1, 28, 3));
+  assert.equal(addYear(Date.UTC(2028, 1, 28, 15, 30)), Date.UTC(2029, 1, 27, 15, 30), '한국 2월 29일 0시 30분은 이듬해 한국 2월 28일 0시 30분');
+  assert.equal(addYear(Date.UTC(2028, 1, 29, 15, 30)), Date.UTC(2029, 1, 28, 15, 30), '한국 3월 1일은 이듬해에도 3월 1일');
+  assert.equal(addYear(Date.UTC(2026, 11, 31, 15)), Date.UTC(2027, 11, 31, 15), '한국 1월 1일 0시는 이듬해 1월 1일 0시');
+});
+
+test('멤버십 이름 뒤 조사는 받침에 맞춰 붙인다', () => {
+  assert.deepEqual(PLAN_ORDER.map((plan) => [josa(PLANS[plan].short, '을', '를'), josa(PLANS[plan].short, '은', '는'), ro(PLANS[plan].short)]), [
+    ['스탠다드를', '스탠다드는', '스탠다드로'],
+    ['프리미엄을', '프리미엄은', '프리미엄으로'],
+    ['프라이빗을', '프라이빗은', '프라이빗으로'],
+  ]);
+  assert.equal(ro('서울'), '서울로', 'ㄹ 받침 뒤에는 로');
+  assert.equal(ro('USDC'), 'USDC로', '한글이 아니면 받침이 없는 것으로 본다');
 });

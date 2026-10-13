@@ -58,12 +58,12 @@ export function getFundingNetworks(symbol: FundingSymbol): FundingNetworkOption[
 export function createFundingQuote(request: FundingMovementQuoteRequest): FundingMovementQuote {
   if (!request) throw new Error('입출금 요청을 확인해 주세요.');
   const network = getFundingNetworks(request.symbol).find((option) => option.id === request.network);
-  if (!network) throw new Error('선택한 코인에서 지원하는 네트워크를 선택해 주세요.');
-  if (request.source !== 'spend') throw new Error('입출금은 결제 잔액으로만 처리합니다.');
+  if (!network) throw new Error('이 코인이 지원하는 네트워크를 선택해 주세요.');
+  if (request.source !== 'spend') throw new Error('입출금은 잔액으로만 할 수 있어요.');
 
   if (request.kind === 'deposit') {
     const quote = getFundingQuote({ direction: 'receive', symbol: request.symbol, units: request.units! });
-    if (quote.netWon <= 0) throw new Error('수수료를 제외한 입금 금액이 0원보다 커야 합니다.');
+    if (quote.netWon <= 0) throw new Error('수수료를 뺀 입금 금액이 0원보다 커야 해요.');
     return {
       amountWon: quote.grossWon, units: quote.inputUnits, feeWon: quote.feeWon,
       networkFeeWon: 0, netWon: quote.netWon, outputUnits: 0,
@@ -76,7 +76,7 @@ export function createFundingQuote(request: FundingMovementQuoteRequest): Fundin
   const quote = getFundingQuote({ direction: 'withdraw', symbol: request.symbol, amount: request.amount! });
   const feeWon = quote.feeWon;
   const netWon = quote.grossWon - feeWon - network.feeWon;
-  if (netWon <= 0) throw new Error('출금 금액이 전환·네트워크 수수료보다 커야 합니다.');
+  if (netWon <= 0) throw new Error('출금 금액은 전환·네트워크 수수료보다 커야 해요.');
   return {
     amountWon: quote.grossWon,
     units: quote.grossWon / FUNDING_ASSETS[request.symbol].price,
@@ -88,7 +88,7 @@ export function createFundingQuote(request: FundingMovementQuoteRequest): Fundin
 /** Check supported routes and address shape only; Bitcoin checksums are not verified. */
 export function validateFundingAddress(symbol: FundingSymbol, network: FundingNetwork, address: string): string | null {
   if (!getFundingNetworks(symbol).some((option) => option.id === network)) {
-    return '선택한 코인에서 지원하는 네트워크를 선택해 주세요.';
+    return '이 코인이 지원하는 네트워크를 선택해 주세요.';
   }
   if (typeof address !== 'string' || !address.trim()) return '받는 지갑 주소를 입력해 주세요.';
   const normalized = address.trim();
@@ -97,17 +97,17 @@ export function validateFundingAddress(symbol: FundingSymbol, network: FundingNe
   if (network === 'bitcoin') {
     const payload = '[qpzry9x8gf2tvdw0s3jn54khce6mua7l]';
     const validShape = new RegExp(`^(?:bc1q${payload}{38}|bc1q${payload}{58}|bc1p${payload}{58})$`);
-    return validShape.test(normalized) ? null : 'bc1q 또는 bc1p로 시작하는 Bitcoin 주소 형식을 확인해 주세요.';
+    return validShape.test(normalized) ? null : 'bc1q나 bc1p로 시작하는 Bitcoin 주소인지 확인해 주세요.';
   }
   return /^0x[0-9a-fA-F]{40}$/.test(normalized) && !/^0x0{40}$/.test(normalized)
-    ? null : '0x로 시작하는 40자리 지갑 주소를 확인해 주세요.';
+    ? null : '0x로 시작하는 40자리 지갑 주소인지 확인해 주세요.';
 }
 
 export function fundingStatusLabel(status: FundingOperation['status']): string {
   const labels: Record<FundingOperation['status'], string> = {
     awaiting_deposit: '입금 대기', confirming: '네트워크 확인 중', converting: '원화 전환 중',
     reviewing: '출금 검토 중', broadcasting: '네트워크 전송 중',
-    completed: '완료', failed: '실패', cancelled: '취소',
+    completed: '완료', failed: '실패', cancelled: '취소됨',
   };
   return labels[status];
 }

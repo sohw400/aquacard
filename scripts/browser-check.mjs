@@ -560,7 +560,7 @@ try {
   assert.equal(await primary.getByTestId('login-email').inputValue(), 'demo@aqua.example');
   await primary.getByTestId('login-password').fill('wrongpass1');
   await primary.getByTestId('login-submit').click();
-  assert.match(await primary.getByRole('alert').innerText(), /비밀번호가 맞지 않습니다/);
+  assert.match(await primary.getByRole('alert').innerText(), /비밀번호가 맞지 않아요/);
   await primary.getByTestId('login-forgot').click();
   await primary.getByTestId('reset-send-code').click();
   await primary.getByTestId('reset-code').fill(await sixDigits(primary.getByTestId('reset-demo-code')));
@@ -569,7 +569,7 @@ try {
   await primary.getByTestId('reset-submit').click();
   await primary.getByTestId('login-password').fill(PASSWORD);
   await primary.getByTestId('login-submit').click();
-  assert.match(await primary.getByRole('alert').innerText(), /비밀번호가 맞지 않습니다/, '바꾸기 전 비밀번호로는 로그인할 수 없다');
+  assert.match(await primary.getByRole('alert').innerText(), /비밀번호가 맞지 않아요/, '바꾸기 전 비밀번호로는 로그인할 수 없다');
   await primary.getByTestId('login-password').fill('newpass2026');
   await primary.getByTestId('login-submit').click();
   await primary.getByTestId('available-balance').waitFor();
@@ -1050,7 +1050,7 @@ try {
     await life.getByTestId('go-back').click();
   }
   await life.getByTestId('open-closure').click();
-  assert.match(await life.getByTestId('closure-blockers').innerText(), /결제 잔액을 모두 출금/);
+  assert.match(await life.getByTestId('closure-blockers').innerText(), /잔액을 모두 출금/);
   await life.keyboard.press('Escape');
   pass('비밀번호 변경·광고성 정보 수신 동의 날짜·자주 묻는 질문·약관·탈퇴 전 정리 안내');
   await lifeContext.close();

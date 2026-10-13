@@ -32,8 +32,8 @@ export default function CardActionSheet({ title, lead, points, cost, spend, conf
       <header className="itd-header"><div><h2 id={headingId} ref={heading} tabIndex={-1}>{title}</h2>{lead && <p>{lead}</p>}</div><button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button></header>
       <div className="itd-body">
         <ul className="card-sheet-points">{points.map((point, index) => <li key={index}>{point}</li>)}</ul>
-        {cost ? <dl className="card-sheet-cost"><div><dt>결제 잔액에서 낼 금액</dt><dd data-testid="card-sheet-cost">{money(cost)}</dd></div><div><dt>지금 결제 잔액</dt><dd>{money(spend)}</dd></div></dl> : null}
-        {short > 0 && <div className="card-sheet-short" role="alert"><p>결제 잔액이 {money(short)} 부족합니다.</p><button type="button" className="itd-button itd-secondary" data-testid="card-sheet-deposit" onClick={() => { onClose(); onDeposit(); }}>충전하기</button></div>}
+        {cost ? <dl className="card-sheet-cost"><div><dt>잔액에서 낼 금액</dt><dd data-testid="card-sheet-cost">{money(cost)}</dd></div><div><dt>지금 잔액</dt><dd>{money(spend)}</dd></div></dl> : null}
+        {short > 0 && <div className="card-sheet-short" role="alert"><p>잔액이 {money(short)} 부족해요.</p><button type="button" className="itd-button itd-secondary" data-testid="card-sheet-deposit" onClick={() => { onClose(); onDeposit(); }}>충전하기</button></div>}
         {consent && <label className="wallet-terms"><input type="checkbox" data-testid="card-sheet-consent" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} /><span>{consent}</span></label>}
       </div>
       <footer className="itd-footer"><button type="button" className={`itd-button itd-primary${danger ? ' card-sheet-danger' : ''}`} data-testid="card-sheet-confirm" disabled={!agreed || short > 0} onClick={() => { if (onConfirm()) onClose(); }}>{confirmLabel}</button></footer>

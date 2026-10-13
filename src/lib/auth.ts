@@ -6,7 +6,7 @@ export const CARRIERS = ['SKT', 'KT', 'LG U+', '알뜰폰'] as const;
 export const ID_TYPES = { resident: '주민등록증', driver: '운전면허증' } as const;
 
 export function passwordIssue(password: string): string {
-  if (password.length < 8) return '비밀번호는 8자 이상이어야 합니다.';
+  if (password.length < 8) return '비밀번호는 8자 이상이어야 해요.';
   if (password.length > 64) return '비밀번호는 64자 이하로 정해 주세요.';
   if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) return '영문과 숫자를 함께 넣어 주세요.';
   return '';

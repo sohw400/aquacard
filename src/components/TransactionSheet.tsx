@@ -34,7 +34,7 @@ export default function TransactionSheet({ item, payment, card, status, onRefund
 
   return <div className="itd-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="internal-transfer-dialog wallet-sheet tx-sheet" ref={panel} role="dialog" aria-modal="true" aria-labelledby={`${id}-heading`} tabIndex={-1} data-testid="transaction-sheet">
-      <header className="itd-header"><div><h2 id={`${id}-heading`} ref={heading} tabIndex={-1}>{item.title}</h2><p>{KIND_LABELS[item.kind]} · {shortDate(item.timestamp)}</p></div><button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button></header>
+      <header className="itd-header"><div><h2 id={`${id}-heading`} ref={heading} tabIndex={-1}>{item.title}</h2><p>{item.kind === 'transfer' && item.amount < 0 ? '보내기' : KIND_LABELS[item.kind]} · {shortDate(item.timestamp)}</p></div><button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button></header>
       <div className="itd-body">
         {amount && <strong className={`tx-amount${item.amount > 0 ? ' positive' : ''}`} data-testid="transaction-amount">{amount}</strong>}
         <dl className="card-sheet-cost tx-facts">
@@ -47,7 +47,7 @@ export default function TransactionSheet({ item, payment, card, status, onRefund
         </dl>
         {payment && <dl className="card-sheet-cost tx-facts">
           <div><dt>리워드에서</dt><dd>{money(payment.fromRewards)}</dd></div>
-          <div><dt>결제 잔액에서</dt><dd>{money(payment.fromSpend)}</dd></div>
+          <div><dt>잔액에서</dt><dd>{money(payment.fromSpend)}</dd></div>
           {payment.fromReserve > 0 && <div><dt>리저브에서</dt><dd>{money(payment.fromReserve)}</dd></div>}
           <div><dt>{payment.status === 'pending' ? '받을 페이백' : '페이백'}</dt><dd>{money(payment.cashback - payment.cashbackReversed)}</dd></div>
           {payment.refunded > 0 && <div><dt>환불한 금액</dt><dd>{money(payment.refunded)}</dd></div>}
@@ -55,7 +55,7 @@ export default function TransactionSheet({ item, payment, card, status, onRefund
         {item.note && <p className="tx-note">{item.note}</p>}
       </div>
       <footer className="itd-footer">
-        {refundable && payment ? <button type="button" className="itd-button itd-primary" data-testid="transaction-refund" onClick={() => { onClose(); onRefund(payment); }}>환불</button>
+        {refundable && payment ? <button type="button" className="itd-button itd-primary" data-testid="transaction-refund" onClick={() => { onClose(); onRefund(payment); }}>환불하기</button>
           : item.fundingId && onFunding ? <button type="button" className="itd-button itd-primary" onClick={() => { onClose(); onFunding(item.fundingId!); }}>처리 내역 보기</button>
             : <button type="button" className="itd-button itd-primary" onClick={onClose}>확인</button>}
       </footer>
