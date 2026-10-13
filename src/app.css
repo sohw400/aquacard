@@ -174,7 +174,7 @@ a { color: var(--accent); }
 .btn.danger { background: var(--danger-weak); color: var(--danger); }
 .btn:disabled { background: var(--fill); color: var(--faint); }
 .btn.block { width: 100%; }
-.btn.small { min-height: 40px; padding: 8px 14px; border-radius: var(--radius-sm); font-size: 14px; }
+.btn.small { min-height: 44px; padding: 8px 14px; border-radius: var(--radius-sm); font-size: 14px; }
 .btn.chosen { background: var(--primary); color: var(--on-primary); }
 .btn svg { width: 18px; height: 18px; }
 .button-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 20px; }
@@ -312,7 +312,7 @@ a { color: var(--accent); }
 .live-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; }
 .live-label { color: var(--live-muted); font-size: 15px; font-weight: 600; }
 .live-rate { padding: 3px 9px; border-radius: 999px; background: var(--live-fill); color: var(--live-accent); font-size: 12px; font-weight: 700; white-space: nowrap; }
-.live-link { display: inline-flex; align-items: center; gap: 2px; min-height: 36px; margin: -4px -8px -4px 0; padding: 0 8px; border-radius: 10px; color: var(--live-muted); font-size: 14px; font-weight: 500; }
+.live-link { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; margin: -8px -10px -8px 0; padding: 0 10px; border-radius: 10px; color: var(--live-muted); font-size: 14px; font-weight: 500; }
 .live-amount { margin-top: 6px; }
 .live-figure { display: inline-flex; align-items: baseline; color: var(--live-ink); font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
 .live-figure > strong { font-size: 34px; font-weight: 700; line-height: 1.2; }

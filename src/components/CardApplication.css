@@ -147,7 +147,7 @@
 .card-flow .cf-wallets p { margin: 0; color: var(--subtle); font-size: 13px; line-height: 1.5; }
 .card-flow .cf-wallet-icon { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--fill); color: var(--ink-soft); }
 .card-flow .cf-wallet-icon > svg { width: 19px; height: 19px; }
-.card-flow .cf-wallet-add { flex-shrink: 0; width: auto; min-width: 64px; min-height: 40px; padding: 8px 16px; border-radius: var(--radius-sm); font-size: 14px; }
+.card-flow .cf-wallet-add { flex-shrink: 0; width: auto; min-width: 64px; min-height: 44px; padding: 8px 16px; border-radius: var(--radius-sm); font-size: 14px; }
 .card-flow .cf-wallet-added { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; color: var(--accent); font-size: 14px; font-weight: 600; }
 .card-flow .cf-wallet-note { margin: 4px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
 .card-flow .cf-plan-now { margin: 2px 0 0; color: var(--muted); font-size: 15px; line-height: 1.6; }
@@ -155,7 +155,7 @@
 .card-flow .cf-plan-renewal { display: flex; align-items: center; gap: 6px; margin: 4px 0 6px; color: var(--subtle); font-size: 14px; line-height: 1.6; }
 .card-flow .cf-plan-renewal > svg { flex-shrink: 0; }
 .card-flow .cf-plan-list { display: grid; margin: 4px 0 0; padding: 0; list-style: none; }
-.card-flow .cf-plan-action { flex-shrink: 0; min-height: 36px; padding: 6px 14px; border: 0; border-radius: 999px; background: var(--fill); color: var(--ink); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.card-flow .cf-plan-action { flex-shrink: 0; min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--fill); color: var(--ink); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .card-flow .cf-plan-tag { flex-shrink: 0; color: var(--accent); font-size: 14px; font-weight: 600; }
 .card-flow .cf-delivery { display: grid; gap: 4px; padding: 14px 0; border-top: 1px solid var(--line); }
 .card-flow .cf-section > .nav-row + .cf-delivery { margin-top: 0; }

@@ -1,6 +1,7 @@
 import { NavRow, Toggle } from '../components/ui';
 import { maskEmail, maskPhone } from '../lib/auth';
 import { dateLabel, money, percent, ro } from '../lib/format';
+import { ownTag } from '../lib/directory';
 import { PLANS } from '../lib/policy';
 import type { Account, AppState } from '../lib/types';
 
@@ -26,7 +27,7 @@ export default function Settings({ state, account, cardStatus, go, onRewardsAuto
   return <div className="page settings-page">
     <section className="profile" aria-label="내 정보">
       <span className="avatar" aria-hidden="true">{account.name.charAt(0)}</span>
-      <div><strong>{account.name}</strong><span>{maskEmail(account.email)}</span></div>
+      <div><strong>{account.name}</strong><span data-testid="own-tag">@{ownTag(account.email)} · {maskEmail(account.email)}</span></div>
     </section>
 
     <section className="settings-group" aria-labelledby="settings-card">
@@ -58,7 +59,8 @@ export default function Settings({ state, account, cardStatus, go, onRewardsAuto
         <div><dt>{plan.short} 멤버십</dt><dd>{plan.annualFee ? `연 ${money(plan.annualFee)}` : '무료'}</dd></div>
         {state.card.billingAt !== null && <div><dt>{state.card.nextPlan ? `${ro(PLANS[state.card.nextPlan].short)} 바뀌는 날` : '다음 갱신일'}</dt><dd>{dateLabel(state.card.billingAt)}</dd></div>}
         <div><dt>충전</dt><dd>무료</dd></div>
-        <div><dt>보내기</dt><dd>네트워크 비용 + 전환 시 0.5%</dd></div>
+        <div><dt>Aqua 회원에게 보내기</dt><dd>무료</dd></div>
+        <div><dt>지갑 주소로 보내기</dt><dd>네트워크 비용, 다른 코인은 +0.5%</dd></div>
       </dl>
     </section>
 

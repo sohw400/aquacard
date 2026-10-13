@@ -6,6 +6,8 @@
 .send-sheet .send-option strong { font-size: 16px; font-weight: 600; line-height: 1.5; }
 .send-sheet .send-option small { color: var(--subtle); font-size: 13px; line-height: 1.5; }
 .send-sheet .send-option > svg { color: var(--faint); }
+.send-sheet .send-own-tag { margin: 10px 2px 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
+.send-sheet .send-own-tag > strong { color: var(--ink-soft); font-weight: 600; }
 .send-sheet .send-option-icon { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 50%; background: var(--fill); color: var(--ink-soft); }
 .send-sheet .send-tag-field { display: flex; align-items: center; gap: 4px; min-height: 56px; padding: 0 16px; border: 1.5px solid transparent; border-radius: 14px; background: var(--fill); transition: border-color .15s, background-color .15s; }
 .send-sheet .send-tag-field:focus-within { border-color: var(--ink); background: var(--surface); }

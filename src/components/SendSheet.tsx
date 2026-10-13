@@ -1,7 +1,7 @@
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { AtSign, Check, ChevronLeft, ChevronRight, Wallet, X } from 'lucide-react';
 import { useModal } from './useModal';
-import { findMember, maskName, MEMBERS, normalizeTag, TAG_PATTERN, type Member } from '../lib/directory';
+import { findMember, maskName, MEMBERS, normalizeTag, ownTag, TAG_PATTERN, type Member } from '../lib/directory';
 import { money, shortDate, won } from '../lib/format';
 import { POLICY } from '../lib/policy';
 import type { Action, AppState } from '../lib/types';
@@ -25,6 +25,15 @@ export default function SendSheet({ state, onClose, onWallet, dispatch, notify }
   const heading = useRef<HTMLHeadingElement>(null);
   const uid = useId();
   useModal(panel, onClose, heading);
+  const tagInput = useRef<HTMLInputElement>(null);
+  const amountInput = useRef<HTMLInputElement>(null);
+  const firstStep = useRef(true);
+  // Every step change moves focus into the new step so keyboard and screen-reader users never land on the page behind.
+  useEffect(() => {
+    if (firstStep.current) { firstStep.current = false; return; }
+    const target = step === 'tag' ? tagInput.current : step === 'amount' ? amountInput.current : heading.current;
+    target?.focus();
+  }, [step]);
   const amount = Number(value);
   const typed = normalizeTag(query);
   const matches = typed ? MEMBERS.filter((item) => item.tag.includes(typed) || item.name.includes(query.trim())) : MEMBERS;
@@ -63,10 +72,11 @@ export default function SendSheet({ state, onClose, onWallet, dispatch, notify }
         {step === 'choose' && <div className="send-options">
           <button type="button" className="send-option" data-testid="send-member" onClick={() => setStep('tag')}><span className="send-option-icon" aria-hidden="true"><AtSign size={20} /></span><span><strong>Aqua 회원에게</strong><small>태그로 바로 보내요. 수수료가 없어요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
           <button type="button" className="send-option" data-testid="send-wallet" onClick={onWallet}><span className="send-option-icon" aria-hidden="true"><Wallet size={20} /></span><span><strong>지갑 주소로</strong><small>코인으로 바꿔 보내요. 네트워크 비용이 들어요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
+          {state.account && <p className="send-own-tag" data-testid="send-own-tag">내 태그 <strong>@{ownTag(state.account.email)}</strong> · 다른 회원은 이 태그로 바로 보낼 수 있어요.</p>}
         </div>}
 
         {step === 'tag' && <form onSubmit={findTag} noValidate>
-          <label className="send-tag-field" htmlFor={`${uid}-tag`}><span aria-hidden="true">@</span><input id={`${uid}-tag`} data-testid="send-tag" value={query} onChange={(event) => { setQuery(event.target.value); setError(''); }} placeholder="태그 또는 이름" autoComplete="off" autoCapitalize="none" spellCheck={false} /></label>
+          <label className="send-tag-field" htmlFor={`${uid}-tag`}><span aria-hidden="true">@</span><input ref={tagInput} id={`${uid}-tag`} data-testid="send-tag" value={query} onChange={(event) => { setQuery(event.target.value); setError(''); }} placeholder="태그 또는 이름" autoComplete="off" autoCapitalize="none" spellCheck={false} /></label>
           {error && <p className="itd-error" role="alert">{error}</p>}
           <p className="send-list-title">{typed ? '찾은 회원' : '체험용 회원'}</p>
           {matches.length ? <ul className="send-members">{matches.map((item) => <li key={item.tag}><button type="button" data-testid={`send-pick-${item.tag}`} onClick={() => pick(item)}><span className="send-avatar" aria-hidden="true">{item.name.charAt(0)}</span><span><strong>{maskName(item.name)}</strong><small>@{item.tag}</small></span></button></li>)}</ul> : <p className="send-empty">맞는 회원이 없어요. 태그 전체를 넣고 찾기를 눌러 주세요.</p>}
@@ -75,7 +85,7 @@ export default function SendSheet({ state, onClose, onWallet, dispatch, notify }
 
         {step === 'amount' && member && <form onSubmit={(event) => { event.preventDefault(); if (value && !amountIssue) setStep('review'); }} noValidate>
           <div className="send-to"><span className="send-avatar" aria-hidden="true">{member.name.charAt(0)}</span><span><strong>{maskName(member.name)}</strong><small>@{member.tag}</small></span></div>
-          <div className="itd-amount"><label htmlFor={`${uid}-amount`}>보낼 금액</label><div className="itd-input"><input id={`${uid}-amount`} data-testid="send-amount" type="number" inputMode="numeric" min={POLICY.minimumTopup} step={1} value={value} onChange={(event) => { setValue(event.target.value); setError(''); }} autoComplete="off" autoFocus /><span>원</span></div>
+          <div className="itd-amount"><label htmlFor={`${uid}-amount`}>보낼 금액</label><div className="itd-input"><input id={`${uid}-amount`} data-testid="send-amount" type="number" inputMode="numeric" min={POLICY.minimumTopup} step={1} value={value} onChange={(event) => { setValue(event.target.value); setError(''); }} autoComplete="off" ref={amountInput} /><span>원</span></div>
             <div className="itd-available"><span>보낼 수 있는 금액</span><strong>{money(state.spend)}</strong></div></div>
           <div className="itd-presets">{[10_000, 30_000, 50_000].map((preset) => <button type="button" key={preset} disabled={preset > state.spend} onClick={() => setValue(String(preset))}>{won(preset)}원</button>)}</div>
           {amountIssue && <p className="itd-error" role="alert">{amountIssue}</p>}

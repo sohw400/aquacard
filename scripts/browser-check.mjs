@@ -437,7 +437,13 @@ try {
   assert.equal(state.spend, START.spend, '승인되지 않은 신청은 낸 비용을 돌려준다');
   await flow().getByTestId('card-restart').click();
   await finishApplication({ plan: 'standard', physical: true });
-  pass('세 화면 신청·필수 동의·스탠다드 실물카드 배송지·접힌 체험 도구·보완·거절·재신청');
+  await flow().getByTestId('card-preparing').waitFor({ state: 'visible' });
+  await nav('home');
+  assert.match(await page.getByTestId('card-cta').innerText(), /만드는 중이에요/);
+  assert.equal(await page.getByTestId('open-payment').innerText(), '진행 상황 보기');
+  await page.getByTestId('open-payment').click();
+  await flow().getByTestId('card-preparing').waitFor({ state: 'visible' });
+  pass('세 화면 신청·필수 동의·스탠다드 실물카드 배송지·접힌 체험 도구·보완·거절·재신청·홈의 진행 상황 보기');
 
   const stages = ['submitted'];
   await stateWhen((current) => {
@@ -465,7 +471,21 @@ try {
   const desktopCard = await page.locator('.cf-hero .aqua-card-visual.acv-hero').boundingBox();
   assert.ok(desktopCard && desktopCard.width >= 400 && desktopCard.width <= 440, `데스크톱 카드 탭 큰 카드 폭: ${desktopCard?.width}`);
   await page.screenshot({ path: new URL('aqua-card.png', artifacts).pathname, fullPage: true });
-  pass('자동 승인·가상 발급·활성화·실물 배송·수령 활성화·카드 탭의 큰 카드');
+  const detailsToggle = flow().getByTestId('card-details-toggle');
+  await detailsToggle.click();
+  assert.equal(await detailsToggle.getAttribute('aria-pressed'), 'true');
+  assert.match(await flow().locator('.cf-demo-details').innerText(), new RegExp(`4242 4242 4242 ${state.card.last4}[\\s\\S]*CVC`));
+  await detailsToggle.click();
+  assert.equal(await flow().locator('.cf-demo-details').count(), 0, '카드 정보를 다시 숨긴다');
+  await flow().getByTestId('card-pin-change').click();
+  await page.getByTestId('pin-input').fill('1111');
+  assert.equal(await page.getByTestId('pin-submit').isDisabled(), true, '같은 숫자는 카드 비밀번호로 쓸 수 없다');
+  await page.getByTestId('pin-input').fill('3691');
+  await page.getByTestId('pin-again').fill('3691');
+  await page.getByTestId('pin-submit').click();
+  await page.getByTestId('pin-sheet').waitFor({ state: 'hidden' });
+  assert.ok((await read()).card.pinSet && !JSON.stringify(await read()).includes('3691'), '바꾼 카드 비밀번호도 저장하지 않는다');
+  pass('자동 승인·가상 발급·활성화·실물 배송·수령 활성화·카드 탭의 큰 카드·카드 정보 보기·카드 비밀번호 변경');
 
   await flow().getByTestId('card-lock-toggle').click();
   await stateWhen((current) => current.card.locked);
@@ -537,6 +557,8 @@ try {
   assert.equal(await page.getByTestId('nav-benefits').getAttribute('aria-current'), 'page');
   assert.match(await reservePage.innerText(), /보상은 1원이 될 때마다 리워드에 들어가요/);
   assert.equal(await displayedAmount(page.getByTestId('reserve-principal')), START.reserve - fromReserve);
+  assert.match(await page.getByTestId('reserve-accrual').innerText(), /^\+\d/);
+  assert.equal(await page.getByTestId('reserve-auto').getAttribute('aria-checked'), 'true', '전체에서 켠 리저브 결제를 리저브 화면에서도 보여준다');
   await page.getByTestId('go-back').click();
   await benefits.waitFor({ state: 'visible' });
   assert.equal(await displayedAmount(benefits.getByTestId('reward-balance')), bigCashback);
@@ -901,6 +923,8 @@ try {
   await sendSheet.waitFor({ state: 'visible' });
   assert.match(await sendSheet.innerText(), /Aqua 회원에게[\s\S]*수수료가 없어요[\s\S]*지갑 주소로[\s\S]*네트워크 비용이 들어요/);
   await sendSheet.getByTestId('send-member').click();
+  const focusedIn = (check) => sendPage.waitForFunction(check, null, { timeout: 2_000 });
+  await focusedIn(() => document.activeElement?.getAttribute('data-testid') === 'send-tag');
   const memberPicks = sendSheet.locator('[data-testid^="send-pick-"]');
   assert.equal(await memberPicks.count(), 5, '체험용 회원 다섯 명');
   assert.match(await sendSheet.getByTestId('send-pick-minji.k').innerText(), /김\*지[\s\S]*@minji\.k/, '받는 사람 이름은 가운데를 가린다');
@@ -918,6 +942,7 @@ try {
   await tagInput.press('Enter');
   const sendAmount = sendSheet.getByTestId('send-amount');
   await sendAmount.waitFor({ state: 'visible' });
+  await focusedIn(() => document.activeElement?.getAttribute('data-testid') === 'send-amount');
   assert.match(await sendSheet.innerText(), /김\*지[\s\S]*@minji\.k[\s\S]*보낼 수 있는 금액[\s\S]*128,500원/);
   await sendAmount.fill(String(START.spend + 1));
   assert.match(await sendSheet.getByRole('alert').innerText(), /잔액보다 많이 보낼 수 없어요/);
@@ -927,6 +952,8 @@ try {
   assert.equal(await sendSheet.getByTestId('send-next').isDisabled(), true);
   await sendAmount.fill('30000');
   await sendSheet.getByTestId('send-next').click();
+  // Each later step moves focus to its heading inside the sheet, never back to the page behind it.
+  await focusedIn(() => document.activeElement?.tagName === 'H2' && Boolean(document.activeElement.closest('[data-testid="send-sheet"]')));
   assert.equal(await displayedAmount(sendSheet.getByTestId('send-review-amount')), 30_000);
   assert.match(await sendSheet.innerText(), new RegExp(`수수료\\s*0원[\\s\\S]*보낸 뒤 잔액\\s*${pattern(wonText(START.spend - 30_000))}`));
   assert.deepEqual(ledgerSnapshot(await read(sendPage)), beforeSend, '검토 단계에서는 보내지 않는다');
@@ -945,6 +972,7 @@ try {
   await sendSheet.getByTestId('send-confirm').click();
   const sendDone = sendSheet.getByTestId('send-done');
   await sendDone.waitFor({ state: 'visible' });
+  await focusedIn(() => document.activeElement?.tagName === 'H2' && document.activeElement.textContent === '보냈어요');
   let sendState = await stateWhen((current) => current.spend === START.spend - 30_000, sendPage);
   assert.deepEqual([sendState.reserve, sendState.rewards, sendState.fundingOperations.length], [START.reserve, START.rewards, 0], '회원 보내기는 수수료·입출금 요청 없이 바로 끝난다');
   const sent = sendState.transactions[0];
@@ -969,6 +997,33 @@ try {
   await sentSheet.waitFor({ state: 'hidden' });
   await filters.getByRole('button', { name: '전체', exact: true }).click();
   pass('회원에게 수수료 없이 바로 보내고 잔액·최근 거래·거래 내역 필터·상세에 반영');
+
+  await nav('settings', sendPage);
+  await details('demo-tools', true, sendPage);
+  await sendPage.getByTestId('rate-3').click();
+  await stateWhen((current) => current.reserveRate === 0.03, sendPage);
+  assert.equal(await sendPage.getByTestId('rate-3').getAttribute('aria-pressed'), 'true');
+  assert.equal(await sendPage.getByTestId('rate-5').getAttribute('aria-pressed'), 'false');
+  await sendPage.getByTestId('nav-home').click();
+  assert.match(await sendPage.getByTestId('open-reserve-card').innerText(), new RegExp(`연 ${pattern(percentText(0.03 + PLANS.standard.reserveBonus))}`));
+  await nav('settings', sendPage);
+  await details('demo-tools', true, sendPage);
+  await sendPage.getByTestId('rate-5').click();
+  await stateWhen((current) => current.reserveRate === 0.05, sendPage);
+  await sendPage.getByTestId('reset-demo').click();
+  const resetDialog = sendPage.getByTestId('dialog-reset');
+  await resetDialog.waitFor({ state: 'visible' });
+  assert.match(await resetDialog.innerText(), /잔액, 카드 신청, 거래 내역을 처음 상태로 돌려요/);
+  await resetDialog.getByRole('button', { name: '취소', exact: true }).click();
+  await resetDialog.waitFor({ state: 'hidden' });
+  assert.equal((await read(sendPage)).spend, START.spend - 30_000, '취소하면 되돌리지 않는다');
+  await sendPage.getByTestId('reset-demo').click();
+  await resetDialog.getByTestId('confirm-action').click();
+  await sendPage.getByTestId('auth-signup').waitFor({ state: 'visible' });
+  const resetState = await stateWhen((current) => current.account === null, sendPage);
+  assert.deepEqual([resetState.signedIn, resetState.spend, resetState.reserve, resetState.rewards, resetState.transactions.length, resetState.card.stage, resetState.reserveRate],
+    [false, START.spend, START.reserve, START.rewards, 0, 'not_applied', POLICY.reserveAnnualRate]);
+  pass('체험 설정의 기본 보상률 3·5% 전환과 처음으로 되돌리기(취소 가능)는 잔액·내역·계정을 지우고 가입 화면으로 돌아간다');
   await sendContext.close();
 
   const movementContext = await browser.newContext({ viewport: { width: 1440, height: 1050 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
@@ -1348,6 +1403,9 @@ try {
   await nav('card', life);
   await life.getByTestId('card-apply').click();
   await finishApplication({ plan: 'standard', physical: false }, life);
+  await details('card-demo-tools', true, life);
+  await life.getByTestId('card-demo-approve').click();
+  await stateWhen((current) => current.card.stage !== 'submitted', life);
   await stateWhen((current) => current.card.stage === 'active', life);
   assert.match(await life.getByTestId('card-open-limits').innerText(), /1회 10만원/);
   assert.match(await life.getByTestId('card-open-channels').innerText(), /온라인 막음/);
@@ -1364,7 +1422,7 @@ try {
   await life.getByTestId('card-pay').click();
   const lifePayment = life.getByTestId('dialog-payment');
   await lifePayment.waitFor({ state: 'visible' });
-  pass('카드 탭에서 결제 한도·온라인·해외 결제로 갔다가 돌아오고 결제해 보기를 연다');
+  pass('체험 도구로 바로 승인한 카드의 카드 탭에서 결제 한도·온라인·해외 결제로 갔다가 돌아오고 결제해 보기를 연다');
 
   await lifePayment.getByTestId('pay-channel-online').click();
   assert.match(await lifePayment.innerText(), /온라인 결제를 막아 두었어요/);

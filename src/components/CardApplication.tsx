@@ -191,7 +191,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
         <div className="cf-cost" data-testid="card-fee">
           <div className="cf-cost-head"><span>지금 낼 금액</span><strong data-testid="card-fee-total">{fee ? won(fee) : '없음'}</strong></div>
           {fee > 0 && <ul className="cf-cost-lines">{plan.annualFee > 0 && <li><span>{plan.short} 첫해 연회비</span><span>{won(plan.annualFee)}</span></li>}{card.physical && plan.physicalFee > 0 && <li><span>실물카드 발급비</span><span>{won(plan.physicalFee)}</span></li>}<li><span>지금 잔액</span><span>{won(spend)}</span></li></ul>}
-          <p>{fee ? '잔액에서 내요. 승인되지 않으면 돌려드려요.' : '스탠다드 가상카드는 비용이 없어요.'}{plan.annualFee ? ' 연회비는 1년마다 같은 날 잔액에서 나가요.' : ''}</p>
+          <p>{fee ? '잔액에서 내요. 승인되지 않으면 돌려드려요.' : card.physical ? '스탠다드는 가상카드와 실물카드 모두 비용이 없어요.' : '스탠다드 가상카드는 비용이 없어요.'}{plan.annualFee ? ' 연회비는 1년마다 같은 날 잔액에서 나가요.' : ''}</p>
         </div>
         {shortfall > 0 && <div className="cf-shortfall" role="alert" data-testid="card-fee-shortfall"><p>잔액이 {won(shortfall)} 모자라요. 충전한 뒤 신청해 주세요.</p><button type="button" className="cf-button cf-secondary" data-testid="card-fee-deposit" onClick={onDeposit}>충전하기</button></div>}
         <label className="cf-final-consent"><input type="checkbox" data-testid="card-review-consent" checked={reviewConsent} onChange={(event) => setReviewConsent(event.target.checked)} /><span>{fee ? '멤버십과 낼 금액을 확인했어요.' : '멤버십과 신청 내용을 확인했어요.'}</span></label>
