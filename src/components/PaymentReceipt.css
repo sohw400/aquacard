@@ -42,7 +42,7 @@
 .receipt-row.negative > strong { color: var(--ink-soft); }
 .receipt-row.receipt-credit { min-height: 28px; padding-left: 12px; color: var(--subtle); font-size: 13px; }
 .receipt-row.receipt-credit > strong { color: var(--muted); font-size: 13px; }
-.receipt-row.total { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--ink); font-weight: 600; }
+.receipt-row.total { align-items: baseline; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--ink); font-weight: 600; }
 .receipt-row.total > strong { color: var(--accent); font-size: 20px; font-weight: 700; letter-spacing: -.4px; }
 .payment-receipt .receipt-note, .payment-receipt .receipt-explanation { margin-top: 12px; color: var(--subtle); font-size: 13px; line-height: 1.6; }
 .payment-receipt .receipt-explanation { margin-top: 4px; }

@@ -1,4 +1,6 @@
 .wallet-sheet .itd-body { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+/* In a fixed-height sheet the body scrolls; its blocks (the clipped address list above all) keep their height. */
+.wallet-sheet .itd-body > * { flex-shrink: 0; }
 .wallet-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--radius-md); background: var(--sunken); }
 .wallet-card .wallet-card-thumb { width: 76px; margin: -8px -2px -8px 0; }
 .wallet-card > div { display: flex; flex-direction: column; min-width: 0; }
@@ -25,8 +27,8 @@
 .card-sheet-cost dd { margin: 0; color: var(--ink); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .card-sheet-short { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; border-radius: var(--radius-md); background: var(--warning-weak); }
 .card-sheet-short > p { flex: 1; margin: 0; color: var(--warning); font-size: 14px; font-weight: 600; line-height: 1.55; }
-.card-sheet-short > .itd-button { flex: 0 0 auto; width: auto; min-height: 40px; padding: 0 16px; border-radius: 999px; background: var(--surface); font-size: 14px; }
-.internal-transfer-dialog .itd-button.itd-primary.card-sheet-danger:not(:disabled) { background: var(--danger); color: #fff; }
+.card-sheet-short > .itd-button { flex: 0 0 auto; width: auto; min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--surface); font-size: 14px; }
+.internal-transfer-dialog .itd-button.itd-primary.card-sheet-danger:not(:disabled) { background: var(--danger); color: var(--on-danger); }
 
 .address-search { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 16px; border: 1.5px solid transparent; border-radius: 14px; background: var(--fill); color: var(--subtle); }
 .address-search:focus-within { border-color: var(--ink); }
@@ -34,6 +36,8 @@
 .address-search > input, .address-search > input:focus { flex: 1; min-width: 0; min-height: 48px; padding: 0; border: 0; border-radius: 0; outline: none; background: none; color: var(--ink); font-size: 16px; font-weight: 500; appearance: none; }
 .address-search > input::-webkit-search-cancel-button, .address-search > input::-webkit-search-decoration { display: none; -webkit-appearance: none; }
 .address-sheet { --sheet-height: 720px; }
+/* Terms, code and done steps share one height so the title stays put between them. */
+.wallet-add { --sheet-height: 500px; }
 .address-results { display: grid; margin: 0; padding: 0; overflow: hidden; border-radius: var(--radius-md); background: var(--sunken); list-style: none; }
 .address-results > li + li { border-top: 1px solid var(--line); }
 .address-results button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px 16px; color: var(--ink); text-align: left; }

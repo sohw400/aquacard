@@ -33,6 +33,7 @@
   --warning-weak: #fdf1dc;
   --danger: #cc2a36;
   --danger-weak: #fdecee;
+  --on-danger: #fff;
   --overlay: rgba(10, 12, 14, .46);
   --topbar-bg: rgba(255, 255, 255, .88);
   --tabbar-bg: rgba(255, 255, 255, .92);
@@ -87,6 +88,7 @@
     --warning-weak: rgba(240, 180, 91, .14);
     --danger: #ff7178;
     --danger-weak: rgba(255, 113, 120, .14);
+    --on-danger: #1f0a0c;
     --overlay: rgba(0, 0, 0, .62);
     --topbar-bg: rgba(11, 12, 14, .86);
     --tabbar-bg: rgba(20, 22, 25, .92);
@@ -210,7 +212,7 @@ a { color: var(--accent); }
 .limit-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .limit-head label { color: var(--ink-soft); font-size: 15px; font-weight: 600; }
 .limit-head strong { color: var(--ink); font-size: 19px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-.limit-row input[type='range'] { width: 100%; height: 32px; margin: 8px 0 0; accent-color: var(--primary); cursor: pointer; }
+.limit-row input[type='range'] { width: 100%; height: 44px; margin: 2px 0 -6px; accent-color: var(--primary); cursor: pointer; }
 .limit-scale { display: flex; justify-content: space-between; color: var(--subtle); font-size: 12px; font-variant-numeric: tabular-nums; }
 .limit-used { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; font-variant-numeric: tabular-nums; }
 .faq-group { padding-bottom: 4px; }
@@ -304,7 +306,7 @@ a { color: var(--accent); }
 .home-card-available { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .home-card-available > span { color: var(--subtle); font-size: 13px; }
 .home-card-available > strong { color: var(--ink); font-size: 18px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-.home-card-foot .btn.small { min-height: 40px; padding: 0 16px; border-radius: 999px; background: var(--surface); }
+.home-card-foot .btn.small { min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--surface); }
 .home-card-next { margin-top: 14px; }
 .home-card-offer { display: grid; gap: 14px; padding-top: 24px; border-top: 1px solid var(--line); }
 .home-card-offer > img { display: block; width: 100%; max-width: 300px; height: auto; margin: -6px auto -4px; filter: drop-shadow(0 16px 20px rgba(17, 30, 50, .14)); }
@@ -365,7 +367,7 @@ a { color: var(--accent); }
 
 /* Activity. */
 .segmented { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 14px; background: var(--fill); }
-.segmented button { min-height: 40px; border-radius: 10px; color: var(--muted); font-size: 15px; font-weight: 600; transition: background-color .15s, color .15s; }
+.segmented button { position: relative; min-height: 40px; border-radius: 10px; color: var(--muted); font-size: 15px; font-weight: 600; transition: background-color .15s, color .15s; }
 .segmented button.selected { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, .1); }
 .activity-page { --page-gap: 20px; }
 .activity-day + .activity-day { margin-top: 16px; }
@@ -383,8 +385,11 @@ a { color: var(--accent); }
 .activity-amount.positive > strong { color: var(--accent); }
 .activity-amount.refunded > strong { color: var(--faint); text-decoration: line-through; }
 .activity-amount.unsettled > strong { color: var(--subtle); }
-.pill-button { min-height: 32px; padding: 4px 12px; border-radius: 999px; background: var(--fill); color: var(--ink-soft); font-size: 13px; font-weight: 600; }
+.pill-button { position: relative; min-height: 32px; padding: 4px 12px; border-radius: 999px; background: var(--fill); color: var(--ink-soft); font-size: 13px; font-weight: 600; }
 .activity-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+/* Chips and segments look small but answer to a 44px touch. */
+.pill-button::after { content: ''; position: absolute; inset: -6px -3px; }
+.segmented button::after { content: ''; position: absolute; inset: -2px; }
 
 /* All-menu. */
 .settings-page { --page-gap: 28px; }
@@ -422,16 +427,18 @@ a { color: var(--accent); }
 .form-field input:focus { border-color: var(--ink); background: var(--surface); }
 .form-field input[aria-invalid='true'] { border-color: var(--danger); background: var(--surface); }
 /* Amount fields grow with the number, so the unit sits right after the last digit. */
-.amount-sizer { display: inline-grid; flex: 0 1 auto; min-width: 0; max-width: 100%; }
-.amount-sizer::after { content: attr(data-value) ' '; grid-area: 1 / 1; overflow: hidden; visibility: hidden; white-space: pre; }
-.amount-sizer > input { grid-area: 1 / 1; width: 100%; min-width: 0; color: inherit; font: inherit; letter-spacing: inherit; }
+/* Amount field: the digits' hidden copy sizes the first column, the unit label fills the rest of the row. */
+.amount-sizer { display: grid; flex: 1; grid-template-columns: minmax(0, max-content) minmax(max-content, 1fr); align-items: baseline; min-width: 0; }
+.amount-sizer::after { content: attr(data-value); grid-area: 1 / 1; padding-right: 2px; overflow: hidden; visibility: hidden; white-space: pre; }
+.amount-sizer > input { grid-area: 1 / 1; width: 0; min-width: 100%; min-height: 44px; color: inherit; font: inherit; letter-spacing: inherit; }
 .amount-sizer > input::placeholder { color: var(--faint); opacity: 1; }
+.amount-unit { position: relative; grid-area: 1 / 2; padding-left: 6px; color: var(--muted); font-size: 18px; font-weight: 600; line-height: 1.5; letter-spacing: 0; cursor: text; }
+.amount-unit::before { content: ''; position: absolute; inset: -12px 0; }
 .input-affix { display: flex; align-items: baseline; gap: 6px; padding-bottom: 8px; border-bottom: 2px solid var(--line); transition: border-color .15s; }
 .input-affix:focus-within { border-color: var(--ink); }
 .input-affix:has(input[aria-invalid='true']) { border-color: var(--danger); }
 .input-affix .amount-sizer { color: var(--ink); font-size: 32px; font-weight: 700; line-height: 1.3; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
-.input-affix input, .input-affix input:focus { min-height: 0; padding: 0; border: 0; border-radius: 0; outline: none; background: none; }
-.input-affix > span:not(.amount-sizer) { flex-shrink: 0; color: var(--muted); font-size: 18px; font-weight: 600; }
+.input-affix input, .input-affix input:focus { min-height: 44px; padding: 0; border: 0; border-radius: 0; outline: none; background: none; }
 .preset-amounts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: -6px; }
 .preset-amounts button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; min-height: 60px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; color: var(--muted); font-size: 13px; font-weight: 500; line-height: 1.4; text-align: left; transition: background-color .15s, border-color .15s; }
 .preset-amounts span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -562,7 +569,27 @@ a { color: var(--accent); }
 .card-flow .cf-address-button:active { background: var(--fill); }
 .segmented button:active:not(.selected) { background: var(--fill-strong); }
 :is(.internal-transfer-dialog .itd-close, .funding-close, .receipt-close):active { background: var(--fill); }
+.app-header > .brand:active { opacity: .55; }
 .funding-receive-copy:active { transform: scale(.98); }
+/* Tapping a consent or option row presses its checkbox or radio in. */
+label:active input:is([type='checkbox'], [type='radio']):not(:disabled) { transform: scale(.88); }
 .switch:active > span { width: 28px; }
 .switch.on:active > span { transform: translateX(16px); }
 summary, label { -webkit-tap-highlight-color: transparent; }
+
+/* Hover, for mouse pointers only: the same families as the pressed states, one step lighter. */
+@media (hover: hover) {
+  .app-header > .brand:hover { opacity: .75; }
+  :is(.onboarding-text-button, .send-sheet .send-own-qr, .card-flow .cf-inline-link, .funding-text-button, .funding-quote-clock button, .funding-destination-heading button, .funding-operation-reference button):hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
+  .onboarding-back:hover { color: var(--ink); }
+  :is(.rule-details > summary, .demo-tools > summary, .faq-item > summary, .card-flow .cf-demo-tools summary, .funding-simulation summary, .funding-operation-details summary):hover { color: var(--ink); }
+  :is(.rule-details > summary, .demo-tools > summary, .faq-item > summary, .card-flow .cf-demo-tools summary, .funding-simulation summary, .funding-operation-details summary):hover::after { border-color: var(--muted); }
+  :is(.address-results button, .home-status):hover { background: var(--fill); }
+  .segmented button:not(.selected):hover { color: var(--ink); }
+  .switch:hover::before { background: var(--control); }
+  .switch.on:hover::before { background: var(--accent-strong); }
+  label:hover input:is([type='checkbox'], [type='radio']):not(:disabled) { filter: brightness(.92); }
+  .toast-close:hover { opacity: 1; }
+  :is(.btn.live-primary, .btn.live-neutral):hover { opacity: .88; }
+  :is(.home-card-foot .btn.small, .card-flow .cf-address-button, .card-flow .cf-shortfall > .cf-button, .receive-sheet .receive-demo > .itd-button, .card-sheet-short > .itd-button):hover:not(:disabled) { background: var(--fill); }
+}

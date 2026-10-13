@@ -109,6 +109,8 @@ async function audit(profileName, profile) {
     await page.evaluate((element) => { if (element) element.scrollTop = 0; }, scroller);
     await scroller.dispose();
     for (const issue of await lintInteraction(page, { hover: profileName === 'desktop' })) issues.set(`${issue.type}|${issue.where}|${issue.text}`, { ...issue, severity: 'info', detail: '' });
+    // Let the last click's shift check finish so it is filed under this screen, not the next one.
+    await page.waitForFunction(() => !window.__aquaShiftsPending, null, { timeout: 2_000 }).catch(() => {});
     const shifts = await page.evaluate(() => (window.__aquaShifts ?? []).splice(0));
     report.push({ id, label, files, issues: [...issues.values()], shifts });
     console.log(`  ${id} ${files.length} shot(s), ${issues.size} issue(s)${shifts.length ? `, ${shifts.length} shift(s)` : ''}`);

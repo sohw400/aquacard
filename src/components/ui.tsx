@@ -69,15 +69,18 @@ function cleanAmount(text: string, decimals: boolean): string {
 }
 
 /**
- * An amount field that groups digits with commas as you type and grows with the number, so the unit placed
- * after it sits right next to the last digit. The value going in and out is the plain number text.
+ * An amount field that groups digits with commas as you type. The input grows with the number and the unit
+ * sits right after the last digit; the unit is also a label reaching to the end of the row, so a tap anywhere
+ * on the row lands in the field. The value going in and out is the plain number text.
  */
-export function AmountInput({ value, onValueChange, decimals = false, ref, placeholder = '0', ...rest }: {
+export function AmountInput({ id, unit, value, onValueChange, decimals = false, ref, placeholder = '0', ...rest }: {
+  id: string;
+  unit: string;
   value: string;
   onValueChange: (value: string) => void;
   decimals?: boolean;
   ref?: Ref<HTMLInputElement>;
-} & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type' | 'inputMode'>) {
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'value' | 'onChange' | 'type' | 'inputMode'>) {
   const own = useRef<HTMLInputElement | null>(null);
   const caret = useRef<number | null>(null);
   const shown = groupDigits(value, decimals);
@@ -92,7 +95,7 @@ export function AmountInput({ value, onValueChange, decimals = false, ref, place
     caret.current = null;
   }, [shown]);
   return <span className="amount-sizer" data-value={shown || placeholder}>
-    <input {...rest} ref={(element) => { own.current = element; if (typeof ref === 'function') ref(element); else if (ref) ref.current = element; }}
+    <input {...rest} id={id} ref={(element) => { own.current = element; if (typeof ref === 'function') ref(element); else if (ref) ref.current = element; }}
       type="text" inputMode={decimals ? 'decimal' : 'numeric'} placeholder={placeholder} value={shown}
       onChange={(event) => {
         const text = event.target.value;
@@ -100,5 +103,6 @@ export function AmountInput({ value, onValueChange, decimals = false, ref, place
         caret.current = before.replace(decimals ? /[^\d.]/g : /\D/g, '').length;
         onValueChange(cleanAmount(text, decimals));
       }} />
+    <label className="amount-unit" htmlFor={id}>{unit}</label>
   </span>;
 }

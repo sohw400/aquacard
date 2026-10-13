@@ -13,5 +13,5 @@
 .receive-sheet .receive-demo { display: flex; align-items: center; gap: 14px; margin-top: 18px; padding: 14px 16px; border-radius: var(--radius-md); background: var(--sunken); }
 .receive-sheet .receive-demo > p { flex: 1; min-width: 0; margin: 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
 .receive-sheet .receive-demo > p > strong { display: block; color: var(--ink); font-size: 15px; font-weight: 600; }
-.receive-sheet .receive-demo > .itd-button { flex: 0 0 auto; min-width: 0; min-height: 40px; padding: 0 16px; border-radius: 999px; background: var(--surface); font-size: 14px; }
+.receive-sheet .receive-demo > .itd-button { flex: 0 0 auto; min-width: 0; min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--surface); font-size: 14px; }
 .receive-sheet .receive-rules { display: grid; gap: 4px; margin: 14px 0 0; padding-left: 18px; color: var(--subtle); font-size: 13px; line-height: 1.6; }

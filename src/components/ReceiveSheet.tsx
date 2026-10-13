@@ -22,8 +22,10 @@ export default function ReceiveSheet({ account, onClose, dispatch, notify }: {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
-  // One line under the buttons answers the last thing done here: a copy, a failed copy or a new tag.
+  // One line under the buttons answers a failed copy or a new tag. A copy answers on its own button instead,
+  // so nothing below moves.
   const [note, setNote] = useState<{ text: string; failed: boolean } | null>(null);
+  const [copied, setCopied] = useState(false);
   const panel = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -41,9 +43,15 @@ export default function ReceiveSheet({ account, onClose, dispatch, notify }: {
   // Rules show once there is enough to judge, or after a save attempt.
   const message = error || (typed.length >= 3 ? issue : '');
 
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
   async function copyTag() {
-    try { await navigator.clipboard.writeText(`@${account.tag}`); setNote({ text: `${josa(`@${account.tag}`, '을', '를')} 복사했어요.`, failed: false }); }
-    catch { setNote({ text: '복사하지 못했어요. 태그를 길게 눌러 복사해 주세요.', failed: true }); }
+    try { await navigator.clipboard.writeText(`@${account.tag}`); setNote(null); setCopied(true); }
+    catch { setCopied(false); setNote({ text: '복사하지 못했어요. 태그를 길게 눌러 복사해 주세요.', failed: true }); }
   }
   function save(event: FormEvent) {
     event.preventDefault();
@@ -90,9 +98,10 @@ export default function ReceiveSheet({ account, onClose, dispatch, notify }: {
           </div>
           <p className="receive-help">Aqua 회원이 이 QR을 찍거나 태그를 넣으면 바로 보낼 수 있어요. 받을 때 수수료는 없어요.</p>
           <div className="receive-actions">
-            <button type="button" className="itd-button itd-secondary" data-testid="receive-copy" onClick={copyTag}><Copy size={17} aria-hidden="true" />태그 복사</button>
+            <button type="button" className="itd-button itd-secondary" data-testid="receive-copy" onClick={copyTag}>{copied ? <><Check size={17} aria-hidden="true" />복사했어요</> : <><Copy size={17} aria-hidden="true" />태그 복사</>}</button>
             <button type="button" className="itd-button itd-secondary" data-testid="receive-edit" onClick={() => { setDraft(''); setError(''); setNote(null); setEditing(true); }}><PencilLine size={17} aria-hidden="true" />태그 바꾸기</button>
           </div>
+          <span className="sr-only" role="status">{copied ? `${josa(`@${account.tag}`, '을', '를')} 복사했어요.` : ''}</span>
           {note && <p className={note.failed ? 'itd-error' : 'receive-note'} role="status" data-testid="receive-note">{note.text}</p>}
           <div className="receive-phone">
             <Toggle checked={account.findByPhone} onChange={(enabled) => setFindable('phone', enabled)} label="휴대폰 번호로 찾기" detail="켜면 내 번호를 아는 회원이 번호 전체를 넣어 나를 찾을&nbsp;수 있어요. 이름은 가려서 보여 줘요." testId="find-by-phone" />

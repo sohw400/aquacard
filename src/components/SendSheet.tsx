@@ -113,7 +113,7 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
           {!typed && !phoneQuery && !emailQuery && <p className="send-demo-note">휴대폰 번호나 이메일 전체로도 찾을&nbsp;수 있어요. 체험용 번호&nbsp;<span className="nowrap">{formatPhone(SAMPLE_PHONE)}</span>, 이메일 <span className="nowrap">{SAMPLE_EMAIL}</span>{particle(SAMPLE_EMAIL, '을', '를')} 넣어 보세요.</p>}
           {phoneQuery ? !error && <p className="send-empty" data-testid="send-phone-hint">{PHONE_SEARCH.test(digits) ? '번호를 다 넣었어요. 찾기를 눌러 주세요.' : '휴대폰 번호는 끝까지 넣어야 찾을\u00a0수 있어요.'} 번호로 찾기를 켠&nbsp;회원만 나와요.</p>
             : emailQuery ? !error && <p className="send-empty" data-testid="send-email-hint">{EMAIL_SEARCH.test(email) ? '이메일 주소를 다 넣었어요. 찾기를 눌러 주세요.' : '이메일 주소는 끝까지 넣어야 찾을\u00a0수 있어요.'} 이메일로 찾기를 켠&nbsp;회원만 나와요.</p> : <>
-            <p className="send-list-title">{typed ? '찾은 회원' : '체험용 회원'}</p>
+            {(matches.length > 0 || !error) && <p className="send-list-title">{typed ? '찾은 회원' : '체험용 회원'}</p>}
             {matches.length ? <ul className="send-members">{matches.map((item) => <li key={item.tag}><button type="button" data-testid={`send-pick-${item.tag}`} onClick={() => pick(item, 'tag')}><span className="send-avatar" aria-hidden="true">{item.name.charAt(0)}</span><span><strong>{maskName(item.name)}</strong><small>@{item.tag}</small></span></button></li>)}</ul> : !error && <p className="send-empty">맞는 회원이 없어요. 태그 전체를 넣고 찾기를 눌러 주세요.</p>}
           </>}
           <button type="submit" className="itd-button itd-primary send-find" data-testid="send-find" disabled={phoneQuery || emailQuery ? false : !typed}>{findLabel}</button>
@@ -129,7 +129,7 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
 
         {step === 'amount' && member && <form onSubmit={(event) => { event.preventDefault(); if (value && !amountIssue) setStep('review'); }} noValidate>
           <div className="send-to"><span className="send-avatar" aria-hidden="true">{member.name.charAt(0)}</span><span><strong>{maskName(member.name)}</strong><small>@{member.tag}{FOUND_BY[origin]}</small></span></div>
-          <div className="itd-amount"><label htmlFor={`${uid}-amount`}>보낼 금액</label><div className="itd-input"><AmountInput id={`${uid}-amount`} data-testid="send-amount" value={value} onValueChange={(next) => { setValue(next); setError(''); }} autoComplete="off" ref={amountInput} aria-invalid={Boolean(amountIssue)} /><span>원</span></div>
+          <div className="itd-amount"><label htmlFor={`${uid}-amount`}>보낼 금액</label><div className="itd-input"><AmountInput id={`${uid}-amount`} unit="원" data-testid="send-amount" value={value} onValueChange={(next) => { setValue(next); setError(''); }} autoComplete="off" ref={amountInput} aria-invalid={Boolean(amountIssue)} /></div>
             {amountIssue ? <p className="itd-field-error itd-in-place" role="alert">{amountIssue}</p> : <div className="itd-available"><span>보낼 수 있는 금액</span><strong>{money(state.spend)}</strong></div>}</div>
           <div className="itd-presets">{[10_000, 30_000, 50_000].map((preset) => <button type="button" key={preset} disabled={preset > state.spend} onClick={() => { setValue(String(preset)); setError(''); }}>{won(preset)}원</button>)}</div>
           <button type="submit" className="itd-button itd-primary send-next" data-testid="send-next" disabled={!value || Boolean(amountIssue)}>다음</button>

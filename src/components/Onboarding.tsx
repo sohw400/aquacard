@@ -21,6 +21,15 @@ function useScan(state: Scan, done: () => void) {
   }, [state, done]);
 }
 
+/**
+ * A status line that, while its step is under way, keeps the height of its longest wording, so pressing the
+ * button never moves the rows below. Once the step is done it fits the result.
+ */
+function CheckText({ steps, current, done }: { steps: string[]; current: number; done: string | null }) {
+  if (done !== null) return <p className="onboarding-check-text">{done}</p>;
+  return <p className="onboarding-check-text">{steps.map((text, index) => <span key={index} className={index === current ? undefined : 'reserve'} aria-hidden={index === current ? undefined : true}>{text}</span>)}</p>;
+}
+
 /** Sign-up with KYC, sign-in and password reset. Codes are shown on screen because the demo sends no mail or SMS. */
 export default function Onboarding({ state, dispatch }: { state: AppState; dispatch: (action: Action) => AppState }) {
   const [screen, setScreen] = useState<Screen>(state.account ? 'login' : 'welcome');
@@ -180,12 +189,12 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
       <div className={`onboarding-check${idScan === 'done' ? ' done' : ''}`}>
         <strong>{ID_TYPES[idType]} 촬영</strong>
         {idScan === 'done' ? <span className="onboarding-done" data-testid="kyc-id-done"><Check size={18} strokeWidth={2.6} />완료</span> : <button type="button" className="btn small neutral" data-testid="kyc-id-scan" disabled={idScan === 'checking'} onClick={() => setIdScan('checking')}>{idScan === 'checking' ? '확인 중' : '촬영하기'}</button>}
-        <p>{idScan === 'done' ? `${name} · ${birth.slice(0, 4)}.${birth.slice(4, 6)}.${birth.slice(6, 8)}` : idScan === 'checking' ? '진짜 신분증인지 확인하고 있어요.' : '빛이 반사되지 않게 네 모서리가 다 보이도록 찍어 주세요.'}</p>
+        <CheckText current={idScan === 'checking' ? 1 : 0} steps={['빛이 반사되지 않게 네 모서리가 다 보이도록 찍어 주세요.', '진짜 신분증인지 확인하고 있어요.']} done={idScan === 'done' ? `${name} · ${birth.slice(0, 4)}.${birth.slice(4, 6)}.${birth.slice(6, 8)}` : null} />
       </div>
       <div className={`onboarding-check${faceScan === 'done' ? ' done' : ''}`}>
         <strong>얼굴 확인</strong>
         {faceScan === 'done' ? <span className="onboarding-done" data-testid="kyc-face-done"><Check size={18} strokeWidth={2.6} />완료</span> : <button type="button" className="btn small neutral" data-testid="kyc-face-scan" disabled={idScan !== 'done' || faceScan === 'checking'} onClick={() => setFaceScan('checking')}>{faceScan === 'checking' ? '확인 중' : '촬영하기'}</button>}
-        <p>{faceScan === 'done' ? '신분증 사진과 같은 사람이에요.' : faceScan === 'checking' ? '얼굴을 맞춰 보고 있어요.' : idScan === 'done' ? '안내에 따라 고개를 천천히 돌려 주세요.' : '신분증부터 찍어 주세요.'}</p>
+        <CheckText current={faceScan === 'checking' ? 2 : idScan === 'done' ? 1 : 0} steps={['신분증부터 찍어 주세요.', '안내에 따라 고개를 천천히 돌려 주세요.', '얼굴을 맞춰 보고 있어요.']} done={faceScan === 'done' ? '신분증 사진과 같은 사람이에요.' : null} />
       </div>
       <p className="onboarding-hint">체험판이라 카메라는 켜지 않고 과정만 보여 드려요.</p>
       <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="kyc-id-next" disabled={idScan !== 'done' || faceScan !== 'done'} onClick={() => go('questions')}>다음</button></div>

@@ -19,12 +19,11 @@
 .internal-transfer-dialog .itd-input:has(input[aria-invalid='true']) { border-color: var(--danger); }
 .internal-transfer-dialog .itd-input .amount-sizer { color: var(--ink); font-size: 34px; font-weight: 700; line-height: 1.3; letter-spacing: -.8px; font-variant-numeric: tabular-nums; }
 .internal-transfer-dialog .itd-input input { padding: 0; border: 0; outline: 0; background: transparent; }
-.internal-transfer-dialog .itd-input > span:not(.amount-sizer) { flex-shrink: 0; color: var(--muted); font-size: 18px; font-weight: 600; }
 .internal-transfer-dialog .itd-field-error { margin: 8px 0 0; color: var(--danger); font-size: 13px; line-height: 1.6; }
 /* In place of the balance line under an amount, at the same size, so nothing moves. */
 .internal-transfer-dialog .itd-field-error.itd-in-place { margin-top: 10px; font-size: 14px; line-height: 1.5; }
 /* Sheets that hold a search or a form keep one height, so the field never moves while results or messages change. */
-.internal-transfer-dialog:is(.send-sheet[data-step='tag'], .receive-sheet.editing, .address-sheet) { height: min(var(--sheet-height, 640px), calc(100dvh - 12px - env(safe-area-inset-top))); }
+.internal-transfer-dialog:is(.send-sheet[data-step='tag'], .receive-sheet.editing, .address-sheet, .wallet-add) { height: min(var(--sheet-height, 640px), calc(100dvh - 12px - env(safe-area-inset-top))); }
 .internal-transfer-dialog .itd-body { flex: 1; }
 .internal-transfer-dialog .itd-available { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 10px; font-size: 14px; line-height: 1.5; }
 .internal-transfer-dialog .itd-available > span { color: var(--subtle); }
@@ -54,7 +53,7 @@
 .internal-transfer-dialog .itd-net-row dt { color: var(--ink); font-weight: 600; }
 .internal-transfer-dialog .itd-net-row dd { color: var(--accent); font-size: 20px; font-weight: 700; letter-spacing: -.4px; }
 .internal-transfer-dialog .itd-expired { margin: 8px 0 4px; color: var(--danger); font-size: 13px; line-height: 1.6; }
-.internal-transfer-dialog .itd-balances { margin-top: 12px; padding: 10px 16px 6px; border-radius: var(--radius-md); background: var(--sunken); }
+.internal-transfer-dialog .itd-balances { margin-top: 12px; padding: 14px 16px 6px; border-radius: var(--radius-md); background: var(--sunken); }
 .internal-transfer-dialog .itd-balance { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
 .internal-transfer-dialog .itd-balance > span { color: var(--muted); font-size: 14px; line-height: 1.5; }
 .internal-transfer-dialog .itd-balance > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 8px; font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums; }

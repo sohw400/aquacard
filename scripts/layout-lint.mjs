@@ -231,12 +231,37 @@ function inPageLint({ gutter }) {
     }
   }
 
+  // A control can reach past its painted box with an absolutely placed ::before/::after (hit slop).
+  function hitArea(element) {
+    const rect = element.getBoundingClientRect();
+    let { top, right, bottom, left } = rect;
+    if (styleOf(element).position !== 'static') {
+      for (const pseudo of ['::before', '::after']) {
+        const style = getComputedStyle(element, pseudo);
+        if (style.content === 'none' || style.display === 'none' || style.position !== 'absolute' || style.pointerEvents === 'none') continue;
+        const inset = ['top', 'right', 'bottom', 'left'].map((side) => parseFloat(style[side]));
+        if (inset.some(Number.isNaN)) continue;
+        top = Math.min(top, rect.top + inset[0]); right = Math.max(right, rect.right - inset[1]);
+        bottom = Math.max(bottom, rect.bottom - inset[2]); left = Math.min(left, rect.left + inset[3]);
+      }
+    }
+    // A tap on a label beside a field (an amount's unit, say) lands in the field too.
+    if (element.labels) {
+      for (const label of element.labels) {
+        const area = label === element ? null : hitArea(label);
+        if (!area || area.bottom <= rect.top || area.top >= rect.bottom) continue;
+        top = Math.min(top, area.top); right = Math.max(right, area.right); bottom = Math.max(bottom, area.bottom); left = Math.min(left, area.left);
+      }
+    }
+    return { top, right, bottom, left, width: right - left, height: bottom - top };
+  }
+
   // Buttons: label (text plus icon) centred in the button, and a 44px tap target.
   const interactive = shown.filter((element) => element.matches('button, a[href], input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="switch"], [role="tab"]'));
   for (const control of interactive) {
     const rect = control.getBoundingClientRect();
     const target = control.matches('input[type="checkbox"], input[type="radio"]') ? control.closest('label') ?? control : control;
-    const targetRect = target.getBoundingClientRect();
+    const targetRect = hitArea(target);
     if ((targetRect.height < 43.5 || targetRect.width < 43.5) && !(control.matches('a') && control.closest('p'))) report('tap-target', target, `${Math.round(targetRect.width)}×${Math.round(targetRect.height)}`);
     if (!control.matches('button, [role="button"], summary') || control.matches('[role="switch"]')) continue;
     const style = styleOf(control);
@@ -380,13 +405,27 @@ export async function lintInteraction(page, { hover = false } = {}) {
 function inPageInteraction({ hover }) {
   const issues = [];
   const rules = [];
+  // Split a selector list on top-level commas only, so :is(a, b):active stays one selector.
+  const selectors = (text) => {
+    const parts = [];
+    let depth = 0;
+    let start = 0;
+    for (let index = 0; index < text.length; index += 1) {
+      if (text[index] === '(') depth += 1;
+      else if (text[index] === ')') depth -= 1;
+      else if (text[index] === ',' && depth === 0) { parts.push(text.slice(start, index)); start = index + 1; }
+    }
+    return [...parts, text.slice(start)];
+  };
   const visit = (list) => {
     for (const rule of list) {
       if (rule instanceof CSSStyleRule) {
-        for (const part of rule.selectorText.split(',')) {
+        for (const part of selectors(rule.selectorText)) {
           for (const state of ['active', 'hover', 'disabled']) {
-            if (!part.includes(`:${state}`)) continue;
-            const stripped = part.replace(new RegExp(`:${state}`, 'g'), '').replace(/:not\(\s*\)/g, '').trim();
+            // :not(:disabled) on a pressed rule is not a disabled style.
+            if (!part.replace(/:not\([^()]*\)/g, '').includes(`:${state}`)) continue;
+            // A style on the control's ::before/::after (a switch track, say) still styles the control.
+            const stripped = part.replace(new RegExp(`:${state}`, 'g'), '').replace(/::?(before|after)\b/g, '').replace(/:not\(\s*\)/g, '').trim();
             rules.push({ state, selector: part.trim(), stripped: stripped || '*' });
           }
         }
@@ -399,7 +438,8 @@ function inPageInteraction({ hover }) {
   for (const sheet of document.styleSheets) { try { visit(sheet.cssRules); } catch { /* cross-origin sheet */ } }
   const matches = (element, selector) => { try { return element.matches(selector); } catch { return false; } };
   const styled = (element, state) => rules.some((rule) => rule.state === state && (matches(element, rule.stripped) || [...element.querySelectorAll('*')].some((child) => matches(child, rule.stripped) && rule.selector.includes(' '))));
-  const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+  // Content of a closed <details> keeps its boxes in Chromium but is not on screen.
+  const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden' && !element.closest('details:not([open]) > :not(summary)');
   const describe = (element) => { const test = element.getAttribute('data-testid'); const classes = [...element.classList].slice(0, 2).join('.'); return `${element.tagName.toLowerCase()}${test ? `[${test}]` : ''}${classes ? `.${classes}` : ''}`; };
   const text = (element) => (element.innerText || element.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim().slice(0, 40);
   const dialogs = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].filter(visible);
@@ -411,8 +451,11 @@ function inPageInteraction({ hover }) {
       if (!styled(control, 'disabled') && !control.matches('[aria-disabled]')) issues.push({ type: 'disabled-look', where: describe(control), text: text(control) });
       continue;
     }
-    if (!styled(control, 'active') && !control.matches('[role="switch"]')) issues.push({ type: 'no-press-feedback', where: describe(control), text: text(control) });
-    if (hover && !styled(control, 'hover')) issues.push({ type: 'no-hover-feedback', where: describe(control), text: text(control) });
+    // A switch moves its knob, and an already chosen tab or chip does nothing when pressed again.
+    const settled = control.matches('[role="switch"], .selected, [aria-pressed="true"], [aria-selected="true"], [aria-current]');
+    if (!styled(control, 'active') && !settled) issues.push({ type: 'no-press-feedback', where: describe(control), text: text(control) });
+    const chosen = control.matches('.selected, [aria-pressed="true"], [aria-selected="true"], [aria-current]');
+    if (hover && !chosen && !styled(control, 'hover')) issues.push({ type: 'no-hover-feedback', where: describe(control), text: text(control) });
   }
   return issues;
 }
@@ -423,9 +466,15 @@ function inPageInteraction({ hover }) {
  */
 export function recordShifts() {
   window.__aquaShifts = [];
+  window.__aquaShiftsPending = 0;
+  // Position in its scroll layer: inner scroll offsets are added back, and the page scroll too unless the text
+  // sits in a fixed layer (the tab bar, a sheet), which does not move with the page.
   const scrolledBy = (element) => {
     let total = 0;
-    for (let node = element.parentElement; node; node = node.parentElement) total += node.scrollTop || 0;
+    for (let node = element; node && node !== document.body; node = node.parentElement) {
+      if (node !== element) total += node.scrollTop || 0;
+      if (getComputedStyle(node).position === 'fixed') return total;
+    }
     return total + (document.scrollingElement?.scrollTop ?? 0);
   };
   const snapshot = (skip) => {
@@ -448,7 +497,9 @@ export function recordShifts() {
     if (!target) return;
     const label = (target.innerText || target.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim().slice(0, 30);
     const before = snapshot(target);
+    window.__aquaShiftsPending += 1;
     setTimeout(() => {
+      window.__aquaShiftsPending -= 1;
       const after = snapshot(target.isConnected ? target : null);
       const moved = [];
       for (const [key, then] of before) {
