@@ -566,7 +566,8 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       const fee = PLANS[card.plan].physicalFee;
       if (fee) chargeSpend(state, fee, '신청해 주세요');
       state.card = { ...card, physical: true, delivery: 'preparing', physicalActive: false, address: { zip: action.address.zip, road: action.address.road.trim(), detail: action.address.detail.trim() } };
-      transaction(state, now, { kind: 'card', title: fee ? '실물카드 발급비' : `${PLANS[card.plan].card} 신청`, amount: fee ? -fee : 0, status: 'completed', note: `${card.plan === 'standard' ? '실물카드' : PLANS[card.plan].card}를 신청했어요. 배송까지 ${POLICY.deliveryEstimate}이 걸려요.` });
+      const cardName = card.plan === 'standard' ? '실물카드' : PLANS[card.plan].card;
+      transaction(state, now, { kind: 'card', title: fee ? '실물카드 발급비' : `${cardName} 신청`, amount: fee ? -fee : 0, status: 'completed', note: `${cardName}를 신청했어요. 배송까지 ${POLICY.deliveryEstimate}이 걸려요.` });
       return state;
     }
     case 'REISSUE_CARD': {
