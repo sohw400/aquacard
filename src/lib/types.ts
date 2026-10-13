@@ -92,7 +92,7 @@ export interface CardState {
   wallets: MobileWallet[];
   /** Fees taken from the spend balance at submission; returned if the application comes back or is declined. */
   chargedFee: number;
-  /** Next Plus fee date on the demo clock; null while no monthly fee is due. */
+  /** Next yearly membership fee date on the demo clock; null on Standard. */
   billingAt: number | null;
   /** A lower tier that takes over on the next renewal date. */
   nextPlan: Plan | null;
