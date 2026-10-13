@@ -2,6 +2,31 @@ export type AssetSymbol = 'USDC' | 'USDT' | 'BTC' | 'ETH';
 export type Plan = 'basic' | 'plus';
 export type CardStage = 'not_applied' | 'identity' | 'plan' | 'details' | 'review' | 'submitted' | 'needs_info' | 'approved' | 'issued' | 'active' | 'rejected';
 export type DeliveryStage = 'none' | 'preparing' | 'shipped' | 'delivered';
+export type FundingNetwork = 'polygon' | 'ethereum' | 'bitcoin';
+
+export interface FundingOperation {
+  id: string;
+  requestId: string;
+  kind: 'deposit' | 'withdrawal';
+  source: 'spend' | 'holdings';
+  symbol: AssetSymbol;
+  network: FundingNetwork;
+  amountWon: number;
+  units: number;
+  feeWon: number;
+  networkFeeWon: number;
+  netWon: number;
+  outputUnits: number;
+  address: string;
+  recipient: string;
+  status: 'awaiting_deposit' | 'confirming' | 'converting' | 'reviewing' | 'broadcasting' | 'completed' | 'failed' | 'cancelled';
+  createdAt: number;
+  updatedAt: number;
+  stageDueAt: number | null;
+  failureReason?: string;
+  simulation: 'success' | 'failure';
+  retryOf?: string;
+}
 
 export interface CardState {
   stage: CardStage;
@@ -23,9 +48,10 @@ export interface Transaction {
   title: string;
   amount: number;
   timestamp: number;
-  status: 'pending' | 'completed' | 'refunded' | 'partially_refunded';
+  status: 'pending' | 'completed' | 'refunded' | 'partially_refunded' | 'failed' | 'cancelled';
   note: string;
   paymentId?: string;
+  fundingId?: string;
 }
 
 export interface Payment {
@@ -62,6 +88,7 @@ export interface AppState {
   card: CardState;
   payments: Payment[];
   transactions: Transaction[];
+  fundingOperations: FundingOperation[];
   lastAccruedAt: number;
   clockOffsetMs: number;
   monthlyCashback: number;
@@ -80,6 +107,9 @@ export type Action =
   | { type: 'DEPOSIT'; bucket: 'spend' | 'reserve'; amount: number }
   | { type: 'RECEIVE_ASSET'; symbol: AssetSymbol; units: number; quotedAt: number }
   | { type: 'WITHDRAW_CRYPTO'; symbol: AssetSymbol; amount: number; quotedAt: number }
+  | { type: 'START_FUNDING'; requestId: string; kind: 'deposit' | 'withdrawal'; symbol: AssetSymbol; network: FundingNetwork; source: 'spend' | 'holdings'; amount?: number; units?: number; address?: string; recipient?: string; quotedAt: number; simulation?: 'success' | 'failure'; retryOf?: string }
+  | { type: 'SIMULATE_FUNDING_DEPOSIT'; id: string }
+  | { type: 'CANCEL_FUNDING'; id: string }
   | { type: 'DEPOSIT_ASSET'; symbol: AssetSymbol; units: number }
   | { type: 'WITHDRAW_ASSET'; symbol: AssetSymbol; units: number }
   | { type: 'WITHDRAW_FUNDS'; bucket: 'spend' | 'reserve'; amount: number }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { applyAction, availableToSpend, createInitialState, loadState, portfolioValue, saveState, STORAGE_KEY } from './engine';
 import { POLICY } from './policy';
 import { assertFundingQuoteFresh, getFundingQuote } from './funding';
+import { getHeldFundingWon } from './movements';
 import type { Action, AppState, AssetSymbol, CardState } from './types';
 
 const NOW = Date.UTC(2026, 9, 13, 3);
@@ -18,6 +19,32 @@ function confirm(state: AppState, now = NOW): AppState {
 }
 function close(actual: number, expected: number): void {
   assert.ok(Math.abs(actual - expected) < 1e-7, `${actual} should equal ${expected}`);
+}
+
+type StartFunding = Extract<Action, { type: 'START_FUNDING' }>;
+const depositRequest = (overrides: Partial<StartFunding> = {}): StartFunding => ({
+  type: 'START_FUNDING', requestId: 'deposit-request', kind: 'deposit', source: 'spend',
+  symbol: 'USDC', network: 'polygon', units: 10, quotedAt: NOW, ...overrides,
+});
+const withdrawalRequest = (overrides: Partial<StartFunding> = {}): StartFunding => ({
+  type: 'START_FUNDING', requestId: 'withdrawal-request', kind: 'withdrawal', source: 'spend',
+  symbol: 'USDC', network: 'polygon', amount: 14_000, address: 'aqua-preview:polygon:usdc', recipient: '내 지갑', quotedAt: NOW, ...overrides,
+});
+function withFundingStorage(run: (storage: { values: Map<string, string>; setTime: (time: number) => void }) => void): void {
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const originalNow = Date.now;
+  const values = new Map<string, string>();
+  let now = NOW;
+  Date.now = () => now;
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); },
+  } });
+  try { run({ values, setTime: (time) => { now = time; } }); }
+  finally {
+    Date.now = originalNow;
+    if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+  }
 }
 
 test('초기 총 자산과 선택한 결제 잔액만 계산한다', () => {
@@ -384,6 +411,306 @@ test('자동 전환된 원화의 Reserve 지정·해제에는 추가 매도나 �
   assert.deepEqual(state.holdings, initial.holdings);
   assert.equal(portfolioValue(state), assets);
   assert.equal(state.transactions.filter((item) => item.kind === 'convert').length, 0);
+});
+
+test('입금 대기·확인·전환이 끝난 뒤에만 순 원화를 한 번 반영하고 같은 거래 행을 갱신한다', () => {
+  const initial = createInitialState(NOW);
+  let state = applyAction(initial, depositRequest(), NOW);
+  const id = state.fundingOperations[0].id;
+  const txId = state.transactions[0].id;
+  assert.equal(state.fundingOperations[0].status, 'awaiting_deposit');
+  assert.equal(state.fundingOperations[0].stageDueAt, null);
+  assert.equal(state.spend, initial.spend);
+  assert.equal(state.transactions[0].amount, 13_930);
+  assert.equal(state.transactions[0].status, 'pending');
+  state = applyAction(state, { type: 'SIMULATE_FUNDING_DEPOSIT', id }, NOW);
+  state = applyAction(state, { type: 'SIMULATE_FUNDING_DEPOSIT', id }, NOW + 1_000);
+  assert.equal(state.fundingOperations[0].stageDueAt, NOW + 3_000);
+  state = applyAction(state, { type: 'TICK' }, NOW + 2_999);
+  assert.equal(state.fundingOperations[0].status, 'confirming');
+  state = applyAction(state, { type: 'TICK' }, NOW + 3_000);
+  assert.equal(state.fundingOperations[0].status, 'converting');
+  assert.equal(state.spend, initial.spend);
+  state = applyAction(state, { type: 'TICK' }, NOW + 6_000);
+  assert.equal(state.fundingOperations[0].status, 'completed');
+  assert.equal(state.spend, initial.spend + 13_930);
+  assert.deepEqual(state.holdings, initial.holdings);
+  assert.equal(state.transactions.length, 1);
+  assert.equal(state.transactions[0].id, txId);
+  assert.equal(state.transactions[0].status, 'completed');
+  state = applyAction(state, { type: 'TICK' }, NOW + 20_000);
+  state = applyAction(state, { type: 'SIMULATE_FUNDING_DEPOSIT', id }, NOW + 20_000);
+  assert.equal(state.spend, initial.spend + 13_930);
+  assert.equal(state.transactions.length, 1);
+});
+
+test('출금 보류 원금은 카드 사용 가능액에서 빠지지만 완료 전까지 총 자산에 포함된다', () => {
+  const initial = createInitialState(NOW);
+  let state = applyAction(initial, withdrawalRequest(), NOW);
+  assert.equal(state.spend, 114_500);
+  assert.equal(state.fundingOperations[0].status, 'reviewing');
+  assert.equal(state.fundingOperations[0].feeWon, 70);
+  assert.equal(state.fundingOperations[0].networkFeeWon, 140);
+  assert.equal(state.fundingOperations[0].netWon, 13_790);
+  assert.equal(state.fundingOperations[0].outputUnits, 9.85);
+  assert.equal(getHeldFundingWon(state), 14_000);
+  assert.equal(availableToSpend(state), availableToSpend(initial) - 14_000);
+  assert.equal(portfolioValue(state), portfolioValue(initial));
+  state = applyAction(state, { type: 'TICK' }, NOW + 3_000);
+  assert.equal(state.fundingOperations[0].status, 'broadcasting');
+  assert.equal(getHeldFundingWon(state), 14_000);
+  assert.throws(() => applyAction(state, { type: 'CANCEL_FUNDING', id: state.fundingOperations[0].id }, NOW + 3_001), /취소할 수 없습니다/);
+  state = applyAction(state, { type: 'TICK' }, NOW + 6_000);
+  assert.equal(state.fundingOperations[0].status, 'completed');
+  assert.equal(getHeldFundingWon(state), 0);
+  assert.equal(portfolioValue(state), portfolioValue(initial) - 14_000);
+  assert.equal(state.spend, 114_500);
+  assert.equal(state.transactions.length, 1);
+  state = applyAction(state, withdrawalRequest(), NOW + 90_000);
+  assert.equal(state.spend, 114_500, '완료 요청의 재전송도 원금을 다시 보류하지 않는다');
+  assert.equal(state.fundingOperations.length, 1);
+  assert.equal(state.transactions.length, 1);
+});
+
+test('검토 중 취소는 예약 수수료까지 전액 복원하고 재취소·기한 진행에도 중복 복원하지 않는다', () => {
+  const initial = createInitialState(NOW);
+  let state = applyAction(initial, withdrawalRequest(), NOW);
+  const id = state.fundingOperations[0].id;
+  state = applyAction(state, { type: 'CANCEL_FUNDING', id }, NOW + 2_999);
+  assert.equal(state.spend, initial.spend);
+  assert.equal(state.fundingOperations[0].status, 'cancelled');
+  assert.equal(state.fundingOperations[0].stageDueAt, null);
+  assert.equal(state.transactions[0].status, 'cancelled');
+  state = applyAction(state, { type: 'CANCEL_FUNDING', id }, NOW + 10_000);
+  assert.equal(state.spend, initial.spend);
+  assert.equal(state.transactions.length, 1);
+  assert.equal(getHeldFundingWon(state), 0);
+  const pending = applyAction(initial, withdrawalRequest(), NOW);
+  assert.throws(() => applyAction(pending, { type: 'CANCEL_FUNDING', id: pending.fundingOperations[0].id }, NOW + 3_000), /취소할 수 없습니다/);
+});
+
+test('출금 실패는 송신 전에 원금 전체를 복원하고 재시도는 새 요청·새 견적의 별도 기록이다', () => {
+  const initial = createInitialState(NOW);
+  const failedRequest = withdrawalRequest({ simulation: 'failure' });
+  let state = applyAction(initial, failedRequest, NOW);
+  const originalId = state.fundingOperations[0].id;
+  state = applyAction(state, { type: 'TICK' }, NOW + 3_000);
+  assert.equal(state.fundingOperations[0].status, 'failed');
+  assert.equal(state.spend, initial.spend);
+  assert.match(state.fundingOperations[0].failureReason!, /모두 복원/);
+  assert.equal(state.transactions[0].status, 'failed');
+  state = applyAction(state, failedRequest, NOW + 40_000);
+  assert.equal(state.spend, initial.spend, '동일 요청 재전송은 실패 요청을 다시 활성화하지 않는다');
+  assert.equal(state.fundingOperations.length, 1);
+  assert.throws(() => applyAction(state, withdrawalRequest({ requestId: 'retry-expired', retryOf: originalId }), NOW + 40_000), /견적이 만료/);
+  state = applyAction(state, withdrawalRequest({ requestId: 'retry-new', retryOf: originalId, quotedAt: NOW + 40_000 }), NOW + 40_000);
+  assert.equal(state.fundingOperations.length, 2);
+  assert.equal(state.fundingOperations[1].status, 'failed');
+  assert.equal(state.fundingOperations[0].retryOf, originalId);
+  assert.equal(state.spend, initial.spend - 14_000);
+  state = applyAction(state, { type: 'TICK' }, NOW + 46_000);
+  assert.equal(state.fundingOperations[0].status, 'completed');
+  assert.equal(state.spend, initial.spend - 14_000);
+  assert.equal(state.transactions.length, 2);
+});
+
+test('입금 실패와 대기 취소는 아직 반영하지 않은 자산을 새로 지급하거나 환급하지 않는다', () => {
+  const initial = createInitialState(NOW);
+  let failed = applyAction(initial, depositRequest({ simulation: 'failure' }), NOW);
+  failed = applyAction(failed, { type: 'SIMULATE_FUNDING_DEPOSIT', id: failed.fundingOperations[0].id }, NOW);
+  failed = applyAction(failed, { type: 'TICK' }, NOW + 6_000);
+  assert.equal(failed.fundingOperations[0].status, 'failed');
+  assert.equal(failed.spend, initial.spend);
+  assert.equal(failed.transactions[0].status, 'failed');
+  let cancelled = applyAction(initial, depositRequest(), NOW);
+  const id = cancelled.fundingOperations[0].id;
+  cancelled = applyAction(cancelled, { type: 'CANCEL_FUNDING', id }, NOW);
+  cancelled = applyAction(cancelled, { type: 'SIMULATE_FUNDING_DEPOSIT', id }, NOW + 8_000);
+  assert.equal(cancelled.fundingOperations[0].status, 'cancelled');
+  assert.equal(cancelled.spend, initial.spend);
+  assert.deepEqual(cancelled.holdings, initial.holdings);
+});
+
+test('같은 요청 키의 재전송은 동일 효과만 유지하고 내용 변경·잘못된 입력은 원자적으로 거절한다', () => {
+  const initial = createInitialState(NOW);
+  const request = withdrawalRequest();
+  const started = applyAction(initial, request, NOW);
+  assert.deepEqual(applyAction(started, request, NOW), started);
+  for (const change of [{ amount: 15_000 }, { recipient: '다른 지갑' }, { simulation: 'failure' as const }]) {
+    assert.throws(() => applyAction(started, { ...request, ...change }, NOW), /같은 요청 번호/);
+    assert.equal(started.spend, initial.spend - 14_000);
+    assert.equal(started.fundingOperations.length, 1);
+  }
+  for (const change of [{ address: '0x' + '0'.repeat(40) }, { recipient: '' }, { quotedAt: NaN }, { requestId: '' }, { amount: Infinity }]) {
+    assert.throws(() => applyAction(initial, { ...request, ...change }, NOW));
+    assert.equal(initial.spend, 128_500);
+    assert.equal(initial.fundingOperations.length, 0);
+  }
+  assert.throws(() => applyAction(initial, withdrawalRequest({ source: 'holdings', amount: undefined, units: 101 }), NOW), /보유 코인 잔액/);
+  assert.throws(() => applyAction(initial, depositRequest({ units: undefined }), NOW), /수량/);
+});
+
+test('원물 출금은 높은 소수 정밀도와 원 미만 평가액을 보류 중에도 유지하고 취소 시 원래 수량으로 복원한다', () => {
+  const initial = createInitialState(NOW);
+  const units = 1.234567891234567;
+  let state = applyAction(initial, withdrawalRequest({ source: 'holdings', amount: undefined, units }), NOW);
+  assert.equal(state.spend, initial.spend);
+  assert.equal(state.fundingOperations[0].feeWon, 0);
+  assert.equal(state.fundingOperations[0].networkFeeWon, 140);
+  close(portfolioValue(state), portfolioValue(initial));
+  assert.ok(state.holdings.USDC < initial.holdings.USDC);
+  state = applyAction(state, { type: 'CANCEL_FUNDING', id: state.fundingOperations[0].id }, NOW + 1_000);
+  assert.deepEqual(state.holdings, initial.holdings);
+  close(portfolioValue(state), portfolioValue(initial));
+  assert.equal(state.spend, initial.spend);
+});
+
+test('높은 정밀도의 원물 출금 실패는 원래 코인 수량과 예약 네트워크 비용 전체를 한 번 복원한다', () => {
+  const initial = createInitialState(NOW);
+  let state = applyAction(initial, withdrawalRequest({ source: 'holdings', symbol: 'ETH', network: 'ethereum', amount: undefined,
+    units: 0.01000000000001234, address: 'aqua-preview:ethereum:eth', simulation: 'failure' }), NOW);
+  assert.equal(state.fundingOperations[0].feeWon, 0);
+  assert.equal(state.fundingOperations[0].networkFeeWon, 2_000);
+  assert.ok(state.holdings.ETH < initial.holdings.ETH);
+  state = applyAction(state, { type: 'TICK' }, NOW + 3_000);
+  assert.equal(state.fundingOperations[0].status, 'failed');
+  assert.deepEqual(state.holdings, initial.holdings);
+  assert.equal(state.spend, initial.spend);
+  close(portfolioValue(state), portfolioValue(initial));
+  state = applyAction(state, { type: 'TICK' }, NOW + 10_000);
+  assert.deepEqual(state.holdings, initial.holdings);
+  assert.equal(state.transactions.length, 1);
+  assert.equal(state.transactions[0].status, 'failed');
+});
+
+test('입출금 기한은 데모 1일 진행과 무관하게 실제 시간만 따르고 카드 결제는 보류 원금을 쓰지 못한다', () => {
+  const initial = activeState();
+  let state = applyAction(initial, withdrawalRequest({ amount: 120_000 }), NOW);
+  state = applyAction(state, { type: 'ADVANCE_DAY' }, NOW);
+  assert.equal(state.fundingOperations[0].status, 'reviewing');
+  assert.equal(state.spend, 8_500);
+  assert.throws(() => applyAction(state, { type: 'PAY', merchant: '카페', amount: 20_000 }, NOW), /잔액이 부족/);
+  state = applyAction(state, { type: 'TICK' }, NOW + 3_000);
+  assert.equal(state.fundingOperations[0].status, 'broadcasting');
+  assert.equal(state.clockOffsetMs, DAY);
+});
+
+test('재로드는 저장 기한을 이어서 진행하고 완료 후 재로드·재전송으로 중복 입금하지 않는다', () => withFundingStorage(({ setTime }) => {
+  let state = applyAction(createInitialState(NOW), depositRequest(), NOW);
+  const id = state.fundingOperations[0].id;
+  state = applyAction(state, { type: 'SIMULATE_FUNDING_DEPOSIT', id }, NOW);
+  saveState(state);
+  setTime(NOW + 3_500);
+  state = loadState();
+  assert.equal(state.fundingOperations[0].status, 'converting');
+  assert.equal(state.fundingOperations[0].stageDueAt, NOW + 6_000);
+  assert.equal(state.spend, 128_500);
+  saveState(state);
+  setTime(NOW + 10_000);
+  state = loadState();
+  assert.equal(state.fundingOperations[0].status, 'completed');
+  assert.equal(state.spend, 142_430);
+  saveState(state);
+  setTime(NOW + 60_000);
+  state = loadState();
+  state = applyAction(state, depositRequest(), NOW + 60_000);
+  assert.equal(state.spend, 142_430);
+  assert.equal(state.fundingOperations.length, 1);
+  assert.equal(state.transactions.length, 1);
+}));
+
+test('보류 출금 재로드는 전송 기한을 이어서 진행하고 원금을 재차 차감하거나 복원하지 않는다', () => withFundingStorage(({ setTime }) => {
+  let state = applyAction(createInitialState(NOW), withdrawalRequest(), NOW);
+  const id = state.fundingOperations[0].id;
+  saveState(state);
+  setTime(NOW + 3_500);
+  state = loadState();
+  assert.equal(state.fundingOperations[0].id, id);
+  assert.equal(state.fundingOperations[0].status, 'broadcasting');
+  assert.equal(state.fundingOperations[0].stageDueAt, NOW + 6_000);
+  assert.equal(state.spend, 114_500);
+  assert.equal(getHeldFundingWon(state), 14_000);
+  saveState(state);
+  setTime(NOW + 9_000);
+  state = loadState();
+  assert.equal(state.fundingOperations[0].status, 'completed');
+  assert.equal(state.spend, 114_500);
+  assert.equal(getHeldFundingWon(state), 0);
+  saveState(state);
+  state = loadState();
+  assert.equal(state.spend, 114_500);
+  assert.equal(state.transactions.length, 1);
+}));
+
+test('기존 v1 저장 데이터는 입출금 배열만 보충해 잔액과 카드·이용 내역을 보존한다', () => withFundingStorage(({ values }) => {
+  const original = activeState();
+  original.spend = 777_000;
+  const legacy = { ...original } as Partial<AppState>;
+  delete legacy.fundingOperations;
+  values.set(STORAGE_KEY, JSON.stringify(legacy));
+  const restored = loadState();
+  assert.equal(restored.spend, 777_000);
+  assert.equal(restored.reserve, original.reserve);
+  assert.equal(restored.rewards, original.rewards);
+  assert.deepEqual(restored.card, original.card);
+  assert.deepEqual(restored.holdings, original.holdings);
+  assert.deepEqual(restored.payments, original.payments);
+  assert.deepEqual(restored.fundingOperations, []);
+}));
+
+test('모순된 저장 견적과 중복 요청 기록을 거절해 잘못된 기한 입금 효과를 실행하지 않는다', () => withFundingStorage(({ values, setTime }) => {
+  let original = applyAction(createInitialState(NOW), depositRequest(), NOW);
+  original = applyAction(original, { type: 'SIMULATE_FUNDING_DEPOSIT', id: original.fundingOperations[0].id }, NOW);
+  const corrupted = structuredClone(original);
+  corrupted.fundingOperations[0].amountWon = 1_000_000;
+  corrupted.fundingOperations[0].netWon = 999_930;
+  corrupted.transactions[0].amount = 999_930;
+  values.set(STORAGE_KEY, JSON.stringify(corrupted));
+  setTime(NOW + 10_000);
+  assert.equal(loadState().spend, 128_500);
+  const duplicate = structuredClone(original);
+  duplicate.fundingOperations.push(structuredClone(duplicate.fundingOperations[0]));
+  values.set(STORAGE_KEY, JSON.stringify(duplicate));
+  assert.deepEqual(loadState().fundingOperations, []);
+}));
+
+test('완료 시 원화 범위 초과는 명시적인 입금 실패로 종결되어 TICK과 화면을 막지 않는다', () => {
+  const initial = createInitialState(NOW);
+  initial.spend = Number.MAX_SAFE_INTEGER;
+  let state = applyAction(initial, depositRequest(), NOW);
+  state = applyAction(state, { type: 'SIMULATE_FUNDING_DEPOSIT', id: state.fundingOperations[0].id }, NOW);
+  state = applyAction(state, { type: 'TICK' }, NOW + 6_000);
+  assert.equal(state.spend, Number.MAX_SAFE_INTEGER);
+  assert.equal(state.fundingOperations[0].status, 'failed');
+  assert.equal(state.fundingOperations[0].stageDueAt, null);
+  assert.match(state.fundingOperations[0].failureReason!, /금액 범위/);
+  assert.equal(state.transactions[0].status, 'failed');
+  assert.doesNotThrow(() => applyAction(state, { type: 'TICK' }, NOW + 10_000));
+});
+
+test('보류금 복원 공간과 요청 번호 범위를 지켜 오버플로 시에도 출금·취소는 원자적이다', () => {
+  const initial = createInitialState(NOW);
+  initial.spend = Number.MAX_SAFE_INTEGER;
+  let state = applyAction(initial, withdrawalRequest(), NOW);
+  assert.throws(() => applyAction(state, { type: 'DEPOSIT', bucket: 'spend', amount: 1_000 }, NOW), /금액 범위/);
+  state = applyAction(state, { type: 'CANCEL_FUNDING', id: state.fundingOperations[0].id }, NOW);
+  assert.equal(state.spend, Number.MAX_SAFE_INTEGER);
+  const exhausted = createInitialState(NOW);
+  exhausted.sequence = Number.MAX_SAFE_INTEGER;
+  const snapshot = structuredClone(exhausted);
+  assert.throws(() => applyAction(exhausted, withdrawalRequest(), NOW), /금액 범위/);
+  assert.deepEqual(exhausted, snapshot);
+});
+
+test('전환 모달과 원장 모두 소수 평가액을 먼저 절사하고 같은 0.5% 수수료를 사용한다', () => {
+  const units = 1_001.9 / 1_400;
+  const quote = getFundingQuote({ direction: 'receive', symbol: 'USDC', units });
+  assert.equal(quote.grossWon, 1_001);
+  assert.equal(quote.feeWon, 6);
+  assert.equal(quote.netWon, 995);
+  const state = applyAction(createInitialState(NOW), { type: 'CONVERT', symbol: 'USDC', units, quotedAt: NOW }, NOW);
+  assert.equal(state.spend, 128_500 + quote.netWon);
+  assert.match(state.transactions[0].note, /\(6원\)/);
 });
 
 test('카드 신청은 단계별로 진행하며 본인 확인·발급·실물 수령 전 활성화를 거절한다', () => {

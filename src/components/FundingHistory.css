@@ -1,0 +1,25 @@
+.home-funding-status { display: flex; width: 100%; align-items: center; gap: 9px; min-height: 48px; padding: 12px 0; background: transparent; color: var(--accent); text-align: left; font-size: 12px; }
+.home-funding-status > span { flex: 1; }
+.wallet-held { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; margin: 20px 0 0; padding: 15px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--ink); font-size: 13px; }
+.wallet-held > small { grid-column: 1 / -1; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.funding-history { padding: 28px 0; border-bottom: 1px solid var(--line); }
+.funding-history-count { font-size: 12px; font-weight: 600; color: var(--accent); margin: 0 0 9px; }
+.funding-history-row { display: flex; width: 100%; gap: 13px; align-items: center; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 19px 0; background: transparent; text-align: left; color: var(--ink); min-height: 76px; }
+.funding-history-row:last-of-type { border-bottom: 0; }
+.funding-history-row:hover { background: #f7f9fb; }
+.funding-history-row > svg { color: var(--muted); flex-shrink: 0; }
+.funding-history-icon { width: 34px; height: 34px; border-radius: 50%; background: #f2f5f7; display: grid; place-items: center; flex-shrink: 0; }
+.funding-history-copy { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.funding-history-copy > strong, .funding-history-amount > strong { font-size: 14px; font-weight: 600; }
+.funding-history-copy > small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.funding-history-amount { margin-left: auto; text-align: right; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+.funding-history-amount > small { font-size: 11px; color: var(--muted); }
+.funding-history-amount > .pending { color: var(--accent); }
+.funding-history-amount > .stopped { color: #765136; }
+@media (max-width: 600px) {
+  .funding-history-row { gap: 9px; }
+  .funding-history-copy > strong, .funding-history-amount > strong { font-size: 12px; }
+  .funding-history-copy > small { font-size: 10px; }
+  .funding-history-icon { width: 29px; height: 29px; }
+}
+@media (max-width: 360px) { .funding-history-icon { display: none; } }
