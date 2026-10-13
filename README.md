@@ -31,7 +31,7 @@ npm run test:devices
 
 Chromium 경로는 `CHROMIUM_PATH`, 서버 주소는 `AQUA_BASE_URL`로 바꿀 수 있습니다(기본 `/usr/bin/chromium`, `http://127.0.0.1:5173`).
 
-2026-10-13 기준 로직 테스트 {UNIT}개, 데스크톱·모바일 브라우저 검사 {BROWSER}개, 320~430px 기기 프로필 5개가 통과했습니다. 기기 프로필은 Chromium에서 화면 크기와 터치를 **모사**한 것이며 실제 iOS Safari·Android 실기기 검증과 다릅니다. 자세한 절차는 [테스트 안내](docs/testing.md)에 있습니다.
+2026-10-13 기준 로직 테스트 82개, 데스크톱·모바일 브라우저 검사 36개, 320~430px 기기 프로필 5개가 통과했습니다. 기기 프로필은 Chromium에서 화면 크기와 터치를 **모사**한 것이며 실제 iOS Safari·Android 실기기 검증과 다릅니다. 자세한 절차는 [테스트 안내](docs/testing.md)에 있습니다.
 
 ## 둘러보기
 

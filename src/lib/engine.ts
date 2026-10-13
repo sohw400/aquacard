@@ -1,6 +1,6 @@
 import { FUND_SOURCES, ID_TYPES, OCCUPATIONS, PURPOSES } from './auth';
 import { ASSETS, FUNDING_ASSETS, fundingLabel, PLANS, POLICY } from './policy';
-import { assertFundingQuoteFresh, getFundingQuote } from './funding';
+import { assertFundingQuoteFresh, getFundingQuote, unitsToWon } from './funding';
 import { createFundingQuote, fundingStatusLabel, getFundingNetworks, validateFundingAddress } from './movements';
 import { validAddress } from './address';
 import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, FundingOperation, FundingSymbol, NotificationSettings, Payment, PaymentControls, Transaction } from './types';
@@ -817,16 +817,29 @@ function validState(value: unknown): value is AppState {
   });
 }
 
-/** Saved states from before coins were converted on arrival: sell what was held into the spend balance once. */
+/** Saved states from before coins were converted on arrival: sell what was held, and any coin withdrawal still in flight, into the spend balance once. */
 function convertHeldCoins(candidate: Record<string, unknown>): Record<string, unknown> {
   if (!('holdings' in candidate)) return candidate;
   const { holdings, ...rest } = candidate;
-  const won = record(holdings) ? SYMBOLS.reduce((sum, symbol) => sum + (nonnegative(holdings[symbol]) ? Math.floor(holdings[symbol] * ASSETS[symbol].price) : 0), 0) : 0;
-  if (won <= 0 || !whole(rest.spend) || !whole(rest.sequence) || !timestamp(rest.lastAccruedAt) || !Array.isArray(rest.transactions)) return rest;
+  const coinWon = (symbol: unknown, units: unknown) => SYMBOLS.includes(symbol as AssetSymbol) && nonnegative(units) ? unitsToWon(units, ASSETS[symbol as AssetSymbol].price) : 0;
+  const operations: unknown[] = Array.isArray(rest.fundingOperations) ? rest.fundingOperations : [];
+  const legacy = operations.filter((item): item is Record<string, unknown> => record(item) && item.source === 'holdings');
+  // Coins already taken out of the wallet for a withdrawal that never finished go back as won; the request itself is dropped.
+  const inFlight = legacy.filter((item) => item.kind === 'withdrawal' && ['reviewing', 'broadcasting'].includes(item.status as string));
+  const won = (record(holdings) ? SYMBOLS.reduce((sum, symbol) => sum + coinWon(symbol, holdings[symbol]), 0) : 0)
+    + inFlight.reduce((sum, item) => sum + coinWon(item.symbol, item.units), 0);
+  const ids = new Set(legacy.map((item) => item.id));
+  const transactions = Array.isArray(rest.transactions) ? rest.transactions.map((item) => {
+    if (!record(item) || !ids.has(item.fundingId)) return item;
+    const { fundingId: _dropped, ...entry } = item;
+    return entry.status === 'pending' ? { ...entry, status: 'cancelled' } : entry;
+  }) : rest.transactions;
+  const cleaned = { ...rest, fundingOperations: operations.filter((item) => !legacy.includes(item as Record<string, unknown>)), transactions };
+  if (won <= 0 || !whole(rest.spend) || !whole(rest.sequence) || !timestamp(rest.lastAccruedAt) || !Array.isArray(transactions)) return cleaned;
   const sequence = rest.sequence + 1;
   const entry: Transaction = { id: `tx-${sequence}`, kind: 'convert', title: '보유 코인 자동 전환', amount: won, timestamp: rest.lastAccruedAt, status: 'completed',
     note: '이전 체험에서 남아 있던 코인을 원화 스테이블로 바꿔 결제 잔액에 더했습니다.' };
-  return { ...rest, spend: rest.spend + won, sequence, transactions: [entry, ...rest.transactions] };
+  return { ...cleaned, spend: rest.spend + won, sequence, transactions: [entry, ...transactions] };
 }
 
 export function loadState(): AppState {

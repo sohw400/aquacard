@@ -30,7 +30,7 @@ test('입금은 전환 수수료와 네트워크 수수료 없이 평가액 전�
       amountWon: 3_290, units: 2.35, feeWon: 0, networkFeeWon: 0, netWon: 3_290, outputUnits: 0,
     });
   }
-  assert.throws(() => createFundingQuote({ kind: 'deposit', source: 'holdings', symbol: 'USDC', network: 'polygon', units: 10 }), /원화 결제/);
+  assert.throws(() => createFundingQuote({ kind: 'deposit', source: 'holdings' as 'spend', symbol: 'USDC', network: 'polygon', units: 10 }), /결제 잔액으로만/);
 });
 
 test('결제 잔액 출금에는 전환·네트워크 수수료를 모두 반영한다', () => {
@@ -43,17 +43,6 @@ test('결제 잔액 출금에는 전환·네트워크 수수료를 모두 반영
   assert.equal(ethereum.feeWon, 50);
   assert.equal(ethereum.networkFeeWon, 2_800);
   assert.equal(ethereum.netWon, 7_150);
-});
-
-test('보유 코인 출금에는 원화 전환 수수료를 부과하지 않는다', () => {
-  assert.deepEqual(createFundingQuote({ kind: 'withdrawal', source: 'holdings', symbol: 'USDC', network: 'polygon', units: 2.35 }), {
-    amountWon: 3_290, units: 2.35, feeWon: 0, networkFeeWon: 140, netWon: 3_150, outputUnits: 3_150 / 1_400,
-  });
-  const quote = createFundingQuote({ kind: 'withdrawal', source: 'holdings', symbol: 'ETH', network: 'ethereum', units: 0.00057 });
-  assert.equal(quote.amountWon, 2_280);
-  assert.equal(quote.feeWon, 0);
-  assert.equal(quote.netWon, 280);
-  assert.equal(quote.outputUnits, 0.00007);
 });
 
 test('소수 원화 평가는 정확히 내림하고 표시 자릿수보다 작은 코인 수량도 받는다', () => {
@@ -80,7 +69,8 @@ test('최소 평가액·안전한 정수·유한 수량과 수수료 이하 출�
     assert.throws(() => createFundingQuote({ kind: 'withdrawal', source: 'spend', symbol: 'USDC', network: 'polygon', amount }));
   }
   assert.throws(() => createFundingQuote({ kind: 'withdrawal', source: 'spend', symbol: 'USDC', network: 'ethereum', amount: 2_800 }), /수수료/);
-  assert.throws(() => createFundingQuote({ kind: 'withdrawal', source: 'holdings', symbol: 'ETH', network: 'ethereum', units: 0.0005 }), /수수료/);
+  assert.throws(() => createFundingQuote({ kind: 'withdrawal', source: 'spend', symbol: 'ETH', network: 'ethereum', amount: 2_011 }), /수수료/,
+    '전환 수수료 11원과 네트워크 비용 2,000원을 빼면 0원이다');
   const minimum = createFundingQuote({ kind: 'deposit', source: 'spend', symbol: 'ETH', network: 'ethereum', units: 0.00025 });
   assert.equal(minimum.amountWon, 1_000);
   assert.equal(minimum.netWon, 1_000);
@@ -141,11 +131,11 @@ test('입금 대기부터 출금 전송까지 처리 중으로 표시하고 종�
   }
 });
 
-test('검토·전송 중인 결제 잔액과 보유 코인 출금 원금만 총 자산 보류액으로 합산한다', () => {
+test('검토·전송 중인 결제 잔액 출금 원금만 총 자산 보류액으로 합산한다', () => {
   const state = createInitialState(1_000);
   state.fundingOperations = [
-    operation({ id: 'spend', amountWon: 10_000 }),
-    operation({ id: 'holdings', source: 'holdings', status: 'broadcasting', amountWon: 20_000 }),
+    operation({ id: 'reviewing', amountWon: 10_000 }),
+    operation({ id: 'broadcasting', status: 'broadcasting', amountWon: 20_000 }),
     operation({ id: 'deposit', kind: 'deposit', status: 'confirming', amountWon: 30_000 }),
     operation({ id: 'completed', status: 'completed', amountWon: 40_000 }),
     operation({ id: 'failed', status: 'failed', amountWon: 50_000 }),
@@ -166,7 +156,7 @@ test('원화 스테이블은 결제 잔액과 1:1이며 출금에는 네트워�
     amountWon: 10_000, units: 10_000, feeWon: 0, networkFeeWon: 140, netWon: 9_860, outputUnits: 9_860,
   });
   assert.equal(createFundingQuote({ kind: 'withdrawal', source: 'spend', symbol: 'USDC', network: 'polygon', amount: 10_000 }).feeWon, 50, '다른 코인으로 바꿔 보낼 때만 전환 수수료를 받는다');
-  assert.throws(() => createFundingQuote({ kind: 'withdrawal', source: 'holdings', symbol: 'KRWS', network: 'polygon', units: 1_000 }), /결제 잔액에서/);
+  assert.throws(() => createFundingQuote({ kind: 'withdrawal', source: 'holdings' as 'spend', symbol: 'KRWS', network: 'polygon', amount: 10_000 }), /결제 잔액으로만/);
   assert.equal(validateFundingAddress('KRWS', 'polygon', 'aqua-preview:polygon:krws'), null);
   assert.deepEqual(getFundingNetworks('KRWS').map((item) => item.id), ['polygon', 'ethereum']);
 });

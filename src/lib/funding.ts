@@ -30,6 +30,12 @@ function decimalRatio(value: number): { numerator: bigint; denominator: bigint }
   return { numerator, denominator: 10n ** BigInt(scale) };
 }
 
+/** Won value of a coin amount, floored without binary rounding (0.0012 BTC at 150,000,000 is exactly 180,000). */
+export function unitsToWon(units: number, price: number): number {
+  const ratio = decimalRatio(units);
+  return Number(ratio.numerator * BigInt(price) / ratio.denominator);
+}
+
 export function getFundingQuote(request: FundingQuoteRequest): FundingQuote {
   if (!request || !SYMBOLS.includes(request.symbol)) throw new Error('지원하는 입출금 코인을 선택해 주세요.');
   const price = FUNDING_ASSETS[request.symbol].price;
