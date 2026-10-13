@@ -1,5 +1,13 @@
+@font-face {
+  font-family: 'Aqua Sans';
+  src: url('/fonts/AquaSansVariable.woff2') format('woff2');
+  font-weight: 45 930;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0020-007E,U+00A0-00FF,U+039E,U+2000-200D,U+2010-2027,U+202F-2060,U+20A0-20BF,U+2192,U+2212,U+3131-3163,U+AC00-AC01,U+AC04,U+AC10-AC11,U+AC15,U+AC19,U+AC1C-AC1D,U+AC31,U+AC70,U+AC74,U+AC80,U+AC8C,U+ACA8,U+ACAC,U+ACB0,U+ACBD,U+ACC4,U+ACE0,U+ACF5,U+ACFC,U+AD00,U+AD6C-AD6D,U+ADC0,U+ADF8,U+ADFC,U+AE08-AE09,U+AE30,U+AE34,U+AE4C,U+AEBC,U+AFB8,U+B05D,U+B098,U+B0A0,U+B0A8,U+B0B4,U+B0B8,U+B108,U+B118,U+B123-B124,U+B204,U+B274,U+B294,U+B298,U+B2A5,U+B2C8,U+B2D9,U+B2E4,U+B2E8,U+B2EB-B2EC,U+B2F9,U+B300,U+B354,U+B370,U+B3C4-B3C5,U+B3CC,U+B3D9,U+B418,U+B41C,U+B420,U+B429,U+B450,U+B4A4,U+B4DC,U+B514,U+B530,U+B54C,U+B610,U+B77C,U+B798,U+B79C,U+B7C9,U+B7EC,U+B808,U+B825,U+B839,U+B840,U+B85C-B85D,U+B8CC,U+B8E8,U+B960,U+B974,U+B978,U+B97C,U+B9AC,U+B9B4,U+B9BC-B9BD,U+B9C8-B9C9,U+B9CC,U+B9CE,U+B9E4,U+BA3C,U+BA54,U+BA70,U+BA74,U+BAA8,U+BABB,U+BB34,U+BB3C,U+BBAC,U+BBF8,U+BBFC,U+BC0F,U+BC14,U+BC18,U+BC1B-BC1C,U+BC29,U+BC30-BC31,U+BC88,U+BC94-BC95,U+BCC0,U+BCC4,U+BCF4-BCF5,U+BCF8,U+BD80,U+BD84,U+BD88,U+BD99,U+BE0C,U+BE14,U+BE44,U+BE7C,U+BE80,U+BE84,U+C0AC-C0AD,U+C0B0,U+C0C1,U+C0C8,U+C0D8,U+C0DD,U+C11C,U+C120,U+C124,U+C131,U+C138,U+C158,U+C18C-C18D,U+C190,U+C1A1,U+C218,U+C21C,U+C228,U+C2A4,U+C2B5,U+C2B9,U+C2DC,U+C2E0,U+C2E4,U+C2EC-C2ED,U+C4F0,U+C4F8,U+C544,U+C548,U+C54A,U+C54C,U+C558,U+C55E,U+C561,U+C57C-C57D,U+C5B4,U+C5C5-C5C6,U+C5C8,U+C5D0,U+C5EC-C5ED,U+C5F0,U+C601,U+C608,U+C624,U+C62C,U+C62E,U+C635,U+C640,U+C644,U+C678,U+C694,U+C6A9,U+C6B0,U+C6B4,U+C6B8,U+C6CC,U+C6D0,U+C6D4,U+C704,U+C720,U+C728,U+C73C,U+C740,U+C744,U+C74C,U+C758,U+C774,U+C778,U+C77C,U+C785,U+C788,U+C790-C791,U+C794,U+C798,U+C7A0,U+C7A5,U+C7AC,U+C800-C801,U+C804,U+C808,U+C810-C811,U+C815,U+C81C,U+C870-C871,U+C874,U+C8FC,U+C900,U+C904,U+C911,U+C99D,U+C9C0-C9C1,U+C9C4,U+C9D0-C9D1,U+C9DC,U+CC28-CC29,U+CC3D-CC3E,U+CC98,U+CCAB,U+CCAD,U+CCB4,U+CD08,U+CD1D,U+CD5C,U+CD94,U+CD9C,U+CDA9,U+CDE8,U+CE69,U+CE74,U+CEE4,U+CEEC,U+CF1C,U+CF54,U+CFE0,U+D06C,U+D070,U+D074,U+D0A4,U+D0C1,U+D0DC-D0DD,U+D130,U+D14C,U+D2B8-D2B9,U+D30C,U+D328,U+D398,U+D3C9,U+D3EC,U+D504,U+D50C,U+D53C,U+D544,U+D558,U+D55C,U+D560,U+D568-D569,U+D574,U+D588-D589,U+D5A5,U+D5C8,U+D5D8,U+D604,U+D61C,U+D638,U+D63C,U+D648,U+D654-D655,U+D658,U+D65C,U+D669,U+D68C,U+D6A8,U+D6C4,U+D734;
+}
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans CJK KR', 'Noto Sans KR', 'Segoe UI', sans-serif;
+  font-family: 'Aqua Sans', -apple-system, BlinkMacSystemFont, 'Noto Sans CJK KR', 'Noto Sans KR', 'Segoe UI', sans-serif;
   color: #16283f;
   background: #f3f4f5;
   font-synthesis: none;
@@ -453,7 +461,7 @@ body { color: var(--ink); }
 .topbar { min-height: 104px; }
 .page-heading h1 { font-weight: 700; letter-spacing: -.7px; }
 .brand { font-size: 22px; letter-spacing: -.65px; }
-.brand::before { content: ''; width: 4px; height: 22px; border-radius: 1px; background: #1d3b56; margin-right: 2px; }
+.brand::before { content: none; }
 .sidebar { background: #fafbfc; border-color: #dde2e6; }
 .sidebar-nav { gap: 7px; }
 .nav-item { border-radius: 7px; font-weight: 500; font-size: 14px; }
@@ -664,3 +672,274 @@ body { color: var(--ink); }
 .reserve-pending > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 12px; color: #63798b; }
 .reserve-pending strong { color: #405c73; font-size: 13px; font-weight: 550; font-variant-numeric: tabular-nums; }
 .reserve-pending > p { font-size: 11px; line-height: 1.8; color: #748797; margin-top: 7px; }
+
+/* Card-first edition: warm surfaces, physical card, quiet account controls. */
+:root { --ink: #172b36; --muted: #6e7a7f; --accent: #183e46; --teal: #183e46; --line: #e0e4e1; --bg: #f5f6f3; color: var(--ink); background: var(--bg); }
+body { background: var(--bg); }
+button, a, summary { touch-action: manipulation; }
+button { transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease; }
+.btn { font-weight: 600; border-radius: 12px; min-height: 50px; }
+.btn.primary { background: var(--accent); }
+.btn.primary:hover { background: #28525a; box-shadow: 0 3px 8px #183e4615; }
+.btn.secondary { background: #eef1ee; color: #30454b; }
+.btn.secondary:hover { background: #e6ebe7; }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.panel { border-color: #e4e7e3; border-radius: 20px; box-shadow: 0 2px 2px #25392e02; }
+.sidebar { width: 208px; padding: 35px 18px; background: #f5f6f3; border-color: #e1e5df; }
+.brand { padding: 0 18px; gap: 9px; color: #183b42; }
+.brand-word { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 39px; font-weight: 400; letter-spacing: -2.5px; line-height: 1; }
+.brand-caption { font-size: 9px; letter-spacing: 2px; align-self: end; padding-bottom: 7px; font-weight: 600; }
+.sidebar-nav { margin-top: 61px; gap: 10px; }
+.nav-item { border-radius: 12px; font-size: 14px; min-height: 50px; color: #71807f; }
+.nav-item.active { background: #e6ece7; color: #214841; font-weight: 650; }
+.nav-item:hover { background: #eaf0e9; }
+.nav-item svg { stroke-width: 1.6; }
+.sidebar-footer { font-size: 10px; color: #7d8985; padding-left: 18px; }
+.main-content { margin-left: 208px; max-width: 1396px; padding: 0 52px 50px; }
+.topbar { min-height: 98px; }
+.page-heading h1 { font-size: 24px; font-weight: 600; letter-spacing: -1px; }
+.mobile-wordmark { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: 400; font-size: 38px; letter-spacing: -2px; }
+.mobile-wordmark > span { font-family: -apple-system,BlinkMacSystemFont,sans-serif; font-style: normal; font-size: 11px; letter-spacing: 1px; margin-left: 8px; font-weight: 500; }
+.utility-button { border-radius: 50%; color: #62736f; }
+.utility-button:hover, .utility-button.active { background: #e6ebe6; }
+.topbar-actions { gap: 7px; }
+.demo-notice { color: #77837f; font-size: 11px; margin: -5px 0 24px; }
+.section-head h2 { font-size: 16px; font-weight: 650; letter-spacing: -.45px; }
+.text-button { color: #657871; font-size: 12px; }
+.card-home { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(0,1fr); grid-template-areas: 'card benefits' 'card reserve' 'activity activity'; gap: 22px; align-items: stretch; }
+.card-center { grid-area: card; min-width: 0; border: 1px solid #e1e6df; border-radius: 24px; padding: 21px 30px 28px; background: #fdfefd; display: flex; flex-direction: column; }
+.card-center-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 15px; }
+.card-center-heading > div { display: flex; gap: 12px; align-items: center; }
+.card-center-heading h2 { font-size: 14px; font-weight: 600; letter-spacing: -.3px; }
+.card-state { display: inline-flex; align-items: center; gap: 5px; color: #7c8983; font-size: 10px; white-space: nowrap; }
+.card-state i { width: 4px; height: 4px; border-radius: 50%; background: #9aa6a0; }
+.card-state.is-ready { color: #446d59; }
+.card-state.is-ready i { background: #638e73; }
+.hero-card-stage { position: relative; min-width: 0; display: grid; place-items: center; padding: 13px 0 20px; margin: 0 0 15px; }
+.card-spendable { margin-top: auto; text-align: center; }
+.card-spendable > span { font-size: 12px; color: #687b74; letter-spacing: -.2px; }
+.card-spendable > strong { display: block; margin-top: 7px; font-size: clamp(30px,3vw,42px); font-weight: 550; line-height: 1.3; letter-spacing: -1.6px; font-variant-numeric: tabular-nums; color: #183b39; }
+.balance-disclosure { position: relative; margin: 1px auto 0; }
+.balance-disclosure > summary { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 12px; gap: 4px; color: #7d8982; font-size: 10px; cursor: pointer; list-style: none; }
+.balance-disclosure summary::-webkit-details-marker { display: none; }
+.balance-disclosure[open] > summary svg { transform: rotate(90deg); }
+.balance-disclosure dl { text-align: left; margin: 0 0 16px; padding: 13px 16px; background: #f2f5f0; border-radius: 12px; display: grid; gap: 12px; }
+.balance-disclosure dl > div { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+.balance-disclosure dt { color: #6c7d73; }
+.balance-disclosure dt span { margin-left: 5px; font-size: 10px; color: #859389; }
+.balance-disclosure dd { margin: 0; font-variant-numeric: tabular-nums; color: #354f40; }
+.card-main-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 7px; }
+.card-main-actions .btn { min-height: 50px; }
+.card-lock-notice { font-size: 11px; color: #8a6d55; display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 17px; line-height: 1.7; }
+.overview-benefits { grid-area: benefits; background: #fff; border: 1px solid #e1e6df; border-radius: 24px; padding: 22px 27px; min-width: 0; }
+.overview-benefits > .section-head { margin-bottom: 10px; }
+.rewards-overview { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 3px 0 20px; width: 100%; background: transparent; text-align: left; }
+.overview-label { display: block; font-size: 12px; color: #708178; line-height: 1.6; }
+.rewards-overview strong { display: block; font-size: 31px; line-height: 1.35; letter-spacing: -1px; font-weight: 550; color: #285147; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.reward-use-state { display: flex; align-items: center; gap: 2px; font-size: 10px; color: #758479; text-align: right; }
+.overview-benefits .cashback-summary { border-top: 1px solid #e5e9e2; padding-top: 21px; }
+.cashback-heading h3 { color: #435d50; font-size: 13px; font-weight: 600; }
+.cashback-heading > div > p { font-size: 10px; color: #879188; }
+.cashback-rate { font-size: 13px; color: #537565; }
+.cashback-metric dd { color: #315345; font-size: 18px; letter-spacing: -.7px; font-weight: 550; }
+.cashback-metric dt { color: #7b8980; font-size: 10px; }
+.cashback-metric + .cashback-metric { border-color: #e5eae3; }
+.cashback-heading { gap: 9px; margin-bottom: 16px; }
+.cashback-progress { height: 3px; margin-top: 16px; background: #e9ede7; }
+.cashback-progress-fill { background: #829d85; transition: width 450ms ease; }
+.cashback-limit { color: #809083; }
+.overview-reserve { grid-area: reserve; min-width: 0; border-radius: 24px; padding: 18px 27px 22px; background: #e9efe7; border: 1px solid #e0e7dc; }
+.overview-reserve .section-head { margin-bottom: 13px; }
+.overview-reserve .section-head > span { font-size: 12px; color: #537150; }
+.reserve-overview { background: none; display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; padding: 0; min-height: 55px; }
+.reserve-overview strong { font-size: 26px; font-weight: 550; letter-spacing: -.8px; line-height: 1.5; color: #31543d; font-variant-numeric: tabular-nums; }
+.reserve-overview > svg { color: #718e70; }
+.reserve-accrual-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 11px; margin-top: 18px; color: #758671; }
+.reserve-accrual-line strong { color: #456342; margin-left: 7px; font-size: 12px; font-weight: 600; }
+.overview-reserve > p { font-size: 10px; color: #7c8c76; margin-top: 8px; }
+.overview-activity { grid-area: activity; min-width: 0; background: #fff; border: 1px solid #e3e7e1; border-radius: 24px; padding: 20px 29px 12px; }
+.overview-activity .section-head { margin-bottom: 3px; }
+.activity-row { min-height: 78px; border-color: #ebeee8; }
+.activity-icon { border-radius: 50%; background: #f1f4ee; color: #7b8d7b; width: 38px; height: 38px; }
+.activity-copy strong { font-weight: 550; font-size: 13px; color: #34483a; }
+.activity-copy > span { color: #8b978d; font-size: 11px; }
+.activity-amount > strong { font-size: 14px; font-weight: 550; }
+.activity-amount.positive { color: #5a7d62; }
+.page-stack { max-width: 840px; gap: 22px; }
+.wallet-cash { padding: 29px 32px; }
+.account-heading { display: flex; gap: 12px; align-items: center; margin-bottom: 26px; }
+.account-mark { display: grid; place-items: center; width: 43px; height: 43px; border: 1px solid #dce5da; border-radius: 50%; background: #f0f5ec; color: #688064; }
+.account-heading > span:last-child { font-size: 13px; color: #405942; font-weight: 550; }
+.account-heading > span > span { display: block; font-size: 10px; color: #8b9786; margin-top: 5px; letter-spacing: .3px; font-weight: 400; }
+.wallet-cash h2 { color: #7a8a7b; font-size: 12px; }
+.wallet-cash .display-value { color: #24462e; font-size: 42px; font-weight: 550; }
+.wallet-cash .actions { gap: 10px; margin-top: 24px; }
+.wallet-cash .actions > .btn { flex: 1; }
+.wallet-route { display: flex; justify-content: center; align-items: center; gap: 17px; margin-top: 27px; padding-top: 23px; border-top: 1px solid #e5eae1; font-size: 12px; color: #8a9787; }
+.wallet-route strong { font-weight: 550; color: #536f4f; }
+.wallet-route svg { color: #a7b2a1; }
+.wallet-cash > .small-note { margin-top: 12px; font-size: 11px; text-align: center; color: #889680; }
+.wallet-connected { display: grid; gap: 1px; margin: 0 12px; }
+.wallet-connected button { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 59px; background: none; border-bottom: 1px solid #e0e6dc; padding: 0 4px; }
+.wallet-connected span, .wallet-connected strong { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #697d63; }
+.wallet-connected strong { font-weight: 550; color: #436138; }
+.wallet-coins { padding: 24px 30px; }
+.wallet-coins .section-head p { font-size: 11px; color: #8b9788; }
+.wallet-coins .section-head > span { font-size: 10px; }
+.coin-icon { width: 35px; height: 35px; font-weight: 500; }
+.wallet-asset-button { min-height: 85px; }
+.asset-name span, .asset-quote { color: #819080; }
+.asset-card.selected { background: #f3f6ef; border-radius: 13px; }
+.asset-value { color: #365331; }
+.reserve-main { position: relative; padding: 29px 32px; background: #eff3eb; border-color: #e1e6dc; overflow: hidden; }
+.reserve-title-art { display: flex; justify-content: space-between; align-items: center; color: #99ac90; margin-bottom: 34px; }
+.reserve-title-art > span { letter-spacing: 3px; font-size: 10px; font-weight: 500; }
+.reserve-main .section-head h2 { font-size: 13px; font-weight: 450; color: #6b7e5f; }
+.reserve-main .section-head > span { font-size: 12px; color: #688658; }
+.reserve-main > .display-value { color: #315c2b; font-size: 42px; }
+.reserve-main .actions > .btn { flex: 1; }
+.reserve-main .btn.secondary { background: #e2eada; color: #4f7040; }
+.reserve-main > .small-note { color: #8b9c7c; font-size: 11px; text-align: center; }
+.reserve-reward { color: var(--ink); margin: 0; }
+.reserve-reward h2 { font-size: 13px; color: #708268; }
+.reserve-reward .live-value { font-size: 35px; color: #476938; font-weight: 550; }
+.rule-details > summary { color: #72816a; }
+.small-note { color: #7f8d77; }
+.modal-backdrop { background: #132c3266; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.modal { border-radius: 24px; box-shadow: 0 24px 80px #132f3926; }
+.modal-head h2 { font-size: 19px; font-weight: 600; }
+.input-affix input { border-radius: 12px; background: #fbfcf9; border-color: #dfe5d9; padding: 17px; padding-right: 56px; }
+.quote-preview, .payment-sources, .receipt-reward-reconciliation { background: #f2f5ee; border-color: #e3e9dc; border-radius: 15px; }
+.dialog-route { background: #f2f5ef; color: #708269; border-radius: 12px; }
+.dialog-route strong { color: #4f6946; }
+.payment-card-tag { color: #48683f; background: #edf3e7; }
+.toast { background: #234238; border-radius: 14px; box-shadow: 0 8px 28px #122b3226; }
+.guide-steps { margin-top: 24px; }
+.guide-steps li { display: block; }
+@media (min-width: 1600px) { .main-content { margin-left: max(208px,calc((100vw - 1188px)/2)); } }
+@media (min-width: 761px) and (max-width: 1120px) {
+  .sidebar { width: 178px; padding-inline: 12px; }
+  .main-content { margin-left: 178px; padding-inline: 28px; }
+  .card-home { grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); gap: 16px; }
+  .card-center { padding-inline: 21px; }
+  .overview-benefits, .overview-reserve { padding-inline: 20px; }
+  .card-center-heading > div { gap: 7px; flex-wrap: wrap; }
+  .cashback-metric dd { font-size: 15px; }
+  .cashback-heading { flex-wrap: wrap; gap: 5px; }
+  .cashback-heading .text-button { margin-left: auto; }
+  .reward-use-state { max-width: 90px; }
+}
+@media (max-width: 760px) {
+  :root { background: #f7f8f4; }
+  body { background: #f7f8f4; }
+  .main-content { margin: 0; padding: 0 22px calc(96px + env(safe-area-inset-bottom)); }
+  .topbar { min-height: 72px; padding-top: env(safe-area-inset-top); gap: 8px; }
+  .topbar-actions { gap: 1px; }
+  .mobile-wordmark { font-size: 35px; }
+  .mobile-wordmark > span { font-size: 10px; }
+  .page-heading h1 { font-size: 22px; }
+  .demo-notice { font-size: 10px; margin: -1px 0 13px; color: #7b8878; }
+  .bottom-nav { background: #fafcf8ed; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border-color: #e0e6db; padding-top: 8px; padding-bottom: calc(9px + env(safe-area-inset-bottom)); }
+  .bottom-nav .nav-item { color: #93a18c; font-size: 10px; gap: 4px; }
+  .bottom-nav .nav-item.active { color: #28573a; background: none; }
+  .bottom-nav .nav-item.active svg { stroke-width: 2; }
+  .card-home { grid-template-columns: minmax(0,1fr); grid-template-areas: 'card' 'benefits' 'reserve' 'activity'; gap: 19px; }
+  .card-center { border: 0; background: none; border-radius: 0; padding: 0 0 2px; }
+  .card-center-heading { margin-bottom: 2px; min-height: 39px; }
+  .card-center-heading h2 { font-size: 13px; }
+  .card-center-heading > div { gap: 9px; }
+  .card-center-heading .text-button { min-height: 44px; font-size: 11px; }
+  .hero-card-stage { padding: 6px 0 16px; margin: 0; }
+  .card-spendable { margin-top: 10px; }
+  .card-spendable > span { font-size: 11px; }
+  .card-spendable > strong { font-size: 34px; margin-top: 3px; }
+  .balance-disclosure > summary { min-height: 28px; font-size: 10px; }
+  .card-main-actions { margin-top: 7px; gap: 9px; }
+  .card-main-actions .btn { min-height: 48px; padding: 11px; font-size: 13px; }
+  .overview-benefits { border-radius: 20px; padding: 13px 20px 17px; background: #fff; }
+  .overview-benefits > .section-head { margin-bottom: 1px; }
+  .overview-benefits > .section-head h2 { font-size: 14px; }
+  .rewards-overview { padding-bottom: 14px; }
+  .overview-label { font-size: 10px; }
+  .rewards-overview strong { font-size: 25px; margin-top: 4px; }
+  .reward-use-state { font-size: 10px; }
+  .overview-benefits .cashback-summary { padding-top: 12px; }
+  .cashback-heading { margin-bottom: 12px; }
+  .cashback-heading h3 { font-size: 12px; }
+  .cashback-heading > div > p { display: none; }
+  .cashback-heading .text-button { min-height: 36px; }
+  .cashback-metric dd { font-size: 17px; }
+  .cashback-metric dt { font-size: 10px; margin-bottom: 4px; }
+  .cashback-progress { margin-top: 13px; }
+  .cashback-limit { font-size: 9px; margin-top: 7px; }
+  .overview-reserve { border-radius: 20px; padding: 19px 21px; }
+  .overview-reserve .section-head h2 { font-size: 14px; }
+  .reserve-overview strong { font-size: 25px; }
+  .overview-activity { border-radius: 20px; padding: 13px 20px 5px; }
+  .overview-activity .section-head h2 { font-size: 14px; }
+  .activity-row { min-height: 73px; }
+  .activity-copy strong { font-size: 12px; }
+  .activity-copy > span { font-size: 10px; }
+  .activity-amount > strong { font-size: 12px; }
+  .activity-icon { width: 33px; height: 33px; }
+  .panel { border-radius: 20px; }
+  .page-stack { gap: 18px; }
+  .wallet-cash, .wallet-coins, .reserve-main { padding: 25px 22px; }
+  .wallet-cash .display-value, .reserve-main > .display-value { font-size: 35px; }
+  .wallet-route { gap: 13px; font-size: 11px; }
+  .wallet-cash > .small-note { font-size: 10px; }
+  .wallet-cash .actions > .btn { min-width: 0; }
+  .wallet-coins .section-head h2 { font-size: 15px; }
+  .wallet-coins .section-head p { font-size: 10px; }
+  .wallet-coins .section-head > span { font-size: 9px; white-space: nowrap; }
+  .asset-name span { font-size: 10px; }
+  .asset-value { font-size: 12px; }
+  .reserve-title-art { margin-bottom: 28px; }
+  .modal { border-radius: 26px 26px 0 0; }
+  .modal-head { padding-top: 24px; }
+  .toast { left: 50%; }
+}
+@media (max-width: 360px) {
+  .main-content { padding-left: 17px; padding-right: 17px; }
+  .topbar { min-height: 65px; }
+  .mobile-wordmark { font-size: 32px; }
+  .mobile-wordmark > span { display: none; }
+  .demo-notice { font-size: 9px; }
+  .card-center-heading h2 { font-size: 12px; }
+  .card-center-heading > div { gap: 6px; }
+  .card-state { font-size: 9px; }
+  .hero-card-stage { padding-bottom: 13px; }
+  .card-spendable > strong { font-size: 31px; }
+  .overview-benefits, .overview-reserve, .overview-activity { padding-left: 17px; padding-right: 17px; }
+  .cashback-metric dd { font-size: 15px; }
+  .cashback-metric dt { font-size: 9px; }
+  .wallet-cash, .wallet-coins, .reserve-main { padding: 22px 18px; }
+  .wallet-route { gap: 10px; font-size: 10px; }
+  .reserve-main .section-head { gap: 6px; }
+  .reserve-main .section-head > span { font-size: 11px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .card-home, .page-stack, .card-page { animation: page-arrive 250ms ease-out both; }
+  .modal, .funding-dialog { animation: sheet-arrive 220ms cubic-bezier(.2,.7,.2,1) both; }
+  @keyframes page-arrive { from { opacity: .2; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes sheet-arrive { from { opacity: .3; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+}
+
+/* Keep the balance disclosure a comfortable touch target without an extra row. */
+.balance-disclosure > .spendable-summary { display: flex; flex-direction: column; gap: 7px; padding: 7px 12px 15px; min-height: 84px; }
+.spendable-summary > span { display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 12px; color: #65766b; }
+.spendable-summary > strong { display: block; font-size: clamp(30px,3vw,42px); font-weight: 550; line-height: 1.3; letter-spacing: -1.6px; font-variant-numeric: tabular-nums; color: #183b39; }
+.overview-label, .reward-use-state, .cashback-metric dt, .cashback-limit, .overview-reserve > p, .reserve-accrual-line, .activity-copy > span, .demo-notice { color: #68766b; }
+.cashback-heading > div > p { color: #6e7b70; }
+.overview-benefits { padding-top: 25px; }
+.overview-benefits .rewards-overview { min-height: 77px; }
+@media (max-width: 760px) {
+  .balance-disclosure > .spendable-summary { min-height: 73px; padding: 4px 12px 8px; gap: 5px; }
+  .spendable-summary > span { font-size: 11px; }
+  .spendable-summary > strong { font-size: 34px; }
+  .overview-benefits { padding-top: 19px; }
+  .overview-benefits .rewards-overview { min-height: 64px; }
+  .overview-label, .cashback-metric dt { font-size: 11px; }
+  .cashback-heading .text-button { min-height: 44px; }
+}
+@media (max-width: 360px) { .spendable-summary > strong { font-size: 31px; } .cashback-metric dt { font-size: 10px; } }

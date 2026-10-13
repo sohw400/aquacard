@@ -1,4 +1,5 @@
 import { ASSETS, PLANS, POLICY } from './policy';
+import { assertFundingQuoteFresh, getFundingQuote } from './funding';
 import type { Action, AppState, AssetSymbol, CardStage, CardState, Payment, Transaction } from './types';
 
 export const STORAGE_KEY = 'aqua-card:poc:v1';
@@ -136,6 +137,23 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       integer(action.amount, POLICY.minimumTopup);
       state[action.bucket] = safeAdd(state[action.bucket], action.amount);
       transaction(state, now, { kind: 'deposit', title: `${action.bucket === 'reserve' ? 'Reserve' : '결제 지갑'} 데모 충전`, amount: action.amount, status: 'completed', note: '가상 원화 충전입니다. 실제 입금이나 자산 이동은 발생하지 않습니다.' });
+      return state;
+    }
+    case 'RECEIVE_ASSET': {
+      assertFundingQuoteFresh(action.quotedAt, wallNow);
+      const quote = getFundingQuote({ direction: 'receive', symbol: action.symbol, units: action.units });
+      state.spend = safeAdd(state.spend, quote.netWon);
+      transaction(state, now, { kind: 'deposit', title: `${action.symbol} 입금 · 원화 자동 전환`, amount: quote.netWon, status: 'completed',
+        note: `${action.units} ${action.symbol} 가상 입금 → 원화 평가액 ${quote.grossWon.toLocaleString('ko-KR')}원. 전환 수수료 0.5% (${quote.feeWon.toLocaleString('ko-KR')}원) 공제 후 ${quote.netWon.toLocaleString('ko-KR')}원을 결제 잔액에 반영했습니다. 실제 입금·매도·블록체인 거래는 실행하지 않습니다.` });
+      return state;
+    }
+    case 'WITHDRAW_CRYPTO': {
+      assertFundingQuoteFresh(action.quotedAt, wallNow);
+      const quote = getFundingQuote({ direction: 'withdraw', symbol: action.symbol, amount: action.amount });
+      if (state.spend < quote.grossWon) throw new Error('원화 결제 잔액이 부족합니다. 리워드와 Reserve 원금은 코인 출금에 자동 사용하지 않습니다.');
+      state.spend -= quote.grossWon;
+      transaction(state, now, { kind: 'transfer', title: `${action.symbol} 외부 지갑 출금 · 모의 처리`, amount: -quote.grossWon, status: 'completed',
+        note: `결제 잔액 ${quote.grossWon.toLocaleString('ko-KR')}원 차감. 전환 수수료 0.5% (${quote.feeWon.toLocaleString('ko-KR')}원) 제외 후 예상 ${quote.outputUnits.toLocaleString('en-US', { maximumFractionDigits: 12 })} ${action.symbol} (순 원화 환산액 ${quote.netWon.toLocaleString('ko-KR')}원). 실제 코인 매수나 외부 지갑 전송은 실행하지 않습니다.` });
       return state;
     }
     case 'DEPOSIT_ASSET': {

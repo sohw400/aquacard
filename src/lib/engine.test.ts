@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyAction, availableToSpend, createInitialState, loadState, portfolioValue, saveState, STORAGE_KEY } from './engine';
 import { POLICY } from './policy';
-import type { AppState, CardState } from './types';
+import { assertFundingQuoteFresh, getFundingQuote } from './funding';
+import type { Action, AppState, AssetSymbol, CardState } from './types';
 
 const NOW = Date.UTC(2026, 9, 13, 3);
 const DAY = 86_400_000;
@@ -249,6 +250,140 @@ test('전환 견적 TTL은 실시간 기준이며 하루 진행 시뮬레이션�
   assert.doesNotThrow(() => applyAction(state, { type: 'CONVERT', symbol: 'USDC', units: 1, quotedAt: NOW }, NOW + POLICY.quoteTtlSeconds * 1_000));
   assert.throws(() => applyAction(state, { type: 'CONVERT', symbol: 'USDC', units: 1, quotedAt: NOW }, NOW + POLICY.quoteTtlSeconds * 1_000 + 1), /만료/);
   assert.throws(() => applyAction(state, { type: 'CONVERT', symbol: 'USDC', units: 1, quotedAt: NOW + 1 }, NOW), /만료/);
+});
+
+test('외부 코인 입금은 수수료를 공제해 원화 결제 잔액으로 자동 전환하며 기존 보유 코인은 유지한다', () => {
+  const initial = createInitialState(NOW);
+  const snapshot = structuredClone(initial);
+  const quote = getFundingQuote({ direction: 'receive', symbol: 'USDC', units: 10 });
+  assert.deepEqual(quote, { direction: 'receive', symbol: 'USDC', price: 1_400, inputUnits: 10,
+    grossWon: 14_000, feeWon: 70, netWon: 13_930, outputUnits: 0 });
+  const funded = applyAction(initial, { type: 'RECEIVE_ASSET', symbol: 'USDC', units: 10, quotedAt: NOW }, NOW);
+  assert.equal(funded.spend, 142_430);
+  assert.equal(funded.reserve, initial.reserve);
+  assert.equal(funded.rewards, initial.rewards);
+  assert.deepEqual(funded.holdings, initial.holdings, '입금 수량을 보유 코인 지갑에 중복 반영하지 않는다');
+  assert.equal(portfolioValue(funded), portfolioValue(initial) + 13_930);
+  assert.equal(funded.transactions[0].kind, 'deposit');
+  assert.equal(funded.transactions[0].amount, 13_930);
+  assert.match(funded.transactions[0].note, /수수료 0\.5% \(70원\)/);
+  assert.deepEqual(initial, snapshot);
+});
+
+test('원화 결제 잔액을 코인으로 출금하며 수수료를 제외한 수령 예상량만 계산한다', () => {
+  const initial = createInitialState(NOW);
+  const snapshot = structuredClone(initial);
+  const quote = getFundingQuote({ direction: 'withdraw', symbol: 'USDT', amount: 14_000 });
+  assert.deepEqual(quote, { direction: 'withdraw', symbol: 'USDT', price: 1_400, inputUnits: 0,
+    grossWon: 14_000, feeWon: 70, netWon: 13_930, outputUnits: 9.95 });
+  assert.equal(initial.holdings.USDT, 0, '원화 출금은 기존 USDT 보유량을 필요로 하지 않는다');
+  const withdrawn = applyAction(initial, { type: 'WITHDRAW_CRYPTO', symbol: 'USDT', amount: 14_000, quotedAt: NOW }, NOW);
+  assert.equal(withdrawn.spend, 114_500);
+  assert.equal(withdrawn.reserve, initial.reserve);
+  assert.equal(withdrawn.rewards, initial.rewards);
+  assert.deepEqual(withdrawn.holdings, initial.holdings);
+  assert.equal(portfolioValue(withdrawn), portfolioValue(initial) - 14_000);
+  assert.equal(withdrawn.transactions[0].amount, -14_000);
+  assert.match(withdrawn.transactions[0].note, /예상 9\.95 USDT/);
+  assert.match(withdrawn.transactions[0].note, /외부 지갑 전송은 실행하지 않습니다/);
+  assert.deepEqual(initial, snapshot);
+});
+
+test('출금은 결제 잔액까지만 허용하고 리워드·Reserve 자동 사용으로 부족분을 충당하지 않는다', () => {
+  const initial = createInitialState(NOW);
+  const withdrawn = applyAction(initial, { type: 'WITHDRAW_CRYPTO', symbol: 'BTC', amount: initial.spend, quotedAt: NOW }, NOW);
+  assert.equal(withdrawn.spend, 0);
+  assert.equal(withdrawn.rewards, 4_280);
+  assert.equal(withdrawn.reserve, 1_250_000);
+  const insufficient = { ...initial, spend: 999, reserveAuto: true, rewardsAuto: true };
+  const snapshot = structuredClone(insufficient);
+  assert.ok(availableToSpend(insufficient) > 1_000);
+  assert.throws(() => applyAction(insufficient, { type: 'WITHDRAW_CRYPTO', symbol: 'ETH', amount: 1_000, quotedAt: NOW }, NOW), /결제 잔액이 부족/);
+  assert.deepEqual(insufficient, snapshot, '출금 실패는 원금·리워드·보유 코인·거래 내역을 변경하지 않는다');
+});
+
+test('입금 평가액은 십진수로 계산하고 원 미만은 절사하며 수수료는 원 단위로 올림한다', () => {
+  const cases: [AssetSymbol, number, number, number, number][] = [
+    ['USDC', 1.005, 1_407, 8, 1_399],
+    ['BTC', 0.00000822, 1_233, 7, 1_226],
+    ['ETH', 0.000251, 1_004, 6, 998],
+    ['USDC', 1.001, 1_401, 8, 1_393],
+  ];
+  for (const [symbol, units, grossWon, feeWon, netWon] of cases) {
+    const quote = getFundingQuote({ direction: 'receive', symbol, units });
+    assert.equal(quote.grossWon, grossWon);
+    assert.equal(quote.feeWon, feeWon);
+    assert.equal(quote.netWon, netWon);
+    assert.equal(grossWon, feeWon + netWon);
+    assert.ok([grossWon, feeWon, netWon].every(Number.isSafeInteger));
+    const funded = applyAction(createInitialState(NOW), { type: 'RECEIVE_ASSET', symbol, units, quotedAt: NOW }, NOW);
+    assert.equal(funded.spend, 128_500 + netWon);
+  }
+  for (const [amount, feeWon, netWon] of [[1_000, 5, 995], [1_001, 6, 995], [1_200, 6, 1_194]]) {
+    const quote = getFundingQuote({ direction: 'withdraw', symbol: 'USDC', amount });
+    assert.equal(quote.feeWon, feeWon);
+    assert.equal(quote.netWon, netWon);
+    close(quote.outputUnits * quote.price, netWon);
+  }
+});
+
+test('코인 입출금은 최소 평가액·정수 출금액·지원 자산·유한 수량을 검증한다', () => {
+  const initial = createInitialState(NOW);
+  const snapshot = structuredClone(initial);
+  for (const units of [0, -1, NaN, Infinity, 0.1, Number.MAX_VALUE]) {
+    assert.throws(() => applyAction(initial, { type: 'RECEIVE_ASSET', symbol: 'USDC', units, quotedAt: NOW }, NOW));
+    assert.deepEqual(initial, snapshot);
+  }
+  for (const amount of [0, -1, 999, 1_000.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => applyAction(initial, { type: 'WITHDRAW_CRYPTO', symbol: 'USDC', amount, quotedAt: NOW }, NOW));
+    assert.deepEqual(initial, snapshot);
+  }
+  assert.throws(() => getFundingQuote({ direction: 'receive', symbol: 'DOGE' as AssetSymbol, units: 10 }), /지원하는/);
+  assert.throws(() => getFundingQuote({ direction: 'withdraw', symbol: 'DOGE' as AssetSymbol, amount: 1_000 }), /지원하는/);
+});
+
+test('코인 입출금 견적은 실제 시간 30초 경계를 따르며 만료·미래·잘못된 시각이면 원자적으로 실패한다', () => {
+  const initial = applyAction(createInitialState(NOW), { type: 'ADVANCE_DAY' }, NOW);
+  const snapshot = structuredClone(initial);
+  const actions: Extract<Action, { type: 'RECEIVE_ASSET' | 'WITHDRAW_CRYPTO' }>[] = [
+    { type: 'RECEIVE_ASSET', symbol: 'USDC', units: 10, quotedAt: NOW },
+    { type: 'WITHDRAW_CRYPTO', symbol: 'USDC', amount: 14_000, quotedAt: NOW },
+  ];
+  for (const action of actions) {
+    assert.doesNotThrow(() => applyAction(initial, action, NOW + 30_000), '데모 하루 진행과 무관하게 실제 30초까지 유효하다');
+    assert.throws(() => applyAction(initial, action, NOW + 30_001), /견적이 만료/);
+    assert.throws(() => applyAction(initial, { ...action, quotedAt: NOW + 1 }, NOW), /견적이 만료/);
+    for (const quotedAt of [NaN, Infinity, -1]) assert.throws(() => applyAction(initial, { ...action, quotedAt }, NOW), /견적이 만료/);
+    assert.deepEqual(initial, snapshot, '실패한 견적은 시뮬레이션 시계·적립액·잔액도 변경하지 않는다');
+  }
+  assert.doesNotThrow(() => assertFundingQuoteFresh(NOW, NOW + 30_000));
+  assert.throws(() => assertFundingQuoteFresh(NOW, NOW + 30_001));
+});
+
+test('원화 안전 정수 범위를 넘기는 코인 입금은 보상 적립과 거래 기록까지 원자적으로 취소한다', () => {
+  const initial = createInitialState(NOW);
+  initial.spend = Number.MAX_SAFE_INTEGER - 10;
+  const snapshot = structuredClone(initial);
+  assert.throws(() => applyAction(initial, { type: 'RECEIVE_ASSET', symbol: 'USDC', units: 10, quotedAt: NOW + 5_000 }, NOW + 5_000), /금액 범위/);
+  assert.deepEqual(initial, snapshot);
+  assert.equal(initial.transactions.length, 0);
+  assert.equal(initial.accrued, 0);
+});
+
+test('자동 전환된 원화의 Reserve 지정·해제에는 추가 매도나 전환 수수료가 없다', () => {
+  const initial = createInitialState(NOW);
+  let state = applyAction(initial, { type: 'RECEIVE_ASSET', symbol: 'USDC', units: 10, quotedAt: NOW }, NOW);
+  const assets = portfolioValue(state);
+  state = applyAction(state, { type: 'TRANSFER_RESERVE', direction: 'in', amount: 10_000 }, NOW);
+  assert.equal(state.spend, 132_430);
+  assert.equal(state.reserve, 1_260_000);
+  assert.equal(portfolioValue(state), assets);
+  state = applyAction(state, { type: 'TRANSFER_RESERVE', direction: 'out', amount: 10_000 }, NOW);
+  assert.equal(state.spend, 142_430);
+  assert.equal(state.reserve, initial.reserve);
+  assert.deepEqual(state.holdings, initial.holdings);
+  assert.equal(portfolioValue(state), assets);
+  assert.equal(state.transactions.filter((item) => item.kind === 'convert').length, 0);
 });
 
 test('카드 신청은 단계별로 진행하며 본인 확인·발급·실물 수령 전 활성화를 거절한다', () => {

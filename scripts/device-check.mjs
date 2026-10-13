@@ -44,6 +44,12 @@ try {
     const readState = () => page.evaluate(() => JSON.parse(localStorage.getItem('aqua-card:poc:v1')));
     const initial = await readState();
     assert.ok(await page.evaluate(() => navigator.maxTouchPoints > 0));
+    const heroCard = page.locator('.card-center .aqua-card-visual.acv-hero');
+    const cardBounds = await heroCard.boundingBox();
+    assert.ok(cardBounds && cardBounds.width >= profile.viewport.width - 50, `${name}: primary card is too small`);
+    await assertFits(page, `${name} primary card`);
+    const captureReview = name === 'iPhone SE (3rd gen)';
+    if (captureReview) await page.screenshot({ path: new URL('review-card-home-375.png', artifacts).pathname, fullPage: true });
     for (const menu of ['home', 'wallet', 'card', 'reserve', 'activity', 'settings']) {
       const nav = page.getByTestId(`nav-${menu}`);
       const bounds = await nav.boundingBox();
@@ -59,14 +65,50 @@ try {
 
     await page.getByTestId('nav-home').tap();
     await page.getByTestId('open-deposit').tap();
+    const funding = page.getByTestId('dialog-funding');
+    await funding.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished.then(() => undefined, () => undefined))));
     const depositAmount = page.getByTestId('action-amount');
     assert.ok(await depositAmount.evaluate((element) => parseFloat(getComputedStyle(element).fontSize) >= 16));
     await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'action-amount');
-    assert.match(await page.getByTestId('dialog-fund').locator('.dialog-route').innerText(), /결제 잔액/);
+    assert.equal(await funding.getByTestId('funding-method-coin').getAttribute('aria-selected'), 'true');
+    assert.equal(await funding.getByTestId('funding-asset-USDC').getAttribute('aria-pressed'), 'true');
+    assert.equal(await depositAmount.inputValue(), '10');
+    assert.equal(await page.locator('.toast').count(), 0, `${name}: toast overlays the funding sheet`);
+    await assertAmount(funding.getByTestId('quote-units'), 10, `${name} default coin amount`);
+    await assertAmount(funding.getByTestId('quote-fee'), -70, `${name} disclosed coin conversion fee`);
+    await assertAmount(funding.getByTestId('quote-net'), 13_930, `${name} received won balance preview`);
+    for (const id of ['funding-method-coin', 'funding-method-demo', 'funding-asset-USDC', 'funding-asset-USDT', 'funding-asset-BTC', 'funding-asset-ETH', 'confirm-action']) {
+      const target = await funding.getByTestId(id).boundingBox();
+      assert.ok(target && target.width >= 44 && target.height >= 44, `${name} ${id}: touch target smaller than 44px (${JSON.stringify(target)})`);
+    }
+    const viewportHeight = profile.viewport.height;
+    const headerBefore = await funding.locator('.funding-header').boundingBox();
+    const footerBefore = await funding.locator('.funding-footer').boundingBox();
+    assert.ok(headerBefore.y >= 0 && footerBefore.y + footerBefore.height <= viewportHeight + 1, `${name}: funding controls are outside the viewport`);
+    await funding.locator('.funding-body').evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    const headerAfter = await funding.locator('.funding-header').boundingBox();
+    const footerAfter = await funding.locator('.funding-footer').boundingBox();
+    assert.ok(Math.abs(headerAfter.y - headerBefore.y) <= 1 && Math.abs(footerAfter.y - footerBefore.y) <= 1, `${name}: funding header/footer moved while scrolling`);
+    await assertFits(page, `${name} coin funding sheet`);
+    if (captureReview) await page.screenshot({ path: new URL('review-coin-funding-375.png', artifacts).pathname });
+    await funding.getByRole('button', { name: '창 닫기', exact: true }).focus();
+    await page.keyboard.press('Shift+Tab');
+    assert.ok(await funding.getByTestId('confirm-action').evaluate((element) => element === document.activeElement), `${name}: focus did not wrap to funding confirmation`);
+    await page.keyboard.press('Tab');
+    assert.ok(await funding.getByRole('button', { name: '창 닫기', exact: true }).evaluate((element) => element === document.activeElement), `${name}: focus escaped funding dialog`);
+    await page.keyboard.press('Escape');
+    await funding.waitFor({ state: 'hidden' });
+    assert.equal((await readState()).spend, initial.spend);
+    await page.getByTestId('open-deposit').tap();
+    await funding.getByTestId('funding-method-demo').tap();
+    assert.equal(await funding.getByTestId('funding-method-demo').getAttribute('aria-selected'), 'true');
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'action-amount');
     await depositAmount.fill('10000');
-    await assertFits(page, `${name} deposit modal`);
-    await page.getByTestId('confirm-action').tap();
-    await page.getByTestId('dialog-fund').waitFor({ state: 'hidden' });
+    await assertAmount(funding.getByTestId('quote-fee'), 0, `${name} demo funding fee`);
+    await assertAmount(funding.getByTestId('quote-net'), 10_000, `${name} demo funding amount`);
+    await assertFits(page, `${name} demo funding sheet`);
+    await funding.getByTestId('confirm-action').tap();
+    await funding.waitFor({ state: 'hidden' });
     assert.equal((await readState()).spend, initial.spend + 10_000);
 
     await page.getByTestId('nav-card').tap();
@@ -113,7 +155,12 @@ try {
     await assertAmount(receipt.getByTestId('receipt-cashback-earned'), 1_957, `${name} earned cashback`);
     await assertAmount(receipt.getByTestId('receipt-cashback-credit'), 1_957, `${name} credited cashback`);
     await assertAmount(receipt.getByTestId('receipt-rewards-after'), 1_957, `${name} rewards after payment`);
+    assert.equal(await page.locator('.toast').count(), 0, `${name}: toast overlays the payment receipt`);
     await assertFits(page, `${name} payment receipt`);
+    if (captureReview) {
+      await receipt.getByTestId('receipt-rewards-after').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: new URL('review-payment-receipt-375.png', artifacts).pathname });
+    }
     await receipt.getByTestId('receipt-close').tap();
     await receipt.waitFor({ state: 'hidden' });
 
@@ -152,8 +199,8 @@ try {
     const safeName = name.replace(/[^A-Za-z0-9]+/g, '-').toLowerCase();
     await page.screenshot({ path: new URL(`${safeName}.png`, artifacts).pathname, fullPage: true });
     assert.deepEqual(errors, []);
-    results.push({ profile: name, engine: 'Chromium', emulationOnly: true, viewport: profile.viewport, hasTouch: profile.hasTouch, passed: true, checks: '6 menus, touch targets, deposit input focus and balance, 3-step card application and automatic issue/activation, Reserve payment, receipt reward debit and cashback credit, monthly cashback and unclaimed rewards overview, shared rewards setting, restored state' });
-    console.log(`PASS ${name}: ${profile.viewport.width}px · touch · application · Reserve payment · reward receipt · cashback overview · reload (Chromium emulation)`);
+    results.push({ profile: name, engine: 'Chromium', emulationOnly: true, viewport: profile.viewport, hasTouch: profile.hasTouch, passed: true, checks: 'primary hero card, 6 menus, touch targets, coin funding preview and pinned sheet controls, funding focus trap and Escape, demo funding input focus and balance, 3-step card application and automatic issue/activation, Reserve payment, receipt reward debit and cashback credit, unobstructed funding and receipt overlays, monthly cashback and unclaimed rewards overview, shared rewards setting, restored state' });
+    console.log(`PASS ${name}: ${profile.viewport.width}px · hero card · coin funding sheet · touch · application · Reserve payment · reward receipt · cashback overview · reload (Chromium emulation)`);
     await context.close();
   }
   await writeFile(new URL('results.json', artifacts), JSON.stringify({ passedProfiles: results.length, failedProfiles: 0, recordedAt: new Date().toISOString(), realDeviceTested: false, safariWebKitTested: false, results }, null, 2));

@@ -78,6 +78,8 @@ export type Action =
   | { type: 'ADVANCE_DAY' }
   | { type: 'CHANGE_RATE'; rate: number }
   | { type: 'DEPOSIT'; bucket: 'spend' | 'reserve'; amount: number }
+  | { type: 'RECEIVE_ASSET'; symbol: AssetSymbol; units: number; quotedAt: number }
+  | { type: 'WITHDRAW_CRYPTO'; symbol: AssetSymbol; amount: number; quotedAt: number }
   | { type: 'DEPOSIT_ASSET'; symbol: AssetSymbol; units: number }
   | { type: 'WITHDRAW_ASSET'; symbol: AssetSymbol; units: number }
   | { type: 'WITHDRAW_FUNDS'; bucket: 'spend' | 'reserve'; amount: number }
