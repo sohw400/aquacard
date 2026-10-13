@@ -34,11 +34,13 @@ try {
     page.on('pageerror', (error) => errors.push(error.message));
     page.setDefaultTimeout(10_000);
     await page.goto(base, { waitUntil: 'networkidle' });
+    const readState = () => page.evaluate(() => JSON.parse(localStorage.getItem('aqua-card:poc:v1')));
+    const initial = await readState();
     assert.ok(await page.evaluate(() => navigator.maxTouchPoints > 0));
     for (const menu of ['home', 'wallet', 'card', 'reserve', 'activity', 'settings']) {
       const nav = page.getByTestId(`nav-${menu}`);
       const bounds = await nav.boundingBox();
-      assert.ok(bounds.width >= 44 && bounds.height >= 44, `${name} ${menu}: touch target smaller than 44px`);
+      assert.ok(bounds && bounds.width >= 44 && bounds.height >= 44, `${name} ${menu}: touch target smaller than 44px`);
       await nav.tap();
       await assertFits(page, `${name} ${menu}`);
     }
@@ -50,29 +52,36 @@ try {
 
     await page.getByTestId('nav-home').tap();
     await page.getByTestId('open-deposit').tap();
-    const select = page.getByLabel('충전할 지갑');
-    assert.ok(await select.evaluate((element) => parseFloat(getComputedStyle(element).fontSize) >= 16));
-    await select.selectOption('spend');
-    await page.getByTestId('action-amount').fill('10000');
+    const depositAmount = page.getByTestId('action-amount');
+    assert.ok(await depositAmount.evaluate((element) => parseFloat(getComputedStyle(element).fontSize) >= 16));
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'action-amount');
+    assert.match(await page.getByTestId('dialog-fund').locator('.dialog-route').innerText(), /결제 잔액/);
+    await depositAmount.fill('10000');
     await assertFits(page, `${name} deposit modal`);
     await page.getByTestId('confirm-action').tap();
     await page.getByTestId('dialog-fund').waitFor({ state: 'hidden' });
+    assert.equal((await readState()).spend, initial.spend + 10_000);
 
     await page.getByTestId('nav-card').tap();
     const flow = page.locator('.card-flow');
-    await flow.getByRole('button', { name: '카드 신청하기', exact: true }).tap();
-    await flow.getByRole('checkbox', { name: /샘플 프로필로 본인확인/ }).check();
-    await flow.getByRole('checkbox', { name: /데모 이용약관/ }).check();
-    await flow.getByRole('button', { name: '본인확인 완료 · 다음' }).tap();
+    await flow.getByTestId('card-apply').tap();
+    assert.equal(await flow.getByTestId('card-identity-next').isDisabled(), true);
+    await flow.getByTestId('card-identity-consent').check();
+    await flow.getByTestId('card-identity-next').tap();
     await assertFits(page, `${name} card plan`);
-    await flow.getByRole('button', { name: '플랜 선택 완료' }).tap();
-    await flow.getByRole('button', { name: '신청 내용 확인' }).tap();
+    assert.equal(await flow.getByTestId('card-physical-choice').isChecked(), false);
+    await flow.getByTestId('card-selection-next').tap();
     await assertFits(page, `${name} application review`);
-    await flow.getByRole('checkbox', { name: /선택한 플랜/ }).check();
-    await flow.getByRole('button', { name: '카드 신청 접수' }).tap();
-    await flow.getByRole('button', { name: '데모 심사 통과' }).tap();
-    await flow.getByRole('button', { name: '가상카드 발급', exact: true }).tap();
-    await flow.getByRole('button', { name: '가상카드 활성화', exact: true }).tap();
+    assert.equal(await flow.getByTestId('card-submit').isDisabled(), true);
+    await flow.getByTestId('card-review-consent').check();
+    await flow.getByTestId('card-submit').tap();
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('aqua-card:poc:v1'))?.card.stage === 'active');
+    const issued = await readState();
+    assert.equal(issued.card.plan, 'basic');
+    assert.equal(issued.card.physical, false);
+    assert.equal(issued.card.identityVerified, true);
+    assert.equal(issued.spend, initial.spend + 10_000);
+    await assertFits(page, `${name} issued card`);
 
     await page.getByTestId('nav-home').tap();
     await page.getByTestId('open-payment').tap();
@@ -85,16 +94,23 @@ try {
       const state = JSON.parse(localStorage.getItem('aqua-card:poc:v1'));
       return state?.payments[0]?.status === 'completed';
     });
-    const state = await page.evaluate(() => JSON.parse(localStorage.getItem('aqua-card:poc:v1')));
+    const state = await readState();
     assert.equal(state.card.stage, 'active');
     assert.equal(state.payments[0].fromReserve, 57_220);
     assert.equal(state.payments[0].cashback, 1_957);
     await page.reload({ waitUntil: 'networkidle' });
     await assertFits(page, `${name} restored home`);
+    const restored = await readState();
+    assert.equal(restored.card.stage, 'active');
+    assert.equal(restored.reserveAuto, true);
+    assert.equal(restored.spend, state.spend);
+    assert.equal(restored.reserve, state.reserve);
+    assert.equal(restored.rewards, state.rewards);
+    assert.deepEqual(restored.payments, state.payments);
     const safeName = name.replace(/[^A-Za-z0-9]+/g, '-').toLowerCase();
     await page.screenshot({ path: new URL(`${safeName}.png`, artifacts).pathname, fullPage: true });
     assert.deepEqual(errors, []);
-    results.push({ profile: name, engine: 'Chromium', emulationOnly: true, viewport: profile.viewport, hasTouch: profile.hasTouch, passed: true, checks: '6 menus, touch targets, deposit, card application/issue/activate, Reserve payment, cashback, reload' });
+    results.push({ profile: name, engine: 'Chromium', emulationOnly: true, viewport: profile.viewport, hasTouch: profile.hasTouch, passed: true, checks: '6 menus, touch targets, deposit input focus and balance, 3-step card application and automatic issue/activation, Reserve payment, cashback, restored state' });
     console.log(`PASS ${name}: ${profile.viewport.width}px · touch · application · Reserve payment · cashback · reload (Chromium emulation)`);
     await context.close();
   }
