@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { BadgePercent, Check, LockKeyhole, ScanFace, X } from 'lucide-react';
-import CardVisual from './CardVisual';
+import TierCard from './TierCard';
 import { useModal } from './useModal';
 import { demoCode, maskPhone } from '../lib/auth';
 import { PLANS } from '../lib/policy';
@@ -42,7 +42,7 @@ export default function WalletSheet({ wallet, card, phone, onAdd, onClose }: {
     <section className="internal-transfer-dialog wallet-sheet" ref={panel} role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1} data-testid="dialog-wallet">
       <header className="itd-header"><div><h2 id={headingId} ref={heading} tabIndex={-1}>{step === 'done' ? `${name}에 추가했어요` : `${name}에 카드 추가`}</h2>{step !== 'done' && <p>{step === 'intro' ? '휴대폰을 단말기에 대면 Aqua 카드로 결제돼요.' : '가입할 때 인증한 휴대폰으로 본인 확인을 해요.'}</p>}</div><button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button></header>
       <div className="itd-body">
-        <div className="wallet-card"><CardVisual card={card} compact /><div><strong>{name}</strong><span>{PLANS[card.plan].name} · <span className="nowrap">끝번호 {card.last4}</span></span></div></div>
+        <div className="wallet-card"><TierCard plan={card.plan} className="wallet-card-thumb" /><div><strong>{name}</strong><span>{PLANS[card.plan].name} · <span className="nowrap">끝번호 {card.last4}</span></span></div></div>
         {step === 'intro' && <>
           <ul className="wallet-points">
             <li><ScanFace size={18} aria-hidden="true" />결제할 때마다 휴대폰 잠금을 풀어 확인해요.</li>

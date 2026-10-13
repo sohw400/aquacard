@@ -1,5 +1,6 @@
 .wallet-sheet .itd-body { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
 .wallet-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--radius-md); background: var(--sunken); }
+.wallet-card .wallet-card-thumb { width: 76px; margin: -8px -2px -8px -6px; }
 .wallet-card > div { display: flex; flex-direction: column; min-width: 0; }
 .wallet-card strong { color: var(--ink); font-size: 16px; font-weight: 700; }
 .wallet-card span { color: var(--muted); font-size: 13px; line-height: 1.5; }

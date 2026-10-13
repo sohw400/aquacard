@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import {
   ArrowRight, CalendarClock, Check, ChevronLeft, CircleAlert, Clock3, CreditCard,
   Eye, EyeOff, LockKeyhole, MapPin, Package, RefreshCw, Smartphone, Truck, UnlockKeyhole,
@@ -14,6 +14,7 @@ import { PinSheet } from './SecuritySheets';
 import WalletSheet, { WALLET_NAMES } from './WalletSheet';
 import CardActionSheet from './CardActionSheet';
 import CardVisual from './CardVisual';
+import TierCard from './TierCard';
 import { NavRow } from './ui';
 import heroCards from '../assets/aqua-cards.webp';
 import './CardApplication.css';
@@ -49,7 +50,9 @@ const physicalName = (plan: Plan) => plan === 'standard' ? '실물카드' : PLAN
 /** One line per tier: what it gives. */
 function TierFacts({ plan }: { plan: Plan }) {
   const terms = PLANS[plan];
-  return <span className="cf-tier-facts">페이백 {percent(terms.cashbackRate)}{terms.reserveBonus ? ` · 리저브 +${percent(terms.reserveBonus)}p` : ''} · {terms.card}</span>;
+  const facts = [`페이백 ${percent(terms.cashbackRate)}`, ...(terms.reserveBonus ? [`리저브 +${percent(terms.reserveBonus)}p`] : []), terms.card];
+  // Each fact wraps as a whole so "메탈 카드" never splits across lines.
+  return <span className="cf-tier-facts">{facts.map((fact, index) => <Fragment key={fact}>{index > 0 && ' · '}<span className="nowrap">{fact}</span></Fragment>)}</span>;
 }
 
 export default function CardApplication({ card, account, spend, controls, onOpenLimits, onOpenChannels, onPay, onChange, onAction, onDeposit, onNotify }: CardApplicationProps) {
@@ -159,7 +162,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
         <img className="cf-intro-art" src={heroCards} width={960} height={630} alt="" />
         <h2>잔액으로 바로 쓰는 카드</h2>
         <p className="cf-lead">가상카드는 신청하면 바로 나와요. 멤버십에 따라 페이백과 리저브 보상이 달라져요.</p>
-        <ul className="cf-tiers" aria-label="멤버십">{PLAN_ORDER.map((key) => <li key={key}><span className={`cf-tier-chip cf-tier-${key}`} aria-hidden="true" /><span className="cf-tier-main"><strong>{PLANS[key].short}</strong><TierFacts plan={key} /></span><span className="cf-tier-fee">{feeText(key)}</span></li>)}</ul>
+        <ul className="cf-tiers" aria-label="멤버십">{PLAN_ORDER.map((key) => <li key={key}><TierCard plan={key} /><span className="cf-tier-main"><strong>{PLANS[key].short}</strong><TierFacts plan={key} /></span><span className="cf-tier-fee">{feeText(key)}</span></li>)}</ul>
         <button type="button" className="cf-button cf-primary" data-testid="card-apply" onClick={() => nextStage('identity')}>카드 만들기 <ArrowRight size={17} /></button>
         <p className="cf-disclaimer">체험판이라 실제 카드는 나오지 않아요.</p>
       </div>}
@@ -174,8 +177,8 @@ export default function CardApplication({ card, account, spend, controls, onOpen
 
       {selectingCard && <div className="cf-step">
         <h2>멤버십 고르기</h2><p className="cf-lead">나중에 카드 화면에서 언제든 바꿀 수 있어요.</p>
-        <fieldset className="cf-options"><legend className="cf-sr-only">멤버십</legend>{PLAN_ORDER.map((key) => { const option = PLANS[key]; return <label key={key} className={`cf-option ${card.plan === key ? 'cf-option-selected' : ''}`}><input type="radio" name="card-plan" value={key} checked={card.plan === key} onChange={() => choosePlan(key)} /><span className={`cf-tier-chip cf-tier-${key}`} aria-hidden="true" /><span className="cf-option-main"><span className="cf-option-title">{option.name}</span><span className="cf-option-price">{feeText(key)}</span><TierFacts plan={key} /></span></label>; })}</fieldset>
-        {card.plan === 'standard' ? <label className="cf-physical-option" data-testid="card-physical-row"><input type="checkbox" data-testid="card-physical-choice" checked={card.physical} onChange={(event) => patch({ physical: event.target.checked })} /><span><strong>실물카드도 받기</strong><small>발급비 {won(PLANS.standard.physicalFee)} · 배송 {POLICY.deliveryEstimate}</small></span></label>
+        <fieldset className="cf-options"><legend className="cf-sr-only">멤버십</legend>{PLAN_ORDER.map((key) => { const option = PLANS[key]; return <label key={key} className={`cf-option ${card.plan === key ? 'cf-option-selected' : ''}`}><input type="radio" name="card-plan" value={key} checked={card.plan === key} onChange={() => choosePlan(key)} /><TierCard plan={key} /><span className="cf-option-main"><span className="cf-option-title">{option.name}</span><span className="cf-option-price">{feeText(key)}</span><TierFacts plan={key} /></span></label>; })}</fieldset>
+        {card.plan === 'standard' ? <label className="cf-physical-option" data-testid="card-physical-row"><input type="checkbox" data-testid="card-physical-choice" checked={card.physical} onChange={(event) => patch({ physical: event.target.checked })} /><span><strong>실물카드도 받기</strong><small>{PLANS.standard.physicalFee ? `발급비 ${won(PLANS.standard.physicalFee)}` : '무료'} · 배송 {POLICY.deliveryEstimate}</small></span></label>
           : <p className="cf-included"><Package size={16} aria-hidden="true" />{plan.card}가 함께 나와요. 배송까지 {POLICY.deliveryEstimate}이 걸려요.</p>}
         {card.physical && <div className="cf-address" data-testid="card-address"><MapPin size={17} /><div>{card.address ? <><strong>{card.address.road}</strong><p>{card.address.detail || '상세 주소 없음'} · {card.address.zip}</p></> : <><strong>받을 주소를 넣어 주세요</strong><p>본인만 받을 수 있어요.</p></>}</div><button type="button" className="cf-address-button" data-testid="card-address-open" onClick={() => setAddressSheet('select')}>{card.address ? '변경' : '입력'}</button></div>}
         <button type="button" className="cf-button cf-primary" data-testid="card-selection-next" disabled={card.physical && !card.address} onClick={review}>다음 <ArrowRight size={17} /></button>
@@ -241,7 +244,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
           <ul className="cf-plan-list">{PLAN_ORDER.map((key) => {
             const current = key === card.plan;
             const scheduled = card.nextPlan === key;
-            return <li key={key} className={current ? 'cf-plan-current' : ''}><span className={`cf-tier-chip cf-tier-${key}`} aria-hidden="true" /><span className="cf-tier-main"><strong>{PLANS[key].short}</strong><span>{feeText(key)} · 페이백 {percent(PLANS[key].cashbackRate)}</span></span>
+            return <li key={key} className={current ? 'cf-plan-current' : ''}><TierCard plan={key} /><span className="cf-tier-main"><strong>{PLANS[key].short}</strong><span>{feeText(key)} · 페이백 {percent(PLANS[key].cashbackRate)}</span></span>
               {current ? card.nextPlan ? <button type="button" className="cf-plan-action" data-testid="card-plan-keep" onClick={() => onAction({ type: 'CHANGE_PLAN', plan: key }, `${josa(PLANS[key].short, '을', '를')} 계속 써요.`)}>계속 쓰기</button> : <span className="cf-plan-tag">사용 중</span>
                 : scheduled ? <span className="cf-plan-tag">예약됨</span>
                   : <button type="button" className="cf-plan-action" data-testid={`card-plan-${key}`} onClick={() => setSheet({ kind: 'plan', plan: key })}>바꾸기</button>}</li>;

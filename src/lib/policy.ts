@@ -2,7 +2,6 @@ import type { AssetSymbol, FundingSymbol, Plan } from './types';
 
 export const POLICY = {
   reserveAnnualRate: 0.05,
-  reserveEligibleCap: 10_000_000,
   conversionFee: 0.005,
   minimumTopup: 1_000,
   minimumConversion: 1_000,
@@ -11,7 +10,6 @@ export const POLICY = {
   dailyPaymentLimit: 1_000_000,
   monthlyPaymentLimit: 5_000_000,
   secondsPerYear: 365 * 24 * 60 * 60,
-  physicalIssueFee: 9_900,
   deliveryEstimate: '5~7영업일',
 } as const;
 
@@ -32,11 +30,15 @@ export interface PlanTerms {
 }
 
 export const PLAN_ORDER: Plan[] = ['standard', 'premium', 'private'];
-/** KAST's Standard, Premium and Private terms at about 1,400 won to the dollar. */
+/**
+ * KAST's three tiers, priced for Korea: physical cards are free as with local check cards,
+ * payback stays near local card levels with monthly caps, and each paid tier pays for itself
+ * once a member spends about as much as its payback cap assumes.
+ */
 export const PLANS: Record<Plan, PlanTerms> = {
-  standard: { name: 'Aqua 스탠다드', short: '스탠다드', annualFee: 0, cashbackRate: 0.015, spendCap: 3_000_000, cashbackCap: 45_000, reserveBonus: 0, reserveCap: 10_000_000, card: '가상카드, 실물카드 선택', physicalFee: 9_900 },
-  premium: { name: 'Aqua 프리미엄', short: '프리미엄', annualFee: 1_400_000, cashbackRate: 0.02, spendCap: 14_000_000, cashbackCap: 280_000, reserveBonus: 0.02, reserveCap: 70_000_000, card: '메탈 카드', physicalFee: 0 },
-  private: { name: 'Aqua 프라이빗', short: '프라이빗', annualFee: 14_000_000, cashbackRate: 0.03, spendCap: 56_000_000, cashbackCap: 1_680_000, reserveBonus: 0.04, reserveCap: 280_000_000, card: '골드 카드', physicalFee: 0 },
+  standard: { name: 'Aqua 스탠다드', short: '스탠다드', annualFee: 0, cashbackRate: 0.01, spendCap: 1_000_000, cashbackCap: 10_000, reserveBonus: 0, reserveCap: 10_000_000, card: '실물카드 무료', physicalFee: 0 },
+  premium: { name: 'Aqua 프리미엄', short: '프리미엄', annualFee: 100_000, cashbackRate: 0.015, spendCap: 2_000_000, cashbackCap: 30_000, reserveBonus: 0.005, reserveCap: 30_000_000, card: '메탈 카드', physicalFee: 0 },
+  private: { name: 'Aqua 프라이빗', short: '프라이빗', annualFee: 500_000, cashbackRate: 0.02, spendCap: 5_000_000, cashbackCap: 100_000, reserveBonus: 0.01, reserveCap: 50_000_000, card: '골드 카드', physicalFee: 0 },
 };
 
 export const ASSETS: Record<AssetSymbol, { name: string; price: number; color: string; network: string; decimals: number }> = {

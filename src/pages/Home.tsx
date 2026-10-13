@@ -1,5 +1,5 @@
 import { ChevronRight, Clock3, LockKeyhole } from 'lucide-react';
-import CardVisual from '../components/CardVisual';
+import TierCard from '../components/TierCard';
 import { ActivityList } from '../components/Activity';
 import { LiveRewards, Won } from '../components/ui';
 import { availableToSpend, reserveTerms } from '../lib/engine';
@@ -61,7 +61,7 @@ export default function Home({ state, onDeposit, onSend, onCard, onPay, onReserv
       <button type="button" className="btn primary block" data-testid="open-payment" onClick={onPay}>카드 만들기</button>
     </section> : <section className="home-card" aria-label="내 카드">
       <button type="button" className="home-card-main" data-testid="card-cta" onClick={onCard}>
-        <span className="home-card-thumb"><CardVisual card={card} compact /></span>
+        <TierCard plan={card.plan} className="home-card-thumb" />
         <span className="home-card-copy"><strong>{plan.name}</strong><span className={card.locked && active ? 'warning' : ''}>{card.locked && active && <LockKeyhole size={13} aria-hidden="true" />}{cardLine}</span></span>
         <ChevronRight className="home-card-chevron" size={18} aria-hidden="true" />
       </button>

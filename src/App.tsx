@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { CheckCircle2, ChevronLeft, Clock3, Info, X } from 'lucide-react';
 import CardApplication from './components/CardApplication';
 import Logo from './components/Logo';
+import TierCard from './components/TierCard';
 import Onboarding from './components/Onboarding';
 import AccountClosureSheet from './components/AccountClosureSheet';
 import { PasswordSheet } from './components/SecuritySheets';
@@ -313,7 +314,7 @@ function ActionDialog({ dialog, state, onClose, dispatch, notify, onPaid, onRese
       {dialog.type === 'guide' ? <div className="guide-content"><p>KAST처럼 코인을 보내면 바로 원화 스테이블 잔액이 되고, 그 잔액으로 카드를 쓰는 서비스를 미리 만들어 본 화면이에요.</p><ol className="guide-steps"><li><strong>충전</strong><p>거래소나 지갑에서 코인을 보내는 과정을 따라가 봐요. 받은 코인은 바로 원화로 바뀌어요.</p></li><li><strong>카드</strong><p>가입 때 확인한 정보로 신청하면 가상카드가 바로 나와요.</p></li><li><strong>결제</strong><p>결제하면 리워드가 먼저 빠지고 페이백이 쌓이는 걸 볼 수 있어요.</p></li></ol><p className="small-note">실제 돈, 코인, 카드는 오가지 않아요. 데이터는 이 브라우저에만 남고 전체 › 체험 설정에서 지울 수 있어요.</p></div>
       : dialog.type === 'reset' ? <div><p className="reset-copy">잔액, 카드 신청, 거래 내역을 처음 상태로 돌려요.</p><p className="small-note">이 브라우저에 남은 체험 데이터가 지워져요.</p></div>
       : <form id={formId} onSubmit={submit}>
-        {dialog.type === 'payment' && <><div className="payment-card-tag"><span className={`mini-card ${state.card.plan}`} aria-hidden="true" /><span>{PLANS[state.card.plan].name}</span><span>끝번호 {state.card.last4}</span></div><div className="form-field"><label htmlFor="merchant">결제할 곳</label><input id="merchant" value={merchant} onChange={(event) => setMerchant(event.target.value)} required maxLength={40} autoComplete="off" /></div></>}
+        {dialog.type === 'payment' && <><div className="payment-card-tag"><TierCard plan={state.card.plan} className="payment-card-thumb" /><span>{PLANS[state.card.plan].name}</span><span>끝번호 {state.card.last4}</span></div><div className="form-field"><label htmlFor="merchant">결제할 곳</label><input id="merchant" value={merchant} onChange={(event) => setMerchant(event.target.value)} required maxLength={40} autoComplete="off" /></div></>}
         {dialog.type === 'refund' && <div className="dialog-route"><strong>{dialog.payment.merchant}</strong><span>환불할 수 있는 금액 {money(dialog.payment.amount - dialog.payment.refunded)}</span></div>}
         <div className="form-field"><label htmlFor="action-amount">{dialog.type === 'refund' ? '환불할 금액' : '결제 금액'}</label><div className="input-affix"><input id="action-amount" data-testid="action-amount" type="number" inputMode="numeric" min={1} step={1} value={amount} onChange={(event) => { setAmount(event.target.value); setError(''); }} required /><span>원</span></div></div>
         {dialog.type === 'payment' && <div className="preset-amounts" aria-label="예시 결제">{PAYMENT_PRESETS.map(([name, value, kind]) => <button type="button" key={name} onClick={() => { setMerchant(name); setAmount(String(value)); setChannel(kind); setError(''); }}><span>{name}</span><b>{won(value)}원</b></button>)}</div>}

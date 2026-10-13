@@ -32,9 +32,7 @@
 .card-flow .cf-tiers { display: grid; margin: 0 0 24px; padding: 0; list-style: none; }
 .card-flow .cf-tiers > li, .card-flow .cf-plan-list > li { display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 10px 0; }
 .card-flow .cf-tiers > li + li, .card-flow .cf-plan-list > li + li { border-top: 1px solid var(--line); }
-.card-flow .cf-tier-chip { flex-shrink: 0; width: 38px; height: 25px; border-radius: 4px; background: linear-gradient(143deg, #243a54, #132238); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 2px 4px rgba(16, 28, 48, .18); }
-.card-flow .cf-tier-premium { background: linear-gradient(143deg, #46494e, #1b1c1f); }
-.card-flow .cf-tier-private { background: linear-gradient(142deg, #efdcaa, #b69453); box-shadow: inset 0 0 0 1px #a98a4f, 0 2px 4px rgba(90, 67, 29, .2); }
+.card-flow .tier-card { width: 64px; margin: -6px -2px -6px -4px; }
 .card-flow .cf-tier-main { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
 .card-flow .cf-tier-main > strong { color: var(--ink); font-size: 16px; font-weight: 700; line-height: 1.45; }
 .card-flow .cf-tier-main > span, .card-flow .cf-tier-facts { color: var(--subtle); font-size: 13px; line-height: 1.5; }
@@ -190,8 +188,7 @@
 .card-flow .cf-demo-list > p { margin: 0; }
 @keyframes cf-pulse { 50% { opacity: .45; } }
 @media (max-width: 359px) {
-  .card-flow .cf-tier-chip { display: none; }
-  .card-flow .cf-option { padding: 14px; }
+    .card-flow .cf-option { padding: 14px; }
   .card-flow .cf-steps > li { font-size: 12px; }
   .card-flow .cf-summary > div { font-size: 14px; }
   .card-flow .cf-quick-button { font-size: 12px; }
