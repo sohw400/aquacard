@@ -22,7 +22,7 @@ export default function FundingHistory({ operations, onOpen, onAll }: {
       const Icon = deposit ? ArrowDownLeft : ArrowUpRight;
       const network = getFundingNetworks(operation.symbol).find((item) => item.id === operation.network)?.label;
       return <button className={`list-row funding-history-row${active ? ' pending' : ''}`} key={operation.id} onClick={() => onOpen(operation)} data-testid={`funding-open-${operation.id}`}>
-        <span className={`row-icon${deposit ? ' accent' : ''}`} aria-hidden="true"><Icon /></span>
+        <span className="row-icon" aria-hidden="true"><Icon /></span>
         <span className="row-main"><strong>{operation.symbol} {deposit ? '입금' : '출금'}</strong><span>{network} · {shortDate(operation.createdAt)}</span></span>
         <span className="funding-history-amount"><strong>{money(deposit ? operation.netWon : operation.amountWon)}</strong><small className={stopped ? 'stopped' : active ? 'pending' : 'done'}>{fundingStatusLabel(operation.status)}</small></span>
         <ChevronRight className="row-chevron" size={20} />

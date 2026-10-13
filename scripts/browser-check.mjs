@@ -212,13 +212,22 @@ try {
   const primaryNav = page.getByRole('navigation', { name: '주 메뉴' });
   assert.equal(await primaryNav.getByRole('button').count(), 4);
   assert.deepEqual(await primaryNav.getByRole('button').evaluateAll((buttons) => buttons.map((button) => ({ id: button.getAttribute('data-testid'), label: button.innerText.trim() }))), [
-    { id: 'nav-home', label: '카드' }, { id: 'nav-wallet', label: '자산' },
+    { id: 'nav-home', label: '홈' }, { id: 'nav-wallet', label: '자산' },
     { id: 'nav-benefits', label: '혜택' }, { id: 'nav-settings', label: '전체' },
   ]);
   assert.equal(await page.getByTestId('nav-activity').count(), 1);
   assert.equal(await page.getByTestId('nav-settings').count(), 1);
   assert.match(await page.locator('.demo-notice').innerText(), /체험 화면입니다.*실제 자금 이동과 카드 발급은 없습니다/);
   assert.match(await page.getByTestId('available-balance').innerText(), /132,780/);
+  const font = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return {
+      family: getComputedStyle(document.body).fontFamily,
+      loaded: [...document.fonts].filter((face) => face.family.replace(/["']/g, '') === 'Pretendard Variable' && face.status === 'loaded').length,
+    };
+  });
+  assert.match(font.family, /^["']?Pretendard Variable/, `본문 글꼴: ${font.family}`);
+  assert.ok(font.loaded > 0, 'Pretendard Variable 조각을 같은 출처에서 불러온다');
   const desktopCard = await page.locator('.card-center .aqua-card-visual.acv-hero').boundingBox();
   assert.ok(desktopCard && desktopCard.width >= 400 && desktopCard.width <= 500, `데스크톱 홈 카드 폭: ${desktopCard?.width}`);
   await page.getByTestId('open-payment').click();
@@ -227,7 +236,7 @@ try {
   await flow().getByTestId('card-identity-consent').waitFor({ state: 'visible' });
   assert.equal(await flow().getByTestId('card-apply').count(), 0, '카드 신청을 누르면 소개 화면을 거치지 않고 본인확인을 시작한다');
   assert.equal((await read()).payments.length, 0);
-  pass('네 개 주 메뉴·큰 홈 카드·초기 잔액·카드 신청에서 본인확인 바로 시작');
+  pass('네 개 주 메뉴·Pretendard 글꼴·큰 홈 카드·초기 잔액·카드 신청에서 본인확인 바로 시작');
 
   const beforeNavigation = ledgerSnapshot(await read());
   assert.equal(await page.getByTestId('nav-home').getAttribute('aria-current'), 'page');
