@@ -73,6 +73,7 @@ KAST 공식 약관의 입금 시 매도·USD 장부 반영과 Reserve 내부 배
 ## 기획 자료
 
 - [제품 기획](docs/product-plan.md)
+- [기획 v0.6 제안: KAST 구조의 한국 적용](docs/kast-alignment.md)
 - [Reserve·리워드 정책](docs/reserve-rewards.md)
 - [경쟁 비교·파라미터](docs/benchmark-and-parameters.md)
 - [카드 신청·발급 흐름](docs/card-issuance-flow.md)
