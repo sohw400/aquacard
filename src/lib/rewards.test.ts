@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAction, createInitialState } from './engine';
+import { addYear, applyAction, createInitialState } from './engine';
+import { PLANS } from './policy';
 import { getCashbackSummary } from './rewards';
 import type { AppState, Plan } from './types';
 
@@ -9,9 +10,9 @@ const DAY = 86_400_000;
 const MONTH_END = Date.UTC(2026, 9, 31, 14, 59); // 서울 10월 31일 23:59
 const MONTH_START = MONTH_END + 60_000; // 서울 11월 1일 00:00
 
-function activeState(now = NOW, plan: Plan = 'basic'): AppState {
+function activeState(now = NOW, plan: Plan = 'standard'): AppState {
   const state = createInitialState(now);
-  state.card = { ...state.card, stage: 'active', plan, identityVerified: true, submittedAt: now, issuedAt: now };
+  state.card = { ...state.card, stage: 'active', plan, identityVerified: true, submittedAt: now, issuedAt: now, billingAt: PLANS[plan].annualFee ? addYear(now) : null };
   state.spend = 3_000_000;
   state.rewards = 0;
   state.rewardsAuto = false;
@@ -26,7 +27,7 @@ function confirm(state: AppState, id = state.payments[0].id, now = NOW): AppStat
   return applyAction(state, { type: 'CONFIRM_PAYMENT', id }, now);
 }
 
-test('월 페이백 집계는 보유 리워드 잔액과 구분하며 Basic 기본 지급률·한도를 보여준다', () => {
+test('월 페이백 집계는 보유 리워드 잔액과 구분하며 스탠다드 기본 지급률·한도를 보여준다', () => {
   const state = createInitialState(NOW);
   assert.equal(state.rewards, 4_280);
   assert.deepEqual(getCashbackSummary(state), {
@@ -35,14 +36,22 @@ test('월 페이백 집계는 보유 리워드 잔액과 구분하며 Basic 기�
   });
 });
 
-test('Plus 지급률·월 한도를 적용하고 Reserve 보상률 변경과 혼동하지 않는다', () => {
-  let state = activeState(NOW, 'plus');
+test('프리미엄 지급률·월 한도를 적용하고 Reserve 보상률 변경과 혼동하지 않는다', () => {
+  let state = activeState(NOW, 'premium');
   state = applyAction(state, { type: 'CHANGE_RATE', rate: 0.08 }, NOW);
   state = confirm(pay(state, 10_000));
   assert.equal(state.reserveRate, 0.08);
   assert.deepEqual(getCashbackSummary(state), {
     month: '2026-10', confirmed: 150, pending: 0, remaining: 29_850,
     rate: 0.015, cap: 30_000, allocated: 150,
+  });
+});
+
+test('프라이빗 지급률·월 한도를 집계에 보여준다', () => {
+  const state = confirm(pay(activeState(NOW, 'private'), 10_000));
+  assert.deepEqual(getCashbackSummary(state), {
+    month: '2026-10', confirmed: 200, pending: 0, remaining: 99_800,
+    rate: 0.02, cap: 100_000, allocated: 200,
   });
 });
 
@@ -104,6 +113,40 @@ test('동월 부분 환불은 확정 페이백과 한도 예약을 줄이고 전
   assert.equal(getCashbackSummary(state).pending, 0);
   assert.equal(getCashbackSummary(state).allocated, 0);
   assert.equal(getCashbackSummary(state).remaining, 10_000);
+});
+
+test('달 중간에 멤버십을 올리면 그달 집계는 새 지급률·상한을 쓰고 이미 받은 페이백은 새 상한에서 뺀다', () => {
+  let state = activeState();
+  state.spend = 5_000_000;
+  state = confirm(pay(state, 500_000));
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'premium' }, NOW);
+  assert.deepEqual(getCashbackSummary(state), {
+    month: '2026-10', confirmed: 5_000, pending: 0, remaining: 25_000,
+    rate: 0.015, cap: 30_000, allocated: 5_000,
+  });
+  state = pay(state, 100_000);
+  assert.equal(state.payments[0].cashback, 1_500);
+  assert.deepEqual(getCashbackSummary(state), {
+    month: '2026-10', confirmed: 5_000, pending: 1_500, remaining: 23_500,
+    rate: 0.015, cap: 30_000, allocated: 6_500,
+  });
+});
+
+test('갱신일에 연회비를 못 내 스탠다드가 되면 그달 집계도 스탠다드 상한을 쓰고 이미 예약한 페이백은 그대로 둔다', () => {
+  let state = activeState(Date.UTC(2025, 9, 18, 3), 'premium'); // 2026년 10월 18일이 갱신일이다.
+  state.spend = 1_010_000;
+  state = pay(state, 500_000);
+  state = pay(state, 500_000);
+  assert.equal(getCashbackSummary(state).pending, 15_000, '프리미엄 1.5%로 예약한 페이백');
+  const renewal = Date.UTC(2026, 9, 18, 3);
+  state = applyAction(state, { type: 'TICK' }, renewal);
+  assert.deepEqual([state.card.plan, state.spend], ['standard', 10_000], '잔액 10,000원으로는 연회비 100,000원을 낼 수 없다');
+  assert.deepEqual(getCashbackSummary(state), {
+    month: '2026-10', confirmed: 0, pending: 15_000, remaining: 0,
+    rate: 0.01, cap: 10_000, allocated: 15_000,
+  });
+  state = pay(state, 10_000, renewal);
+  assert.equal(state.payments[0].cashback, 0, '이번 달 페이백이 이미 스탠다드 상한을 넘었다');
 });
 
 test('리워드 혼합 결제의 부분 환불은 실제 원금별 페이백 환수와 같은 금액을 집계한다', () => {

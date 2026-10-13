@@ -1,13 +1,13 @@
-import { ASSETS, POLICY } from './policy';
-import type { AssetSymbol } from './types';
+import { FUNDING_ASSETS, POLICY } from './policy';
+import type { FundingSymbol } from './types';
 
 export type FundingQuoteRequest =
-  | { direction: 'receive'; symbol: AssetSymbol; units: number }
-  | { direction: 'withdraw'; symbol: AssetSymbol; amount: number };
+  | { direction: 'receive'; symbol: FundingSymbol; units: number }
+  | { direction: 'withdraw'; symbol: FundingSymbol; amount: number };
 
 export interface FundingQuote {
   direction: 'receive' | 'withdraw';
-  symbol: AssetSymbol;
+  symbol: FundingSymbol;
   price: number;
   inputUnits: number;
   grossWon: number;
@@ -17,7 +17,7 @@ export interface FundingQuote {
   outputUnits: number;
 }
 
-const SYMBOLS = Object.keys(ASSETS) as AssetSymbol[];
+const SYMBOLS = Object.keys(FUNDING_ASSETS) as FundingSymbol[];
 const MAX_WON = BigInt(Number.MAX_SAFE_INTEGER);
 
 /** Use the decimal input rather than binary multiplication when rounding won. */
@@ -30,9 +30,15 @@ function decimalRatio(value: number): { numerator: bigint; denominator: bigint }
   return { numerator, denominator: 10n ** BigInt(scale) };
 }
 
+/** Won value of a coin amount, floored without binary rounding (0.0012 BTC at 150,000,000 is exactly 180,000). */
+export function unitsToWon(units: number, price: number): number {
+  const ratio = decimalRatio(units);
+  return Number(ratio.numerator * BigInt(price) / ratio.denominator);
+}
+
 export function getFundingQuote(request: FundingQuoteRequest): FundingQuote {
   if (!request || !SYMBOLS.includes(request.symbol)) throw new Error('지원하는 입출금 코인을 선택해 주세요.');
-  const price = ASSETS[request.symbol].price;
+  const price = FUNDING_ASSETS[request.symbol].price;
   let gross: bigint;
   let inputUnits = 0;
 
@@ -43,18 +49,18 @@ export function getFundingQuote(request: FundingQuoteRequest): FundingQuote {
     inputUnits = request.units;
   } else if (request.direction === 'withdraw') {
     if (!Number.isSafeInteger(request.amount) || request.amount < POLICY.minimumTopup) {
-      throw new Error('출금 금액은 1,000원 이상의 안전한 정수로 입력해 주세요.');
+      throw new Error('출금 금액은 1,000원 이상의 정수로 입력해 주세요.');
     }
     gross = BigInt(request.amount);
   } else {
     throw new Error('입출금 방향을 확인해 주세요.');
   }
 
-  if (gross < BigInt(POLICY.minimumTopup)) throw new Error('입출금 평가액은 최소 1,000원이어야 합니다.');
-  if (gross > MAX_WON) throw new Error('처리할 수 있는 원화 금액 범위를 초과했습니다.');
+  if (gross < BigInt(POLICY.minimumTopup)) throw new Error('입출금 금액은 원화로 최소 1,000원이어야 해요.');
+  if (gross > MAX_WON) throw new Error('처리할 수 있는 금액 범위를 넘었어요. 금액을 줄여 주세요.');
   const feeRate = decimalRatio(POLICY.conversionFee);
-  // Floor the received value to won first; round the disclosed fee up to won.
-  const fee = (gross * feeRate.numerator + feeRate.denominator - 1n) / feeRate.denominator;
+  // Incoming coins convert free, and the won stablecoin never converts; other outgoing coins round the fee up to won.
+  const fee = request.direction === 'receive' || request.symbol === 'KRWS' ? 0n : (gross * feeRate.numerator + feeRate.denominator - 1n) / feeRate.denominator;
   const grossWon = Number(gross);
   const feeWon = Number(fee);
   const netWon = grossWon - feeWon;
@@ -69,6 +75,6 @@ export function getFundingQuote(request: FundingQuoteRequest): FundingQuote {
 export function assertFundingQuoteFresh(quotedAt: number, wallNow = Date.now()): void {
   if (!Number.isFinite(quotedAt) || !Number.isFinite(wallNow) || quotedAt < 0 || wallNow < 0
     || quotedAt > wallNow || wallNow - quotedAt > POLICY.quoteTtlSeconds * 1_000) {
-    throw new Error('입출금 견적이 만료되었거나 올바르지 않습니다. 새 견적을 확인해 주세요.');
+    throw new Error('입출금 견적이 만료됐거나 올바르지 않아요. 새 견적을 확인해 주세요.');
   }
 }

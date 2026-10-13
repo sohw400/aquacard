@@ -1,0 +1,3 @@
+.qr-code { display: block; flex-shrink: 0; max-width: 100%; height: auto; border-radius: 12px; }
+.qr-code .qr-code-tile { fill: var(--qr-tile); }
+.qr-code .qr-code-ink { fill: var(--qr-ink); }

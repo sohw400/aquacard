@@ -1,92 +1,98 @@
-.itd-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 24px; background: #0c1c2d66; overscroll-behavior: none; }
-.internal-transfer-dialog { --itd-ink: var(--ink, #17232e); --itd-muted: var(--muted, #697582); --itd-accent: var(--accent, #194b75); --itd-line: var(--line, #e6e9ec); width: 100%; max-width: 480px; max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; border: 1px solid #e3e8ec; border-radius: 12px; background: #fff; color: var(--itd-ink); box-shadow: 0 14px 46px #09172926; font-family: inherit; }
+.itd-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: flex-end; justify-content: center; background: var(--overlay); overscroll-behavior: none; animation: fade-in .2s ease both; }
+.internal-transfer-dialog { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; max-width: 600px; max-height: calc(100dvh - 12px - env(safe-area-inset-top)); overflow: hidden; border-radius: 24px 24px 0 0; background: var(--surface); color: var(--ink); font-family: inherit; outline: none; animation: sheet-up .34s var(--ease) both; }
+.internal-transfer-dialog::before { content: ''; flex-shrink: 0; width: 36px; height: 4px; margin: 8px auto 0; border-radius: 2px; background: var(--fill-strong); }
 .internal-transfer-dialog * { box-sizing: border-box; }
 .internal-transfer-dialog button, .internal-transfer-dialog input { font-family: inherit; }
-.internal-transfer-dialog .itd-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; flex-shrink: 0; padding: 24px 24px 18px; }
-.internal-transfer-dialog .itd-header h2 { margin: 0; color: var(--itd-ink); font-size: 21px; font-weight: 650; line-height: 1.45; letter-spacing: -.4px; outline: none; }
-.internal-transfer-dialog .itd-header p { margin: 7px 0 0; color: var(--itd-muted); font-size: 13px; line-height: 1.7; }
-.internal-transfer-dialog .itd-close { display: grid; place-items: center; width: 44px; height: 44px; margin: -7px -10px 0 0; padding: 0; border: 0; border-radius: 8px; flex-shrink: 0; background: transparent; color: var(--itd-muted); cursor: pointer; }
-.internal-transfer-dialog .itd-close:hover { background: #f3f6f8; }
-.internal-transfer-dialog .itd-body { min-height: 0; padding: 0 24px 24px; overflow-y: auto; overscroll-behavior: contain; }
-.internal-transfer-dialog .itd-route { display: flex; align-items: center; gap: 10px; padding: 18px 0; border-top: 1px solid var(--itd-line); border-bottom: 1px solid var(--itd-line); }
-.internal-transfer-dialog .itd-route > strong { color: #3b5168; font-size: 14px; font-weight: 550; line-height: 1.7; }
-.internal-transfer-dialog .itd-route > svg { flex-shrink: 0; color: #8192a3; stroke-width: 1.5; }
-.internal-transfer-dialog .itd-amount { padding-top: 26px; }
-.internal-transfer-dialog .itd-amount > label { display: block; margin-bottom: 11px; color: #526579; font-size: 14px; font-weight: 500; line-height: 1.6; }
-.internal-transfer-dialog .itd-input { display: flex; align-items: center; gap: 10px; padding: 0 14px; border: 1px solid #dbe2e8; border-radius: 8px; background: #fff; }
-.internal-transfer-dialog .itd-input:focus-within { border-color: #6a8dab; box-shadow: 0 0 0 1px #6a8dab; }
-.internal-transfer-dialog .itd-input input { min-width: 0; flex: 1; width: 100%; min-height: 52px; padding: 13px 0; border: 0; outline: 0; background: transparent; color: var(--itd-ink); font-size: 16px; line-height: 1.6; font-weight: 500; font-variant-numeric: tabular-nums; appearance: textfield; }
+.internal-transfer-dialog .itd-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-shrink: 0; padding: 12px 10px 6px 22px; }
+.internal-transfer-dialog .itd-header h2 { margin: 0; color: var(--ink); font-size: 22px; font-weight: 700; line-height: 1.4; letter-spacing: -.6px; outline: none; }
+.internal-transfer-dialog .itd-header p { margin: 2px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.internal-transfer-dialog .itd-close { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-soft); cursor: pointer; }
+.internal-transfer-dialog .itd-body { min-height: 0; padding: 10px 22px 22px; overflow-y: auto; overscroll-behavior: contain; }
+.internal-transfer-dialog .itd-route { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--sunken); }
+.internal-transfer-dialog .itd-route > strong { color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.5; }
+.internal-transfer-dialog .itd-route > svg { flex-shrink: 0; color: var(--accent); }
+.internal-transfer-dialog .itd-amount { padding-top: 22px; }
+.internal-transfer-dialog .itd-amount > label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 14px; font-weight: 500; line-height: 1.5; }
+.internal-transfer-dialog .itd-input { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--line); transition: border-color .15s; }
+.internal-transfer-dialog .itd-input:focus-within { border-color: var(--ink); }
+.internal-transfer-dialog .itd-input input { flex: 1; width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 34px; font-weight: 700; line-height: 1.3; letter-spacing: -.8px; font-variant-numeric: tabular-nums; appearance: textfield; }
 .internal-transfer-dialog .itd-input input::-webkit-outer-spin-button, .internal-transfer-dialog .itd-input input::-webkit-inner-spin-button { margin: 0; -webkit-appearance: none; }
-.internal-transfer-dialog .itd-input > span { flex-shrink: 0; color: var(--itd-muted); font-size: 14px; }
-.internal-transfer-dialog .itd-available { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 11px; font-size: 12px; line-height: 1.7; }
-.internal-transfer-dialog .itd-available > span { color: var(--itd-muted); }
-.internal-transfer-dialog .itd-available > strong { color: #5a6f85; font-weight: 500; font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
-.internal-transfer-dialog .itd-presets { display: flex; gap: 8px; margin-top: 17px; }
-.internal-transfer-dialog .itd-presets > button { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 44px; padding: 10px 6px; border: 1px solid var(--itd-line); border-radius: 8px; background: #fff; color: #59718a; font-size: 12px; line-height: 1.5; white-space: nowrap; cursor: pointer; }
-.internal-transfer-dialog .itd-presets > button:disabled { color: #afb8c1; cursor: not-allowed; }
-.internal-transfer-dialog .itd-presets > button:hover:not(:disabled) { background: #f7f9fb; }
-.internal-transfer-dialog .itd-help { color: var(--itd-muted); margin: 20px 0; font-size: 12px; line-height: 1.9; }
+.internal-transfer-dialog .itd-input > span { flex-shrink: 0; color: var(--muted); font-size: 18px; font-weight: 600; }
+.internal-transfer-dialog .itd-available { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 10px; font-size: 14px; line-height: 1.5; }
+.internal-transfer-dialog .itd-available > span { color: var(--subtle); }
+.internal-transfer-dialog .itd-available > strong { color: var(--ink); font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.internal-transfer-dialog .itd-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.internal-transfer-dialog .itd-presets > button { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 44px; padding: 8px 10px; border: 0; border-radius: 999px; background: var(--fill); color: var(--ink-soft); font-size: 14px; font-weight: 600; line-height: 1.4; white-space: nowrap; cursor: pointer; transition: background-color .15s; }
+.internal-transfer-dialog .itd-presets > button:disabled { color: var(--faint); cursor: not-allowed; }
+.internal-transfer-dialog .itd-help { margin: 16px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.7; }
 .internal-transfer-dialog .itd-detail-list { margin: 0; padding: 0; }
-.internal-transfer-dialog .itd-detail-list > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 13px 0; font-size: 13px; line-height: 1.7; }
-.internal-transfer-dialog .itd-detail-list dt { color: var(--itd-muted); }
-.internal-transfer-dialog .itd-detail-list dd { margin: 0; color: #3c526a; font-weight: 500; font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
-.internal-transfer-dialog .itd-amount-details { padding: 17px 0 0; margin-top: 21px; border-top: 1px solid var(--itd-line); }
-.internal-transfer-dialog .itd-amount-details > div { padding: 9px 0; }
-.internal-transfer-dialog .itd-review-amount { padding: 25px 0 24px; }
-.internal-transfer-dialog .itd-review-amount > span { color: var(--itd-muted); font-size: 12px; line-height: 1.6; }
-.internal-transfer-dialog .itd-review-amount > strong { display: block; margin-top: 9px; color: var(--itd-ink); font-size: 29px; font-weight: 650; line-height: 1.35; letter-spacing: -.6px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.internal-transfer-dialog .itd-review-amount > strong > small { margin-left: 8px; color: var(--itd-muted); font-size: 14px; font-weight: 400; letter-spacing: 0; }
-.internal-transfer-dialog .itd-quote { padding-top: 20px; border-top: 1px solid var(--itd-line); }
-.internal-transfer-dialog .itd-section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
-.internal-transfer-dialog .itd-section-title > h3, .internal-transfer-dialog .itd-balances > h3 { margin: 0; color: #405870; font-size: 14px; line-height: 1.6; font-weight: 600; }
-.internal-transfer-dialog .itd-clock { display: flex; align-items: center; gap: 8px; }
-.internal-transfer-dialog .itd-clock > span { color: var(--itd-muted); font-size: 12px; line-height: 1.6; white-space: nowrap; }
-.internal-transfer-dialog .itd-clock > .expired { color: #8a633f; }
-.internal-transfer-dialog .itd-refresh { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 44px; padding: 10px 7px; border: 0; border-radius: 8px; color: #4e6e8b; background: transparent; font-size: 12px; line-height: 1.5; cursor: pointer; }
-.internal-transfer-dialog .itd-refresh:hover { background: #f7f9fb; }
-.internal-transfer-dialog .itd-detail-list > .itd-net-row { padding: 17px 0 19px; border-top: 1px solid var(--itd-line); }
-.internal-transfer-dialog .itd-net-row dd { color: var(--itd-accent); font-size: 22px; font-weight: 650; letter-spacing: -.3px; }
-.internal-transfer-dialog .itd-expired { margin: 0 0 18px; color: #8a633f; font-size: 12px; line-height: 1.8; }
-.internal-transfer-dialog .itd-balances { padding-top: 23px; margin-top: 12px; border-top: 1px solid var(--itd-line); }
-.internal-transfer-dialog .itd-balance { padding: 15px 0; }
-.internal-transfer-dialog .itd-balance > span { display: block; color: var(--itd-muted); font-size: 12px; line-height: 1.7; }
-.internal-transfer-dialog .itd-balance > div { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 7px; font-size: 13px; line-height: 1.7; font-variant-numeric: tabular-nums; }
-.internal-transfer-dialog .itd-balance > div > span { color: var(--itd-muted); }
-.internal-transfer-dialog .itd-balance > div > svg { color: #8192a3; flex-shrink: 0; }
-.internal-transfer-dialog .itd-balance > div > strong { color: #3e5973; font-weight: 600; overflow-wrap: anywhere; }
-.internal-transfer-dialog .itd-reserve-note { padding-top: 17px; margin: 6px 0 0; border-top: 1px solid var(--itd-line); color: var(--itd-muted); font-size: 12px; line-height: 1.85; }
-.internal-transfer-dialog .itd-error { margin: 17px 0 0; color: #b35e50; font-size: 13px; line-height: 1.8; }
-.internal-transfer-dialog .itd-demo-note { margin: 21px 0 0; color: var(--itd-muted); font-size: 12px; line-height: 1.85; }
+.internal-transfer-dialog .itd-detail-list > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 36px; font-size: 14px; line-height: 1.5; }
+.internal-transfer-dialog .itd-detail-list dt { color: var(--muted); }
+.internal-transfer-dialog .itd-detail-list dd { margin: 0; color: var(--ink); font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.internal-transfer-dialog .itd-amount-details { margin-top: 18px; padding: 6px 16px; border-radius: var(--radius-md); background: var(--sunken); }
+.internal-transfer-dialog .itd-review-amount { padding: 22px 0 18px; text-align: center; }
+.internal-transfer-dialog .itd-review-amount > span { color: var(--muted); font-size: 14px; line-height: 1.5; }
+.internal-transfer-dialog .itd-review-amount > strong { display: block; margin-top: 4px; color: var(--ink); font-size: 32px; font-weight: 700; line-height: 1.3; letter-spacing: -.8px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.internal-transfer-dialog .itd-review-amount > strong > small { margin-left: 6px; color: var(--muted); font-size: 18px; font-weight: 600; letter-spacing: 0; }
+.internal-transfer-dialog .itd-review-amount + .itd-detail-list { padding: 6px 16px; border-radius: var(--radius-md); background: var(--sunken); }
+.internal-transfer-dialog .itd-quote { margin-top: 18px; padding: 4px 16px 10px; border-radius: var(--radius-md); background: var(--sunken); }
+.internal-transfer-dialog .itd-section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.internal-transfer-dialog .itd-section-title > h3, .internal-transfer-dialog .itd-balances > h3 { margin: 0; color: var(--ink-soft); font-size: 14px; font-weight: 600; line-height: 1.5; }
+.internal-transfer-dialog .itd-clock { display: flex; align-items: center; gap: 6px; }
+.internal-transfer-dialog .itd-clock > span { color: var(--subtle); font-size: 13px; line-height: 1.5; white-space: nowrap; }
+.internal-transfer-dialog .itd-clock > .expired { color: var(--danger); font-weight: 600; }
+.internal-transfer-dialog .itd-refresh { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 44px; margin-right: -6px; padding: 0 6px; border: 0; border-radius: 8px; background: transparent; color: var(--accent); font-size: 13px; font-weight: 600; line-height: 1.5; cursor: pointer; }
+.internal-transfer-dialog .itd-detail-list > .itd-net-row { margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.internal-transfer-dialog .itd-net-row dt { color: var(--ink); font-weight: 600; }
+.internal-transfer-dialog .itd-net-row dd { color: var(--accent); font-size: 20px; font-weight: 700; letter-spacing: -.4px; }
+.internal-transfer-dialog .itd-expired { margin: 8px 0 4px; color: var(--danger); font-size: 13px; line-height: 1.6; }
+.internal-transfer-dialog .itd-balances { margin-top: 12px; padding: 10px 16px 6px; border-radius: var(--radius-md); background: var(--sunken); }
+.internal-transfer-dialog .itd-balance { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
+.internal-transfer-dialog .itd-balance > span { color: var(--muted); font-size: 14px; line-height: 1.5; }
+.internal-transfer-dialog .itd-balance > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 8px; font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.internal-transfer-dialog .itd-balance > div > span { color: var(--subtle); }
+.internal-transfer-dialog .itd-balance > div > svg { flex-shrink: 0; color: var(--faint); }
+.internal-transfer-dialog .itd-balance > div > strong { color: var(--ink); font-weight: 700; overflow-wrap: anywhere; }
+.internal-transfer-dialog .itd-reserve-note { margin: 12px 0 0; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--accent-weak); color: var(--accent-strong); font-size: 13px; line-height: 1.6; }
+.internal-transfer-dialog .itd-error { margin: 14px 0 0; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--danger-weak); color: var(--danger); font-size: 14px; line-height: 1.6; }
+.internal-transfer-dialog .itd-demo-note { margin: 16px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
 .internal-transfer-dialog .itd-completed { text-align: center; }
-.internal-transfer-dialog .itd-result-icon { display: inline-grid; place-items: center; width: 54px; height: 54px; margin: 12px 0 15px; border-radius: 50%; color: #5a809e; background: #eff4f8; }
-.internal-transfer-dialog .itd-completed > p:first-of-type { margin: 0; color: var(--itd-muted); font-size: 13px; line-height: 1.8; }
-.internal-transfer-dialog .itd-result-amount { display: block; margin: 9px 0 26px; color: var(--itd-ink); font-size: 31px; line-height: 1.4; font-weight: 650; letter-spacing: -.7px; font-variant-numeric: tabular-nums; }
+.internal-transfer-dialog .itd-result-icon { display: inline-grid; place-items: center; width: 56px; height: 56px; margin: 8px 0 14px; border-radius: 50%; background: var(--primary); color: var(--on-primary); animation: itd-pop .45s var(--ease) both; }
+.internal-transfer-dialog .itd-result-icon > svg { stroke-width: 3; }
+.internal-transfer-dialog .itd-completed > p:first-of-type { margin: 0; color: var(--muted); font-size: 16px; font-weight: 600; line-height: 1.5; }
+.internal-transfer-dialog .itd-result-amount { display: block; margin: 4px 0 18px; color: var(--ink); font-size: 32px; font-weight: 700; line-height: 1.3; letter-spacing: -.8px; font-variant-numeric: tabular-nums; }
 .internal-transfer-dialog .itd-completed .itd-route, .internal-transfer-dialog .itd-completed .itd-quote, .internal-transfer-dialog .itd-completed .itd-balances, .internal-transfer-dialog .itd-completed .itd-detail-list { text-align: left; }
-.internal-transfer-dialog .itd-completed .itd-route { justify-content: center; }
-.internal-transfer-dialog .itd-completed .itd-quote { border-top: 0; }
-.internal-transfer-dialog .itd-receipt-meta { padding-top: 15px; margin-top: 20px; border-top: 1px solid var(--itd-line); }
-.internal-transfer-dialog .itd-receipt-meta > div { padding: 9px 0; font-size: 12px; }
-.internal-transfer-dialog .itd-footer { display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 16px 24px 22px; border-top: 1px solid var(--itd-line); background: #fff; }
-.internal-transfer-dialog .itd-button { display: flex; align-items: center; justify-content: center; gap: 7px; flex: 1; min-height: 50px; padding: 13px 16px; border: 1px solid transparent; border-radius: 8px; color: var(--itd-ink); background: #fff; font-family: inherit; font-size: 15px; font-weight: 600; line-height: 1.5; cursor: pointer; }
-.internal-transfer-dialog .itd-primary { background: var(--itd-accent); color: #fff; }
-.internal-transfer-dialog .itd-primary:hover:not(:disabled) { background: #153e61; }
-.internal-transfer-dialog .itd-primary:disabled { color: #a1afbc; background: #e8edf1; cursor: not-allowed; }
-.internal-transfer-dialog .itd-secondary { flex: 0 0 31%; color: #607182; border-color: var(--itd-line); }
-.internal-transfer-dialog button:focus-visible { outline: 2px solid #7896b1; outline-offset: 3px; }
-@media (max-width: 600px) {
-  .itd-backdrop { align-items: flex-end; padding: 0; }
-  .internal-transfer-dialog { max-width: none; max-height: calc(100dvh - 14px); border-radius: 16px 16px 0 0; border-bottom: 0; }
-  .internal-transfer-dialog .itd-header { padding: 23px 22px 17px; }
-  .internal-transfer-dialog .itd-body { padding: 0 22px 24px; }
-  .internal-transfer-dialog .itd-footer { padding: 15px 22px calc(17px + env(safe-area-inset-bottom)); }
+.internal-transfer-dialog .itd-completed > .itd-detail-list:not(.itd-receipt-meta) { margin-top: 12px; padding: 6px 16px; border-radius: var(--radius-md); background: var(--sunken); }
+.internal-transfer-dialog .itd-receipt-meta { margin-top: 12px; padding: 6px 16px; border-radius: var(--radius-md); background: var(--sunken); }
+.internal-transfer-dialog .itd-receipt-meta > div { font-size: 13px; }
+.internal-transfer-dialog .itd-footer { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 12px 22px calc(16px + env(safe-area-inset-bottom)); background: var(--surface); }
+.internal-transfer-dialog .itd-button { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1; min-height: 56px; padding: 12px 16px; border: 0; border-radius: var(--radius-md); background: var(--fill); color: var(--ink); font-family: inherit; font-size: 17px; font-weight: 600; line-height: 1.4; cursor: pointer; transition: background-color .15s, transform .15s var(--ease); }
+.internal-transfer-dialog .itd-button:active:not(:disabled) { transform: scale(.98); }
+.internal-transfer-dialog .itd-primary { background: var(--primary); color: var(--on-primary); }
+.internal-transfer-dialog .itd-primary:disabled { background: var(--fill); color: var(--faint); cursor: not-allowed; }
+.internal-transfer-dialog .itd-secondary { flex: 0 0 31%; }
+.internal-transfer-dialog button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@keyframes itd-pop { from { opacity: 0; transform: scale(.6); } }
+@media (min-width: 640px) {
+  .itd-backdrop { align-items: center; padding: 24px; }
+  .internal-transfer-dialog { width: 480px; max-height: calc(100dvh - 48px); border-radius: 24px; animation-name: pop-in; animation-duration: .24s; }
+  .internal-transfer-dialog::before { display: none; }
+  .internal-transfer-dialog .itd-header { padding: 22px 14px 6px 26px; }
+  .internal-transfer-dialog .itd-body { padding: 10px 26px 24px; }
+  .internal-transfer-dialog .itd-footer { padding: 12px 26px 22px; }
 }
-@media (max-width: 360px) {
-  .internal-transfer-dialog .itd-header { padding-left: 18px; padding-right: 18px; }
+@media (max-width: 359px) {
+  .internal-transfer-dialog .itd-header { padding-left: 18px; }
   .internal-transfer-dialog .itd-body { padding-left: 18px; padding-right: 18px; }
   .internal-transfer-dialog .itd-footer { padding-left: 18px; padding-right: 18px; }
   .internal-transfer-dialog .itd-presets { gap: 6px; }
-  .internal-transfer-dialog .itd-presets > button { font-size: 11px; }
-  .internal-transfer-dialog .itd-balance > div { gap: 6px; font-size: 12px; }
-  .internal-transfer-dialog .itd-section-title { gap: 8px; }
-  .internal-transfer-dialog .itd-clock { gap: 4px; }
+  .internal-transfer-dialog .itd-presets > button { padding: 8px 6px; font-size: 13px; }
+  .internal-transfer-dialog .itd-input input { font-size: 30px; }
+  .internal-transfer-dialog .itd-balance > div { font-size: 13px; }
+}
+@media (hover: hover) {
+  .internal-transfer-dialog .itd-close:hover { background: rgba(0, 0, 0, .04); }
+  .internal-transfer-dialog .itd-presets > button:hover:not(:disabled) { background: var(--fill-strong); }
+  .internal-transfer-dialog .itd-primary:hover:not(:disabled) { background: var(--primary-hover); }
+  .internal-transfer-dialog .itd-secondary:hover:not(:disabled) { background: var(--fill-strong); }
 }
