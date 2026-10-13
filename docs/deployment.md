@@ -6,7 +6,14 @@
 
 GitHub의 `main` 브랜치 변경 또는 수동 실행으로 `.github/workflows/pages.yml`이 동작한다. 의존성을 lockfile대로 설치하고 금융 로직 테스트를 실행한 다음, Pages 설정의 실제 경로를 반영해 정적 사이트를 빌드·업로드·게시한다. Actions는 공식 저장소에서 확인한 커밋으로 고정했다.
 
-공개 주소는 [https://sohw400.github.io/aquacard/](https://sohw400.github.io/aquacard/)이다. 2026-10-13 [배포 실행](https://github.com/sohw400/aquacard/actions/runs/38338232648)의 `build`와 `deploy`가 성공했고, 공개 주소의 HTTP 200 응답과 Aqua Card 제목을 확인했다. JS·CSS·favicon도 올바른 콘텐츠 형식으로 HTTP 200을 반환하며, 내려받은 HTML·파일은 검증한 프로덕션 빌드와 바이트 단위로 일치한다.
+공개 주소는 [https://sohw400.github.io/aquacard/](https://sohw400.github.io/aquacard/)이다.
+
+PR 단계에서 도는 검사 워크플로는 없으므로, `main`에 머지하기 전에 로컬에서 `npm test`, `npm run test:browser`, `npm run test:devices`, `npm run build`를 돌린다([테스트 안내](testing.md)).
+
+| 날짜 | 배포한 변경 | 실행 | 확인한 것 |
+| --- | --- | --- | --- |
+| 2026-10-13 | 첫 공개 배포 | [실행 3](https://github.com/sohw400/aquacard/actions/runs/38338232648) | `build`와 `deploy` 성공. 공개 주소의 HTTP 200 응답과 Aqua Card 제목, JS·CSS·favicon의 콘텐츠 형식을 확인했고, 내려받은 HTML·파일이 검증한 프로덕션 빌드와 바이트 단위로 일치했다 |
+| 2026-10-13 | [PR #1](https://github.com/sohw400/aquacard/pull/1): KAST 구조 재편, 멤버십, 보내기와 받기, 연간 거래 내역, 모바일 앱 준비 문서 | [실행 9](https://github.com/sohw400/aquacard/actions/runs/38402574590) | `build`(로직 테스트 115개 포함)와 `deploy` 성공. GitHub API에서 머지 커밋(`a10d032`)의 `github-pages` 배포 상태가 `success`인 것을 확인했다. 작업 환경의 네트워크 정책이 공개 주소와 Actions 산출물 저장소를 막아 공개 사이트는 직접 열지 못했다. 브라우저·기기 검사는 머지 전에 같은 코드로 마쳤다 |
 
 현재 앱은 정적 웹 PoC이며 API 서버·비밀값·실제 결제 기능이 필요하지 않다. 공개 화면에도 데모임을 표시한다. 브라우저의 데모 상태는 공개 사이트에서 별도로 생성되고 다른 방문자와 공유되지 않는다.
 
