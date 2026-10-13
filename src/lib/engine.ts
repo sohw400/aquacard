@@ -1,11 +1,11 @@
 import { FUND_SOURCES, ID_TYPES, OCCUPATIONS, PURPOSES } from './auth';
-import { ASSETS, FUNDING_ASSETS, fundingLabel, PLAN_ORDER, PLANS, POLICY } from './policy';
-import { findMember, maskName } from './directory';
+import { ASSETS, FUNDING_ASSETS, fundingLabel, physicalCardName, PLAN_ORDER, PLANS, POLICY } from './policy';
+import { findMember, initialTag, maskName, normalizeTag, TAG_PATTERN, tagIssue } from './directory';
 import { josa, ro } from './format';
 import { assertFundingQuoteFresh, getFundingQuote, unitsToWon } from './funding';
 import { createFundingQuote, fundingStatusLabel, getFundingNetworks, validateFundingAddress } from './movements';
-import { validAddress } from './address';
-import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, FundingOperation, FundingSymbol, NotificationSettings, Payment, PaymentControls, Plan, Transaction } from './types';
+import { addressLine, validAddress } from './address';
+import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, DeliveryStage, FundingOperation, FundingSymbol, NotificationSettings, Payment, PaymentControls, Plan, Transaction } from './types';
 
 export const STORAGE_KEY = 'aqua-card:poc:v1';
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -14,6 +14,7 @@ const FUNDING_STAGE_MS = 3_000;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/;
 const SYMBOLS = Object.keys(ASSETS) as AssetSymbol[];
 const FUNDING_SYMBOLS = Object.keys(FUNDING_ASSETS) as FundingSymbol[];
+const DELIVERY_ORDER: DeliveryStage[] = ['none', 'preparing', 'shipped', 'delivered'];
 const STAGES: CardStage[] = ['not_applied', 'identity', 'plan', 'details', 'review', 'submitted', 'needs_info', 'approved', 'issued', 'active', 'rejected'];
 const TRANSITIONS: Record<CardStage, CardStage[]> = {
   not_applied: ['identity'], identity: ['plan', 'not_applied'], plan: ['identity', 'details'],
@@ -39,7 +40,8 @@ export function createInitialState(now = Date.now()): AppState {
     rateHistory: [{ rate: POLICY.reserveAnnualRate, timestamp: now }],
     card: { stage: 'not_applied', plan: 'standard', physical: false, delivery: 'none',
       identityVerified: false, locked: false, physicalActive: false, last4: '2048', reference: '',
-      submittedAt: null, issuedAt: null, wallets: [], chargedFee: 0, billingAt: null, nextPlan: null, address: null, pinSet: false },
+      submittedAt: null, issuedAt: null, wallets: [], chargedFee: 0, billingAt: null, nextPlan: null, address: null, pinSet: false,
+      physicalPlan: null, replacement: null },
     controls: defaultControls(), notifications: defaultNotifications(),
     payments: [], transactions: [], fundingOperations: [], lastAccruedAt: now, clockOffsetMs: 0,
     monthlyCashback: 0, cashbackMonth: month, dailySpent: 0, spendingDay: day,
@@ -253,6 +255,21 @@ function refundCardFee(state: AppState, now: number, card: CardState, reason: st
   card.chargedFee = 0;
 }
 
+/**
+ * What an upgrade does to the physical card: one still being made switches material, one already sent
+ * is followed by a card of the new tier, and a card of that tier or better is kept.
+ */
+export function upgradePhysical(card: CardState, plan: Plan): { patch: Partial<CardState>; note: string } {
+  const name = physicalCardName(plan);
+  if (!card.physical) return { patch: {}, note: ` ${josa(name, '은', '는')} 카드 설정에서 받을 주소를 넣으면 무료로 보내 드려요.` };
+  if (card.delivery === 'preparing') return { patch: { physicalPlan: plan }, note: ` 만들고 있던 실물카드는 ${ro(name)} 바꿔 만들어요.` };
+  if (card.replacement && rank(card.replacement.plan) >= rank(plan)) return { patch: {}, note: ` 보내고 있는 ${josa(physicalCardName(card.replacement.plan), '을', '를')} 그대로 받으면 돼요.` };
+  if (!card.replacement && rank(card.physicalPlan ?? card.plan) >= rank(plan)) return { patch: {}, note: ` 가지고 있는 ${josa(physicalCardName(card.physicalPlan ?? card.plan), '을', '를')} 그대로 써요.` };
+  const stopped = card.replacement && card.replacement.delivery !== 'preparing' ? ` 보내던 ${josa(physicalCardName(card.replacement.plan), '은', '는')} 쓸 수 없게 막았어요.` : '';
+  const where = card.address ? `${ro(addressLine(card.address))} ` : '';
+  return { patch: { replacement: { plan, delivery: 'preparing' } }, note: `${stopped} ${josa(name, '을', '를')} ${where}새로 보내 드려요. 받을 때까지 지금 카드를 그대로 쓰면 돼요.` };
+}
+
 /** Paid memberships renew yearly from the spend balance. A scheduled lower tier starts that day; a short balance drops to Standard. */
 function settleCardBilling(state: AppState, now: number): void {
   const card = state.card;
@@ -381,7 +398,8 @@ function signupAccount(action: Extract<Action, { type: 'COMPLETE_SIGNUP' }>, wal
   if (age < ADULT_AGE) throw new Error(`만 ${ADULT_AGE}세 이상만 가입할 수 있어요.`);
   if (age > 120) throw new Error('생년월일을 확인해 주세요.');
   const { idType, occupation, purpose, source } = action.kyc;
-  return { email, passwordHash: action.passwordHash, name, birthDate, phone: action.phone, kyc: { idType, occupation, purpose, source }, verifiedAt: wallNow };
+  return { email, passwordHash: action.passwordHash, name, birthDate, phone: action.phone, kyc: { idType, occupation, purpose, source }, verifiedAt: wallNow,
+    tag: initialTag(email), findByPhone: false };
 }
 
 function validateCardChange(previous: CardState, next: CardState): void {
@@ -480,6 +498,20 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
         note: `@${member.tag}에게 수수료 없이 바로 보냈어요. 체험판이라 실제로 보내지는 않아요.` });
       return state;
     }
+    case 'SET_TAG': {
+      if (!state.account || !state.signedIn) throw new Error('로그인한 뒤 바꿀 수 있어요.');
+      const tag = typeof action.tag === 'string' ? normalizeTag(action.tag) : '';
+      if (tag === state.account.tag) throw new Error('지금 쓰는 태그와 같아요.');
+      const issue = tagIssue(tag);
+      if (issue) throw new Error(issue);
+      state.account = { ...state.account, tag };
+      return state;
+    }
+    case 'SET_FIND_BY_PHONE':
+      if (!state.account || !state.signedIn) throw new Error('로그인한 뒤 바꿀 수 있어요.');
+      if (typeof action.enabled !== 'boolean') throw new Error('설정 값을 확인해 주세요.');
+      state.account = { ...state.account, findByPhone: action.enabled };
+      return state;
     case 'SET_RESERVE_AUTO':
       if (typeof action.enabled !== 'boolean') throw new Error('리저브 자동 사용 설정을 확인해 주세요.');
       state.reserveAuto = action.enabled; return state;
@@ -490,14 +522,17 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       const previous = state.card;
       if (!record(action.card)) throw new Error('카드 정보가 올바르지 않아요. 다시 시도해 주세요.');
       // Money-bearing fields only move through the actions below.
-      const next: CardState = { ...structuredClone(action.card), chargedFee: previous.chargedFee, billingAt: previous.billingAt, nextPlan: previous.nextPlan, pinSet: previous.pinSet };
+      const next: CardState = { ...structuredClone(action.card), chargedFee: previous.chargedFee, billingAt: previous.billingAt, nextPlan: previous.nextPlan, pinSet: previous.pinSet,
+        physicalPlan: action.card.physical ? previous.physicalPlan : null, replacement: previous.replacement };
       if (next.physicalActive !== previous.physicalActive) throw new Error('실물카드는 카드 비밀번호를 정해 활성화해 주세요.');
+      // A card already issued only moves forward through delivery; reissues start over through their own action.
+      if (previous.stage === 'active' && DELIVERY_ORDER.indexOf(next.delivery) < DELIVERY_ORDER.indexOf(previous.delivery)) throw new Error('배송 단계는 되돌릴 수 없어요.');
       if (next.stage === 'submitted' && previous.stage !== 'submitted') throw new Error('신청 확인 화면에서 신청해 주세요.');
       if (['submitted', 'approved', 'issued', 'active'].includes(previous.stage) && (next.plan !== previous.plan || next.physical !== previous.physical)) {
         throw new Error('멤버십과 실물카드는 카드 화면에서 바꿔 주세요.');
       }
       if (JSON.stringify(next.address) !== JSON.stringify(previous.address)
-        && !(['plan', 'details', 'review'].includes(next.stage) || (next.stage === 'active' && previous.delivery === 'preparing'))) {
+        && !(['plan', 'details', 'review'].includes(next.stage) || (next.stage === 'active' && (previous.delivery === 'preparing' || previous.replacement?.delivery === 'preparing')))) {
         throw new Error('배송이 시작되면 배송지를 바꿀 수 없어요.');
       }
       validateCardChange(previous, next);
@@ -516,7 +551,7 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       if (card.plan !== 'standard' && !card.physical) throw new Error(`${josa(PLANS[card.plan].short, '은', '는')} ${PLANS[card.plan].card}가 함께 나와요. 받을 주소를 입력해 주세요.`);
       if (card.physical && !card.address) throw new Error('실물카드를 받을 주소를 입력해 주세요.');
       const fee = cardApplicationFee(card);
-      const next: CardState = { ...card, stage: 'submitted', reference: card.reference || `AQ-DEMO-${String(wallNow).slice(-8)}`, submittedAt: now, chargedFee: fee };
+      const next: CardState = { ...card, stage: 'submitted', reference: card.reference || `AQ-DEMO-${String(wallNow).slice(-8)}`, submittedAt: now, chargedFee: fee, physicalPlan: card.physical ? card.plan : null };
       validateCardChange(card, next);
       if (fee > 0) {
         chargeSpend(state, fee, '신청해 주세요');
@@ -540,9 +575,10 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       if (rank(action.plan) > rank(card.plan)) {
         chargeSpend(state, target.annualFee, '바꿔 주세요');
         const billingAt = addYear(now);
-        state.card = { ...card, plan: action.plan, billingAt, nextPlan: null };
+        const physical = upgradePhysical(card, action.plan);
+        state.card = { ...card, plan: action.plan, billingAt, nextPlan: null, ...physical.patch };
         transaction(state, now, { kind: 'card', title: `${target.short} 연회비`, amount: -target.annualFee, status: 'completed',
-          note: `${ro(target.short)} 바꿨어요. 페이백 ${target.cashbackRate * 100}%와 리저브 추가 보상이 바로 적용돼요.${PLANS[card.plan].annualFee ? ' 이전 멤버십의 남은 기간 연회비는 돌려드리지 않아요.' : ''} 다음 갱신일은 ${fullDate(billingAt)}이에요.` });
+          note: `${ro(target.short)} 바꿨어요. 페이백 ${target.cashbackRate * 100}%와 리저브 추가 보상이 바로 적용돼요.${PLANS[card.plan].annualFee ? ' 이전 멤버십의 남은 기간 연회비는 돌려드리지 않아요.' : ''} 다음 갱신일은 ${fullDate(billingAt)}이에요.${physical.note}` });
         return state;
       }
       if (card.nextPlan === action.plan) throw new Error(`${target.short} 변경은 이미 예약돼 있어요.`);
@@ -565,9 +601,9 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       if (!validAddress(action.address)) throw new Error('실물카드를 받을 주소를 입력해 주세요.');
       const fee = PLANS[card.plan].physicalFee;
       if (fee) chargeSpend(state, fee, '신청해 주세요');
-      state.card = { ...card, physical: true, delivery: 'preparing', physicalActive: false, address: { zip: action.address.zip, road: action.address.road.trim(), detail: action.address.detail.trim() } };
-      const cardName = card.plan === 'standard' ? '실물카드' : PLANS[card.plan].card;
-      transaction(state, now, { kind: 'card', title: fee ? '실물카드 발급비' : `${cardName} 신청`, amount: fee ? -fee : 0, status: 'completed', note: `${cardName}를 신청했어요. 배송까지 ${POLICY.deliveryEstimate}이 걸려요.` });
+      state.card = { ...card, physical: true, delivery: 'preparing', physicalActive: false, physicalPlan: card.plan, address: { zip: action.address.zip, road: action.address.road.trim(), detail: action.address.detail.trim() } };
+      const cardName = physicalCardName(card.plan);
+      transaction(state, now, { kind: 'card', title: fee ? '실물카드 발급비' : `${cardName} 신청`, amount: fee ? -fee : 0, status: 'completed', note: `${josa(cardName, '을', '를')} 신청했어요. 배송까지 ${POLICY.deliveryEstimate}이 걸려요.` });
       return state;
     }
     case 'REISSUE_CARD': {
@@ -576,9 +612,10 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       const fee = card.physical ? PLANS[card.plan].physicalFee : 0;
       if (fee) chargeSpend(state, fee, '재발급해 주세요');
       const last4 = freshLast4(state, card.last4);
-      state.card = { ...card, last4, locked: false, wallets: [], issuedAt: now, delivery: card.physical ? 'preparing' : 'none', physicalActive: false };
+      state.card = { ...card, last4, locked: false, wallets: [], issuedAt: now, delivery: card.physical ? 'preparing' : 'none', physicalActive: false,
+        physicalPlan: card.physical ? card.plan : null, replacement: null };
       transaction(state, now, { kind: 'card', title: '카드 재발급', amount: fee ? -fee : 0, status: 'completed',
-        note: `끝번호 ${card.last4} 카드는 바로 막혔어요. 새 카드(끝번호 ${last4})를 발급했어요.${card.wallets.length ? ' 휴대폰 결제는 새 카드로 다시 추가해 주세요.' : ''}${fee ? ` 실물카드 재발급비 ${wonText(fee)}을 냈어요.` : ''}` });
+        note: `끝번호 ${card.last4} 카드는 바로 막혔어요. 새 카드(끝번호 ${last4})를 발급했어요.${card.wallets.length ? ' 휴대폰 결제는 새 카드로 다시 추가해 주세요.' : ''}${card.replacement ? ` 보내던 ${physicalCardName(card.replacement.plan)}도 막고 ${josa(physicalCardName(card.plan), '을', '를')} 새로 보내 드려요.` : ''}${fee ? ` 실물카드 재발급비 ${wonText(fee)}을 냈어요.` : ''}` });
       return state;
     }
     case 'CLOSE_CARD': {
@@ -603,6 +640,26 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       const issue = pinIssue(action.pin);
       if (issue) throw new Error(issue);
       state.card = { ...state.card, pinSet: true };
+      return state;
+    }
+    case 'ADVANCE_REPLACEMENT': {
+      const replacement = state.card.replacement;
+      if (state.card.stage !== 'active' || !replacement) throw new Error('보내는 중인 새 카드가 없어요.');
+      if (replacement.delivery === 'delivered') throw new Error('새 카드가 이미 도착했어요.');
+      state.card = { ...state.card, replacement: { ...replacement, delivery: replacement.delivery === 'preparing' ? 'shipped' : 'delivered' } };
+      return state;
+    }
+    case 'ACTIVATE_REPLACEMENT': {
+      const card = state.card;
+      if (card.stage !== 'active' || card.replacement?.delivery !== 'delivered') throw new Error('새 카드를 받은 뒤 쓰기 시작해 주세요.');
+      if (!card.pinSet) {
+        const issue = pinIssue(action.pin ?? '');
+        if (issue) throw new Error(issue);
+      }
+      const name = physicalCardName(card.replacement.plan);
+      state.card = { ...card, physicalPlan: card.replacement.plan, replacement: null, delivery: 'delivered', physicalActive: true, pinSet: true };
+      transaction(state, now, { kind: 'card', title: `${name} 쓰기 시작`, amount: 0, status: 'completed',
+        note: `이제 ${ro(name)} 결제해요. 카드 번호는 그대로이고, 이전 실물카드는 더 이상 결제되지 않아요.${card.pinSet ? ' 카드 비밀번호도 그대로예요.' : ''}` });
       return state;
     }
     case 'SET_LIMITS': {
@@ -733,7 +790,10 @@ function validCard(value: unknown): value is CardState {
     && new Set(value.wallets).size === value.wallets.length
     && whole(value.chargedFee) && (value.billingAt === null || timestamp(value.billingAt))
     && (value.nextPlan === null || PLAN_ORDER.includes(value.nextPlan as Plan))
-    && (value.address === null || validAddress(value.address)) && typeof value.pinSet === 'boolean';
+    && (value.address === null || validAddress(value.address)) && typeof value.pinSet === 'boolean'
+    && (value.physicalPlan === null || PLAN_ORDER.includes(value.physicalPlan as Plan))
+    && (value.replacement === null || (record(value.replacement) && PLAN_ORDER.includes(value.replacement.plan as Plan)
+      && ['preparing', 'shipped', 'delivered'].includes(value.replacement.delivery as string)));
 }
 
 function cardConsistent(value: CardState): boolean {
@@ -747,6 +807,8 @@ function cardConsistent(value: CardState): boolean {
   if (value.nextPlan !== null && (rank(value.nextPlan) >= rank(value.plan) || value.billingAt === null)) return false;
   if (value.physical && value.address === null && ['submitted', 'approved', 'issued', 'active'].includes(value.stage)) return false;
   if (value.physicalActive && !value.pinSet) return false;
+  if (value.physicalPlan !== null && !value.physical) return false;
+  if (value.replacement !== null && (value.stage !== 'active' || !value.physical || value.delivery === 'preparing')) return false;
   return true;
 }
 
@@ -804,7 +866,8 @@ function validAccount(value: unknown): value is Account {
     && typeof value.passwordHash === 'string' && HASH_PATTERN.test(value.passwordHash)
     && typeof value.name === 'string' && value.name.trim().length >= 2 && value.name.length <= 30
     && typeof value.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.birthDate)
-    && typeof value.phone === 'string' && PHONE_PATTERN.test(value.phone) && validKyc(value.kyc) && timestamp(value.verifiedAt));
+    && typeof value.phone === 'string' && PHONE_PATTERN.test(value.phone) && validKyc(value.kyc) && timestamp(value.verifiedAt)
+    && typeof value.tag === 'string' && TAG_PATTERN.test(value.tag) && typeof value.findByPhone === 'boolean');
 }
 
 function validState(value: unknown): value is AppState {
@@ -885,7 +948,15 @@ function migrateCard(card: Record<string, unknown>): Record<string, unknown> {
   const filled: Record<string, unknown> = { wallets: [], chargedFee: 0, nextPlan: null, billingAt: null,
     address: card.physical ? { zip: '04500', road: '서울특별시 중구 아쿠아로 1', detail: '데모동 101호' } : null, pinSet: Boolean(card.physicalActive), ...card };
   if (filled.plan === 'basic' || filled.plan === 'plus') Object.assign(filled, { plan: 'standard', nextPlan: null, billingAt: null });
+  // Cards made before tiers had their own material carry the tier they hold now.
+  if (!('physicalPlan' in filled)) filled.physicalPlan = filled.physical && !['not_applied', 'identity', 'plan', 'details', 'review'].includes(filled.stage as string) ? filled.plan : null;
+  if (!('replacement' in filled)) filled.replacement = null;
   return filled;
+}
+
+/** Older saves: accounts from before tags were stored get one made from the email, the way new accounts do; finding by phone stays off. */
+function migrateAccount(account: Record<string, unknown>): Record<string, unknown> {
+  return { findByPhone: false, ...(typeof account.email === 'string' ? { tag: initialTag(account.email) } : {}), ...account };
 }
 
 export function loadState(): AppState {
@@ -894,7 +965,7 @@ export function loadState(): AppState {
     if (raw) {
       const candidate: unknown = JSON.parse(raw);
       const migrated = record(candidate) && candidate.version === 1
-        ? convertHeldCoins({ ...candidate, fundingOperations: candidate.fundingOperations ?? [], account: candidate.account ?? null, signedIn: candidate.signedIn ?? false,
+        ? convertHeldCoins({ ...candidate, fundingOperations: candidate.fundingOperations ?? [], account: record(candidate.account) ? migrateAccount(candidate.account) : candidate.account ?? null, signedIn: candidate.signedIn ?? false,
           controls: candidate.controls ?? defaultControls(), notifications: candidate.notifications ?? defaultNotifications(),
           card: record(candidate.card) ? migrateCard(candidate.card) : candidate.card }) : candidate;
       if (validState(migrated)) return applyAction(migrated, { type: 'TICK' });

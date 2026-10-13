@@ -11,6 +11,7 @@ import TransactionSheet from './components/TransactionSheet';
 import FundingDialog from './components/FundingDialog';
 import InternalTransferDialog from './components/InternalTransferDialog';
 import SendSheet from './components/SendSheet';
+import ReceiveSheet from './components/ReceiveSheet';
 import PaymentReceipt, { type PaymentReceiptData } from './components/PaymentReceipt';
 import { statusOf } from './components/Activity';
 import Home from './pages/Home';
@@ -74,6 +75,7 @@ export default function App() {
   const closeFunding = useCallback(() => setFunding(null), []);
   const [reserveMove, setReserveMove] = useState<'in' | 'out' | null>(null);
   const [sending, setSending] = useState(false);
+  const [receiving, setReceiving] = useState(false);
   const closeReserveMove = useCallback(() => setReserveMove(null), []);
   const [receipts, setReceipts] = useState<PaymentReceiptData[]>([]);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -155,7 +157,7 @@ export default function App() {
   // Signing out leaves no screen, sheet or receipt behind for the next sign-in.
   useEffect(() => {
     if (state.signedIn) return;
-    setPage('home'); setTrail([]); setDialog(null); setFunding(null); setReserveMove(null); setSending(false); setReceipts([]); setClosingAccount(false); setPasswordSheet(false); setDetailItem(null);
+    setPage('home'); setTrail([]); setDialog(null); setFunding(null); setReserveMove(null); setSending(false); setReceiving(false); setReceipts([]); setClosingAccount(false); setPasswordSheet(false); setDetailItem(null);
   }, [state.signedIn]);
 
   function navigate(next: Page) {
@@ -202,7 +204,7 @@ export default function App() {
   const openRefund = (payment: Payment) => setDialog({ type: 'refund', payment });
   const setRewardsAuto = (enabled: boolean) => perform({ type: 'SET_REWARDS_AUTO', enabled }, enabled ? '결제할 때 리워드를 먼저 써요.' : '리워드를 결제에 쓰지 않아요.');
   const setReserveAuto = (enabled: boolean) => perform({ type: 'SET_RESERVE_AUTO', enabled }, enabled ? '잔액이 모자라면 리저브에서 채워요.' : '리저브는 결제에 쓰지 않아요.');
-  const overlay = Boolean(dialog || funding || reserveMove || sending || receipts[0]);
+  const overlay = Boolean(dialog || funding || reserveMove || sending || receiving || receipts[0]);
 
   return <div className={`app-shell page-${page}${mainPage ? '' : ' detail'}`}>
     <header className="app-header">
@@ -231,7 +233,7 @@ export default function App() {
       {page === 'reserve' && <Reserve state={state} onMove={setReserveMove} onAutoUse={setReserveAuto} />}
       {page === 'activity' && <ActivityPage state={state} filter={activityFilter} onFilter={setActivityFilter} onFunding={openFundingOperation} onDetail={setDetailItem} onRefund={openRefund} />}
       {page === 'settings' && <Settings state={state} account={account} cardStatus={cardStatus} go={(target) => navigate(target as Page)} onRewardsAuto={setRewardsAuto} onReserveAuto={setReserveAuto}
-        onPassword={() => setPasswordSheet(true)} onSignOut={() => perform({ type: 'SIGN_OUT' })} onClose={() => setClosingAccount(true)}
+        onReceive={() => setReceiving(true)} onPassword={() => setPasswordSheet(true)} onSignOut={() => perform({ type: 'SIGN_OUT' })} onClose={() => setClosingAccount(true)}
         onAdvanceDay={() => perform({ type: 'ADVANCE_DAY' }, '하루치 보상을 쌓았어요.')} onRate={(rate) => perform({ type: 'CHANGE_RATE', rate }, `리저브 기본 보상률을 연 ${percent(rate)}로 바꿨어요.`)} onReset={() => setDialog({ type: 'reset' })} />}
       {page === 'limits' && <LimitsPage state={state} onSave={(limits) => perform({ type: 'SET_LIMITS', ...limits }, '결제 한도를 바꿨어요.') !== null} />}
       {page === 'channels' && <ChannelsPage state={state} onChange={(channel, enabled) => perform({ type: 'SET_CHANNEL', channel, enabled }, `${channel === 'online' ? '온라인' : '해외'} 결제를 ${enabled ? '열었어요' : '막았어요'}.`)} />}
@@ -243,10 +245,11 @@ export default function App() {
     {detailItem && <TransactionSheet item={detailItem} payment={detailItem.kind === 'payment' && detailItem.paymentId ? state.payments.find((item) => item.id === detailItem.paymentId) : undefined} card={state.card} status={statusOf(detailItem)?.[0] ?? null} onRefund={openRefund} onFunding={openFundingOperation} onClose={() => setDetailItem(null)} />}
     {closingAccount && <AccountClosureSheet state={state} onClose={() => setClosingAccount(false)} onDelete={(passwordHash) => perform({ type: 'DELETE_ACCOUNT', passwordHash }, '탈퇴했어요. 그동안 이용해 주셔서 고마워요.') !== null} />}
     {funding && <FundingDialog key={`${funding.mode}-${funding.symbol ?? 'default'}-${funding.operationId ?? 'new'}`} {...funding} account={account} state={state} onClose={closeFunding} dispatch={dispatch} notify={notify} />}
-    {sending && <SendSheet state={state} onClose={() => setSending(false)} onWallet={() => { setSending(false); setFunding({ mode: 'withdraw' }); }} dispatch={dispatch} notify={notify} />}
+    {sending && <SendSheet state={state} onClose={() => setSending(false)} onWallet={() => { setSending(false); setFunding({ mode: 'withdraw' }); }} onReceive={() => { setSending(false); setReceiving(true); }} dispatch={dispatch} notify={notify} />}
+    {receiving && <ReceiveSheet account={account} onClose={() => setReceiving(false)} dispatch={dispatch} notify={notify} />}
     {reserveMove && <InternalTransferDialog mode="reserve" direction={reserveMove} state={state} onClose={closeReserveMove} dispatch={dispatch} notify={notify} />}
     {dialog && <ActionDialog dialog={dialog} state={state} onClose={closeDialog} dispatch={dispatch} notify={notify} onPaid={confirmPayment} onReset={resetDemo} />}
-    {receipts[0] && !dialog && !funding && !reserveMove && !sending && <PaymentReceipt key={receipts[0].payment.id} receipt={receipts[0]} onClose={closeReceipt} />}
+    {receipts[0] && !dialog && !funding && !reserveMove && !sending && !receiving && <PaymentReceipt key={receipts[0].payment.id} receipt={receipts[0]} onClose={closeReceipt} />}
     {toast && !overlay && <div className={`toast ${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'}><span className="toast-icon">{toast.type === 'success' ? <CheckCircle2 /> : <Info />}</span><span className="toast-copy">{toast.message}</span><button type="button" className="toast-close" aria-label="알림 닫기" onClick={() => setToast(null)}><X size={18} /></button></div>}
   </div>;
 }

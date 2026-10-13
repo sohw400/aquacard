@@ -172,6 +172,8 @@
 .card-flow .cf-delivery-address { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
 .card-flow .cf-delivery-address > svg { flex-shrink: 0; }
 .card-flow .cf-delivery .cf-button { margin-top: 10px; }
+.card-flow .cf-delivery-heading > .cf-replacement-thumb { width: 44px; margin: -4px 0 -4px -2px; }
+.card-flow .cf-replacement-note { margin: 2px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
 .card-flow .cf-pin-link { margin: 2px 0 0 28px; justify-self: start; }
 
 /* Demo tools. */

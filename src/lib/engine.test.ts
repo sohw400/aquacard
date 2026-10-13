@@ -1346,3 +1346,119 @@ test('멤버십 이름 뒤 조사는 받침에 맞춰 붙인다', () => {
   assert.equal(ro('서울'), '서울로', 'ㄹ 받침 뒤에는 로');
   assert.equal(ro('USDC'), 'USDC로', '한글이 아니면 받침이 없는 것으로 본다');
 });
+
+/** A Standard card whose plastic card has arrived and is switched on. */
+function plasticInHand(): AppState {
+  let state = applyAction(activeState(), { type: 'ADD_PHYSICAL_CARD', address: SAMPLE_ADDRESS }, NOW);
+  for (const delivery of ['shipped', 'delivered'] as const) state = applyAction(state, { type: 'SET_CARD', card: { ...state.card, delivery } }, NOW);
+  return applyAction(state, { type: 'ACTIVATE_PHYSICAL', pin: '2580' }, NOW);
+}
+
+test('실물카드가 있을 때 등급을 올리면 새 등급 카드를 보내고, 받아서 쓰기 시작할 때까지 지금 카드를 쓴다', () => {
+  let state = plasticInHand();
+  assert.equal(state.card.physicalPlan, 'standard');
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'premium' }, NOW);
+  assert.deepEqual(state.card.replacement, { plan: 'premium', delivery: 'preparing' });
+  assert.deepEqual([state.card.physicalPlan, state.card.physicalActive], ['standard', true], '메탈 카드가 오기 전까지 쓰던 카드를 그대로 쓴다');
+  assert.match(state.transactions[0].note, /메탈 카드를 서울특별시 중구 아쿠아로 1, 101호로 새로 보내 드려요\. 받을 때까지 지금 카드를 그대로 쓰면 돼요\.$/);
+  assert.doesNotThrow(() => applyAction(state, { type: 'PAY', merchant: '카페', amount: 1_000 }, NOW));
+  assert.throws(() => applyAction(state, { type: 'ACTIVATE_REPLACEMENT' }, NOW), /받은 뒤/);
+  state = applyAction(state, { type: 'ADVANCE_REPLACEMENT' }, NOW);
+  assert.equal(state.card.replacement?.delivery, 'shipped');
+  state = applyAction(state, { type: 'ADVANCE_REPLACEMENT' }, NOW);
+  assert.equal(state.card.replacement?.delivery, 'delivered');
+  assert.throws(() => applyAction(state, { type: 'ADVANCE_REPLACEMENT' }, NOW), /이미 도착/);
+  const { last4, wallets } = state.card;
+  state = applyAction(state, { type: 'ACTIVATE_REPLACEMENT' }, NOW);
+  assert.deepEqual([state.card.physicalPlan, state.card.replacement, state.card.physicalActive, state.card.last4, state.card.wallets], ['premium', null, true, last4, wallets], '카드 번호와 휴대폰 결제는 그대로다');
+  assert.deepEqual([state.transactions[0].title, state.transactions[0].amount], ['메탈 카드 쓰기 시작', 0]);
+  assert.match(state.transactions[0].note, /카드 비밀번호도 그대로예요/);
+  assert.throws(() => applyAction(state, { type: 'ADVANCE_REPLACEMENT' }, NOW), /보내는 중인 새 카드가 없어요/);
+});
+
+test('만들고 있는 실물카드는 새 등급 소재로 바꿔 만들고, 실물카드가 없으면 주소를 넣을 때 새 등급 카드를 보낸다', () => {
+  let preparing = applyAction(activeState(), { type: 'ADD_PHYSICAL_CARD', address: SAMPLE_ADDRESS }, NOW);
+  preparing = applyAction(preparing, { type: 'CHANGE_PLAN', plan: 'premium' }, NOW);
+  assert.deepEqual([preparing.card.physicalPlan, preparing.card.replacement, preparing.card.delivery], ['premium', null, 'preparing']);
+  assert.match(preparing.transactions[0].note, /만들고 있던 실물카드는 메탈 카드로 바꿔 만들어요\.$/);
+  let virtualOnly = applyAction(activeState(), { type: 'CHANGE_PLAN', plan: 'premium' }, NOW);
+  assert.deepEqual([virtualOnly.card.physical, virtualOnly.card.physicalPlan, virtualOnly.card.replacement], [false, null, null]);
+  assert.match(virtualOnly.transactions[0].note, /메탈 카드는 카드 설정에서 받을 주소를 넣으면 무료로 보내 드려요\.$/);
+  virtualOnly = applyAction(virtualOnly, { type: 'ADD_PHYSICAL_CARD', address: SAMPLE_ADDRESS }, NOW);
+  assert.deepEqual([virtualOnly.card.physicalPlan, virtualOnly.transactions[0].title, virtualOnly.transactions[0].amount], ['premium', '메탈 카드 신청', 0]);
+});
+
+test('보내던 교체 카드보다 높게 또 올리면 그 카드를 막고 새로 보내며, 가진 카드가 같거나 높으면 보내지 않는다', () => {
+  let state = plasticInHand();
+  state.spend = 2_000_000;
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'premium' }, NOW);
+  state = applyAction(state, { type: 'ADVANCE_REPLACEMENT' }, NOW);
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'private' }, NOW);
+  assert.deepEqual(state.card.replacement, { plan: 'private', delivery: 'preparing' });
+  assert.match(state.transactions[0].note, /보내던 메탈 카드는 쓸 수 없게 막았어요\. 골드 카드를/);
+  for (let step = 0; step < 2; step += 1) state = applyAction(state, { type: 'ADVANCE_REPLACEMENT' }, NOW);
+  state = applyAction(state, { type: 'ACTIVATE_REPLACEMENT' }, NOW);
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'standard' }, NOW);
+  state = applyAction(state, { type: 'ADVANCE_TO_BILLING' }, NOW);
+  assert.deepEqual([state.card.plan, state.card.physicalPlan], ['standard', 'private'], '등급을 내려도 받은 골드 카드는 그대로 쓴다');
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'premium' }, NOW);
+  assert.equal(state.card.replacement, null);
+  assert.match(state.transactions[0].note, /가지고 있는 골드 카드를 그대로 써요\.$/);
+});
+
+test('분실 재발급은 보내던 교체 카드를 막고 지금 멤버십의 실물카드를 새 번호로 보낸다', () => {
+  let state = applyAction(plasticInHand(), { type: 'CHANGE_PLAN', plan: 'premium' }, NOW);
+  state = applyAction(state, { type: 'REISSUE_CARD' }, NOW);
+  assert.deepEqual([state.card.replacement, state.card.physicalPlan, state.card.delivery, state.card.physicalActive], [null, 'premium', 'preparing', false]);
+  assert.match(state.transactions[0].note, /보내던 메탈 카드도 막고 메탈 카드를 새로 보내 드려요\./);
+  const closed = applyAction(state, { type: 'CLOSE_CARD' }, NOW);
+  assert.deepEqual([closed.card.physicalPlan, closed.card.replacement], [null, null]);
+});
+
+test('교체 카드 상태는 화면에서 보낸 값으로 바꾸지 못하고, 카드 비밀번호가 없으면 새 카드를 쓸 때 정한다', () => {
+  let state = applyAction(activeState(), { type: 'ADD_PHYSICAL_CARD', address: SAMPLE_ADDRESS }, NOW);
+  state = applyAction(state, { type: 'SET_CARD', card: { ...state.card, delivery: 'shipped' } }, NOW);
+  state = applyAction(state, { type: 'CHANGE_PLAN', plan: 'premium' }, NOW);
+  assert.deepEqual([state.card.pinSet, state.card.replacement?.plan], [false, 'premium']);
+  const tampered = applyAction(state, { type: 'SET_CARD', card: { ...state.card, replacement: { plan: 'private', delivery: 'delivered' }, physicalPlan: 'private' } }, NOW);
+  assert.deepEqual([tampered.card.replacement, tampered.card.physicalPlan], [state.card.replacement, state.card.physicalPlan]);
+  const moved = applyAction(state, { type: 'SET_CARD', card: { ...state.card, address: { ...SAMPLE_ADDRESS, detail: '202호' } } }, NOW);
+  assert.equal(moved.card.address?.detail, '202호', '새 카드를 만드는 동안에는 배송지를 바꿀 수 있다');
+  state = applyAction(applyAction(state, { type: 'ADVANCE_REPLACEMENT' }, NOW), { type: 'ADVANCE_REPLACEMENT' }, NOW);
+  assert.throws(() => applyAction(state, { type: 'SET_CARD', card: { ...state.card, address: { ...SAMPLE_ADDRESS, detail: '303호' } } }, NOW), /배송이 시작되면/);
+  assert.throws(() => applyAction(state, { type: 'SET_CARD', card: { ...state.card, delivery: 'preparing' } }, NOW), /되돌릴 수 없어요/, '교체 카드가 오는 중에 지금 카드를 만드는 중으로 되돌리지 못한다');
+  assert.throws(() => applyAction(state, { type: 'ACTIVATE_REPLACEMENT' }, NOW), /숫자 4자리/);
+  assert.throws(() => applyAction(state, { type: 'ACTIVATE_REPLACEMENT', pin: '1234' }, NOW), /이어지는/);
+  state = applyAction(state, { type: 'ACTIVATE_REPLACEMENT', pin: '2580' }, NOW);
+  assert.deepEqual([state.card.physicalActive, state.card.pinSet, state.card.delivery, state.card.physicalPlan], [true, true, 'delivered', 'premium']);
+  assert.doesNotMatch(state.transactions[0].note, /비밀번호도 그대로/);
+});
+
+test('실물카드 등급이 없던 저장 카드는 지금 멤버십 카드로, 태그가 없던 계정은 이메일로 만든 태그로 불러온다', () => withFundingStorage(({ values }) => {
+  const state = applyAction(createInitialState(NOW), { ...signup, email: 'junho@aqua.example' }, NOW);
+  state.card = plasticInHand().card;
+  const legacy = structuredClone(state) as unknown as { card: Record<string, unknown>; account: Record<string, unknown> };
+  delete legacy.card.physicalPlan;
+  delete legacy.card.replacement;
+  delete legacy.account.tag;
+  delete legacy.account.findByPhone;
+  values.set(STORAGE_KEY, JSON.stringify(legacy));
+  const restored = loadState();
+  assert.deepEqual([restored.card.physicalPlan, restored.card.replacement], ['standard', null]);
+  assert.deepEqual([restored.account?.tag, restored.account?.findByPhone], ['junho2', false], '체험용 회원과 겹치는 태그에는 숫자를 붙인다');
+}));
+
+test('태그는 처음에 이메일로 만들고, 규칙에 맞으면서 아무도 쓰지 않는 태그로만 바꾼다', () => {
+  let state = applyAction(createInitialState(NOW), signup, NOW);
+  assert.deepEqual([state.account?.tag, state.account?.findByPhone], ['tester', false], '휴대폰 번호로 찾기는 꺼진 채 시작한다');
+  const refused: [string, RegExp][] = [['junho', /이미 누가/], ['aqua', /이미 누가/], ['ab', /3~20자/], ['Tester', /지금 쓰는 태그/],
+    ['.tester', /맨 앞과 맨 끝/], ['a..b', /이어 쓸 수/], ['01012345678', /숫자만/], ['한글태그', /3~20자/]];
+  for (const [tag, error] of refused) assert.throws(() => applyAction(state, { type: 'SET_TAG', tag }, NOW), error, tag);
+  state = applyAction(state, { type: 'SET_TAG', tag: ' @Aqua_Tester ' }, NOW);
+  assert.equal(state.account?.tag, 'aqua_tester');
+  state = applyAction(state, { type: 'SET_FIND_BY_PHONE', enabled: true }, NOW);
+  assert.equal(state.account?.findByPhone, true);
+  const signedOut = applyAction(state, { type: 'SIGN_OUT' }, NOW);
+  assert.throws(() => applyAction(signedOut, { type: 'SET_TAG', tag: 'someone' }, NOW), /로그인한 뒤/);
+  assert.throws(() => applyAction(signedOut, { type: 'SET_FIND_BY_PHONE', enabled: false }, NOW), /로그인한 뒤/);
+});

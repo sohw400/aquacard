@@ -262,7 +262,7 @@ try {
     const send = page.getByTestId('send-sheet');
     await send.waitFor({ state: 'visible' });
     await page.waitForFunction(() => document.activeElement?.tagName === 'H2' && !!document.activeElement.closest('[data-testid="send-sheet"]'));
-    for (const id of ['send-member', 'send-wallet']) await assertTouchTarget(send.getByTestId(id), `${name} ${id}`);
+    for (const id of ['send-member', 'send-scan', 'send-wallet', 'send-own-qr']) await assertTouchTarget(send.getByTestId(id), `${name} ${id}`);
     await assertFits(page, `${name} send choice`);
     await send.getByTestId('send-wallet').tap();
     await send.waitFor({ state: 'hidden' });
@@ -371,6 +371,30 @@ try {
     await send.waitFor({ state: 'hidden' });
     await assertAmount(page.getByTestId('spend-balance'), sentSpend, `${name} balance after member transfer`);
 
+    // 내 태그와 QR, 태그 바꾸기, 체험용 QR 찍기
+    await page.getByTestId('open-send').tap();
+    await send.getByTestId('send-own-qr').tap();
+    const receive = page.getByTestId('receive-sheet');
+    await receive.waitFor({ state: 'visible' });
+    for (const id of ['receive-copy', 'receive-edit', 'find-by-phone']) await assertTouchTarget(receive.getByTestId(id), `${name} ${id}`);
+    const qrBox = await receive.locator('svg.qr-code').boundingBox();
+    assert.ok(qrBox && qrBox.width >= 150, `${name}: my QR code is too small to scan (${qrBox?.width}px)`);
+    await assertFits(page, `${name} my tag and QR`);
+    await receive.getByTestId('receive-edit').tap();
+    await assertFontSize(receive.getByTestId('tag-input'), `${name} tag input`);
+    await assertTouchTarget(receive.getByTestId('tag-save'), `${name} tag save`);
+    await assertFits(page, `${name} tag edit`);
+    await page.keyboard.press('Escape');
+    await receive.waitFor({ state: 'hidden' });
+    await page.getByTestId('open-send').tap();
+    await send.getByTestId('send-scan').tap();
+    await assertTouchTarget(send.getByTestId('send-scan-minji.k'), `${name} QR pick`);
+    await assertFits(page, `${name} QR scan`);
+    await send.getByTestId('send-scan-minji.k').tap();
+    await send.getByTestId('send-amount').waitFor({ state: 'visible' });
+    await page.keyboard.press('Escape');
+    await send.waitFor({ state: 'hidden' });
+
     // Card tab: three-step application, automatic issue and the full-width card.
     await page.getByTestId('nav-card').tap();
     const flow = page.locator('.card-flow');
@@ -477,7 +501,7 @@ try {
     assert.deepEqual(errors, []);
     const fontFamily = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
     results.push({ profile: name, engine: 'Chromium', emulationOnly: true, viewport: profile.viewport, hasTouch: profile.hasTouch, fontFamily, passed: true, checks: 'home balance with 충전·보내기 and card offer, 4 primary tabs and 3 details with return navigation, touch targets, deposit sheet fees/consent/focus trap/Escape, awaiting deposit close/reload/reopen from the home status line and delayed credit, 보내기 › 지갑 주소로 review and cancellation with held-principal restoration, failed deposit without credit, Reserve round trip, member transfer by tag with focus kept in the sheet, 3-step card application with automatic issue and full-width card, Reserve payment, reward receipt, unobstructed overlays, benefits and shared settings, restored payments and funding operations' });
-    console.log(`PASS ${name}: ${profile.viewport.width}px · home balance · deposit and send sheets · member transfer · touch · application · card · Reserve payment · reward receipt · cashback overview · reload (Chromium emulation)`);
+    console.log(`PASS ${name}: ${profile.viewport.width}px · home balance · deposit and send sheets · member transfer · my tag and QR · touch · application · card · Reserve payment · reward receipt · cashback overview · reload (Chromium emulation)`);
     await context.close();
   }
   await writeFile(new URL('results.json', artifacts), JSON.stringify({ passedProfiles: results.length, failedProfiles: 0, recordedAt: new Date().toISOString(), realDeviceTested: false, safariWebKitTested: false, results }, null, 2));

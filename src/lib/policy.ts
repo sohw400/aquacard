@@ -40,6 +40,8 @@ export const PLANS: Record<Plan, PlanTerms> = {
   premium: { name: 'Aqua 프리미엄', short: '프리미엄', annualFee: 100_000, cashbackRate: 0.015, spendCap: 2_000_000, cashbackCap: 30_000, reserveBonus: 0.005, reserveCap: 30_000_000, card: '메탈 카드', physicalFee: 0 },
   private: { name: 'Aqua 프라이빗', short: '프라이빗', annualFee: 500_000, cashbackRate: 0.02, spendCap: 5_000_000, cashbackCap: 100_000, reserveBonus: 0.01, reserveCap: 50_000_000, card: '골드 카드', physicalFee: 0 },
 };
+/** The physical card each tier sends: plastic for Standard, metal for Premium, gold for Private. */
+export const physicalCardName = (plan: Plan) => plan === 'standard' ? '실물카드' : PLANS[plan].card;
 
 export const ASSETS: Record<AssetSymbol, { name: string; price: number; color: string; network: string; decimals: number }> = {
   USDC: { name: 'USD Coin', price: 1_400, color: '#2775ca', network: 'Polygon · 데모', decimals: 2 },

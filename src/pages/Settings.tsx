@@ -1,7 +1,6 @@
 import { NavRow, Toggle } from '../components/ui';
 import { maskEmail, maskPhone } from '../lib/auth';
 import { dateLabel, money, percent, ro } from '../lib/format';
-import { ownTag } from '../lib/directory';
 import { PLANS } from '../lib/policy';
 import type { Account, AppState } from '../lib/types';
 
@@ -12,6 +11,7 @@ interface SettingsProps {
   go: (page: 'card' | 'activity' | 'limits' | 'channels' | 'notifications' | 'faq' | 'terms') => void;
   onRewardsAuto: (enabled: boolean) => void;
   onReserveAuto: (enabled: boolean) => void;
+  onReceive: () => void;
   onPassword: () => void;
   onSignOut: () => void;
   onClose: () => void;
@@ -22,12 +22,12 @@ interface SettingsProps {
 
 const channelText = (online: boolean, overseas: boolean) => online && overseas ? '모두 허용' : !online && !overseas ? '모두 막음' : online ? '해외 막음' : '온라인 막음';
 
-export default function Settings({ state, account, cardStatus, go, onRewardsAuto, onReserveAuto, onPassword, onSignOut, onClose, onAdvanceDay, onRate, onReset }: SettingsProps) {
+export default function Settings({ state, account, cardStatus, go, onRewardsAuto, onReserveAuto, onReceive, onPassword, onSignOut, onClose, onAdvanceDay, onRate, onReset }: SettingsProps) {
   const plan = PLANS[state.card.plan];
   return <div className="page settings-page">
     <section className="profile" aria-label="내 정보">
       <span className="avatar" aria-hidden="true">{account.name.charAt(0)}</span>
-      <div><strong>{account.name}</strong><span data-testid="own-tag">@{ownTag(account.email)} · {maskEmail(account.email)}</span></div>
+      <div><strong>{account.name}</strong><span data-testid="own-tag">@{account.tag} · {maskEmail(account.email)}</span></div>
     </section>
 
     <section className="settings-group" aria-labelledby="settings-card">
@@ -46,6 +46,7 @@ export default function Settings({ state, account, cardStatus, go, onRewardsAuto
 
     <section className="settings-group" aria-labelledby="settings-account">
       <h2 id="settings-account">계정</h2>
+      <NavRow label="내 태그와 QR" detail={account.findByPhone ? '휴대폰 번호로도 찾을 수 있어요' : '태그와 QR로 받아요'} value={`@${account.tag}`} testId="open-receive" onClick={onReceive} />
       <dl className="breakdown plain"><div><dt>이메일</dt><dd>{maskEmail(account.email)}</dd></div><div><dt>휴대폰</dt><dd>{maskPhone(account.phone)}</dd></div><div><dt>본인확인</dt><dd>{dateLabel(account.verifiedAt)}</dd></div></dl>
       <NavRow label="비밀번호 변경" testId="open-password" onClick={onPassword} />
       <NavRow label="알림" value={state.notifications.payments && state.notifications.funding ? '모두 받음' : '일부 끔'} testId="open-notifications" onClick={() => go('notifications')} />

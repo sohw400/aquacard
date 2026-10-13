@@ -49,6 +49,9 @@
   --live-accent: #64d2d6;
   --live-line: rgba(255, 255, 255, .12);
   --live-fill: rgba(255, 255, 255, .1);
+  /* QR codes stay dark on light in both themes; cameras read inverted codes poorly. */
+  --qr-tile: #fff;
+  --qr-ink: #111315;
   --radius-lg: 22px;
   --radius-md: 16px;
   --radius-sm: 12px;

@@ -49,6 +49,10 @@ export interface Account {
   phone: string;
   kyc: KycAnswers;
   verifiedAt: number;
+  /** What other members send to; starts from the email's local part and can be changed. */
+  tag: string;
+  /** Other members can find this account by typing its whole phone number. Off until the holder turns it on. */
+  findByPhone: boolean;
 }
 
 export type PaymentChannel = 'store' | 'online' | 'overseas';
@@ -76,11 +80,20 @@ export interface ShippingAddress {
   detail: string;
 }
 
+/** A card in a higher tier's material on its way after an upgrade. The card in hand keeps working until this one is switched on. */
+export interface CardReplacement {
+  plan: Plan;
+  delivery: Exclude<DeliveryStage, 'none'>;
+}
+
 export interface CardState {
   stage: CardStage;
   plan: Plan;
   physical: boolean;
   delivery: DeliveryStage;
+  /** The tier the physical card in hand (or being made) was made for. A downgrade keeps the card; null without a physical card. */
+  physicalPlan: Plan | null;
+  replacement: CardReplacement | null;
   identityVerified: boolean;
   locked: boolean;
   physicalActive: boolean;
@@ -177,6 +190,8 @@ export type Action =
   | { type: 'CANCEL_FUNDING'; id: string }
   | { type: 'TRANSFER_RESERVE'; direction: 'in' | 'out'; amount: number }
   | { type: 'SEND_TO_MEMBER'; tag: string; amount: number }
+  | { type: 'SET_TAG'; tag: string }
+  | { type: 'SET_FIND_BY_PHONE'; enabled: boolean }
   | { type: 'PAY'; merchant: string; amount: number; channel?: PaymentChannel }
   | { type: 'CONFIRM_PAYMENT'; id: string }
   | { type: 'REFUND'; id: string; amount?: number }
@@ -192,6 +207,10 @@ export type Action =
   | { type: 'DELETE_ACCOUNT'; passwordHash: string }
   | { type: 'ACTIVATE_PHYSICAL'; pin: string }
   | { type: 'SET_CARD_PIN'; pin: string }
+  /** Demo: moves a replacement card one delivery step on. */
+  | { type: 'ADVANCE_REPLACEMENT' }
+  /** The PIN is only needed when none was set for the card before. */
+  | { type: 'ACTIVATE_REPLACEMENT'; pin?: string }
   | { type: 'SET_LIMITS'; perPayment: number; daily: number; monthly: number }
   | { type: 'SET_CHANNEL'; channel: 'online' | 'overseas'; enabled: boolean }
   | { type: 'SET_NOTIFICATION'; key: 'payments' | 'funding' | 'marketing'; enabled: boolean }

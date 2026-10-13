@@ -1,21 +1,28 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { AtSign, Check, ChevronLeft, ChevronRight, Wallet, X } from 'lucide-react';
+import { AtSign, Check, ChevronLeft, ChevronRight, QrCode as QrIcon, Search, Wallet, X } from 'lucide-react';
 import { useModal } from './useModal';
-import { findMember, maskName, MEMBERS, normalizeTag, ownTag, TAG_PATTERN, type Member } from '../lib/directory';
-import { money, shortDate, won } from '../lib/format';
+import QrCode from './QrCode';
+import { findMember, findMemberByPhone, formatPhone, maskName, MEMBERS, normalizeTag, PHONE_SEARCH, phoneDigits, TAG_PATTERN, tagLink, type Member } from '../lib/directory';
+import { josa, money, shortDate, won } from '../lib/format';
 import { POLICY } from '../lib/policy';
 import type { Action, AppState } from '../lib/types';
 import './InternalTransferDialog.css';
 import './SendSheet.css';
 
-type Step = 'choose' | 'tag' | 'amount' | 'review' | 'done';
+type Step = 'choose' | 'tag' | 'scan' | 'amount' | 'review' | 'done';
 
-/** Send to another Aqua member by tag (free, instant) or hand over to the on-chain send flow. */
-export default function SendSheet({ state, onClose, onWallet, dispatch, notify }: {
-  state: AppState; onClose: () => void; onWallet: () => void;
+/** Codes the demo can "scan": the camera stays off, so a member's code is picked instead. */
+const SCAN_SAMPLES = MEMBERS.filter((member) => ['minji.k', 'junho', 'haneul', 'aqua.coffee'].includes(member.tag));
+/** A demo number shown as a hint; it belongs to a fictional member. */
+const SAMPLE_PHONE = MEMBERS.find((member) => member.phone)?.phone ?? '';
+
+/** Send to another Aqua member by tag, phone number or QR code (free, instant), or hand over to the on-chain send flow. */
+export default function SendSheet({ state, onClose, onWallet, onReceive, dispatch, notify }: {
+  state: AppState; onClose: () => void; onWallet: () => void; onReceive: () => void;
   dispatch: (action: Action) => AppState; notify: (message: string, type?: 'success' | 'error' | 'info') => void;
 }) {
   const [step, setStep] = useState<Step>('choose');
+  const [origin, setOrigin] = useState<'tag' | 'phone' | 'scan'>('tag');
   const [query, setQuery] = useState('');
   const [member, setMember] = useState<Member | null>(null);
   const [value, setValue] = useState('');
@@ -35,18 +42,30 @@ export default function SendSheet({ state, onClose, onWallet, dispatch, notify }
     target?.focus();
   }, [step]);
   const amount = Number(value);
-  const typed = normalizeTag(query);
-  const matches = typed ? MEMBERS.filter((item) => item.tag.includes(typed) || item.name.includes(query.trim())) : MEMBERS;
+  const digits = phoneDigits(query);
+  // Three or more digits read as a phone number: those only match in full, never as you type.
+  const phoneQuery = /^\d{3,}$/.test(digits);
+  const typed = phoneQuery ? '' : normalizeTag(query);
+  const matches = phoneQuery ? [] : typed ? MEMBERS.filter((item) => item.tag.includes(typed) || item.name.includes(query.trim())) : MEMBERS;
   const amountIssue = value.trim() === '' ? '' : !Number.isSafeInteger(amount) || amount < POLICY.minimumTopup ? '1,000원 이상 원 단위로 넣어 주세요.' : amount > state.spend ? '잔액보다 많이 보낼 수 없어요.' : '';
-  const titles: Record<Step, string> = { choose: '보내기', tag: '누구에게 보낼까요?', amount: '얼마를 보낼까요?', review: '이대로 보낼까요?', done: '보냈어요' };
+  const titles: Record<Step, string> = { choose: '보내기', tag: '누구에게 보낼까요?', scan: 'QR 코드 찍기', amount: '얼마를 보낼까요?', review: '이대로 보낼까요?', done: '보냈어요' };
 
-  function pick(next: Member) { setMember(next); setError(''); setStep('amount'); }
-  function findTag(event: FormEvent) {
+  function pick(next: Member, from: 'tag' | 'phone' | 'scan') { setMember(next); setOrigin(from); setError(''); setStep('amount'); }
+  function find(event: FormEvent) {
     event.preventDefault();
+    if (phoneQuery) {
+      if (!PHONE_SEARCH.test(digits)) { setError('휴대폰 번호를 끝까지 넣어 주세요.'); return; }
+      if (state.account && digits === state.account.phone) { setError('내 번호예요. 받는 사람의 번호를 넣어 주세요.'); return; }
+      const found = findMemberByPhone(digits);
+      if (!found) { setError('이 번호로 찾을 수 있는 회원이 없어요. 상대가 휴대폰 번호로 찾기를 켰는지 확인해 주세요.'); return; }
+      pick(found, 'phone');
+      return;
+    }
+    if (state.account && typed === state.account.tag) { setError('내 태그예요. 받는 사람의 태그를 넣어 주세요.'); return; }
     if (!TAG_PATTERN.test(typed)) { setError('태그는 영문 소문자, 숫자, 점(.), 밑줄(_)로 3~20자예요.'); return; }
     const found = findMember(typed);
     if (!found) { setError(`@${typed} 회원을 찾지 못했어요. 태그를 다시 확인해 주세요.`); return; }
-    pick(found);
+    pick(found, 'tag');
   }
   function send() {
     if (!member) return;
@@ -60,7 +79,8 @@ export default function SendSheet({ state, onClose, onWallet, dispatch, notify }
       notify(message, 'error');
     }
   }
-  const back = () => { setError(''); setStep(step === 'review' ? 'amount' : step === 'amount' ? 'tag' : 'choose'); };
+  const back = () => { setError(''); setStep(step === 'review' ? 'amount' : step === 'amount' ? origin === 'scan' ? 'scan' : 'tag' : 'choose'); };
+  const findLabel = phoneQuery ? PHONE_SEARCH.test(digits) ? `${formatPhone(digits)} 찾기` : '번호로 찾기' : `@${typed || '태그'} 찾기`;
 
   return <div className="itd-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="internal-transfer-dialog send-sheet" ref={panel} role="dialog" aria-modal="true" aria-labelledby={`${uid}-title`} tabIndex={-1} data-testid="send-sheet">
@@ -70,21 +90,33 @@ export default function SendSheet({ state, onClose, onWallet, dispatch, notify }
       </header>
       <div className="itd-body">
         {step === 'choose' && <div className="send-options">
-          <button type="button" className="send-option" data-testid="send-member" onClick={() => setStep('tag')}><span className="send-option-icon" aria-hidden="true"><AtSign size={20} /></span><span><strong>Aqua 회원에게</strong><small>태그로 바로 보내요. 수수료가 없어요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
+          <button type="button" className="send-option" data-testid="send-member" onClick={() => setStep('tag')}><span className="send-option-icon" aria-hidden="true"><AtSign size={20} /></span><span><strong>Aqua 회원에게</strong><small>태그나 휴대폰 번호로 찾아 바로 보내요. 수수료가 없어요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
+          <button type="button" className="send-option" data-testid="send-scan" onClick={() => setStep('scan')}><span className="send-option-icon" aria-hidden="true"><QrIcon size={20} /></span><span><strong>QR 코드 찍기</strong><small>상대의 Aqua QR을 찍어 보내요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
           <button type="button" className="send-option" data-testid="send-wallet" onClick={onWallet}><span className="send-option-icon" aria-hidden="true"><Wallet size={20} /></span><span><strong>지갑 주소로</strong><small>코인으로 바꿔 보내요. 네트워크 비용이 들어요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
-          {state.account && <p className="send-own-tag" data-testid="send-own-tag">내 태그 <strong>@{ownTag(state.account.email)}</strong> · 다른 회원은 이 태그로 바로 보낼 수 있어요.</p>}
+          {state.account && <div className="send-own-tag" data-testid="send-own-tag"><span>내 태그 <strong>@{state.account.tag}</strong></span><button type="button" className="send-own-qr" data-testid="send-own-qr" onClick={onReceive}>내 QR 보기</button></div>}
         </div>}
 
-        {step === 'tag' && <form onSubmit={findTag} noValidate>
-          <label className="send-tag-field" htmlFor={`${uid}-tag`}><span aria-hidden="true">@</span><input ref={tagInput} id={`${uid}-tag`} data-testid="send-tag" value={query} onChange={(event) => { setQuery(event.target.value); setError(''); }} placeholder="태그 또는 이름" autoComplete="off" autoCapitalize="none" spellCheck={false} /></label>
+        {step === 'tag' && <form onSubmit={find} noValidate>
+          <label className="send-tag-field send-search-field" htmlFor={`${uid}-tag`}><span aria-hidden="true"><Search size={19} /></span><input ref={tagInput} id={`${uid}-tag`} data-testid="send-tag" value={query} onChange={(event) => { setQuery(event.target.value); setError(''); }} placeholder="태그, 이름 또는 휴대폰 번호" autoComplete="off" autoCapitalize="none" spellCheck={false} /></label>
           {error && <p className="itd-error" role="alert">{error}</p>}
-          <p className="send-list-title">{typed ? '찾은 회원' : '체험용 회원'}</p>
-          {matches.length ? <ul className="send-members">{matches.map((item) => <li key={item.tag}><button type="button" data-testid={`send-pick-${item.tag}`} onClick={() => pick(item)}><span className="send-avatar" aria-hidden="true">{item.name.charAt(0)}</span><span><strong>{maskName(item.name)}</strong><small>@{item.tag}</small></span></button></li>)}</ul> : <p className="send-empty">맞는 회원이 없어요. 태그 전체를 넣고 찾기를 눌러 주세요.</p>}
-          <button type="submit" className="itd-button itd-secondary send-find" disabled={!typed}>@{typed || '태그'} 찾기</button>
+          {phoneQuery ? !error && <p className="send-empty" data-testid="send-phone-hint">{PHONE_SEARCH.test(digits) ? '번호를 다 넣었어요. 찾기를 눌러 주세요.' : '휴대폰 번호는 끝까지 넣어야 찾을 수 있어요.'} 번호로 찾기를 켠 회원만 나와요.</p> : <>
+            <p className="send-list-title">{typed ? '찾은 회원' : '체험용 회원'}</p>
+            {matches.length ? <ul className="send-members">{matches.map((item) => <li key={item.tag}><button type="button" data-testid={`send-pick-${item.tag}`} onClick={() => pick(item, 'tag')}><span className="send-avatar" aria-hidden="true">{item.name.charAt(0)}</span><span><strong>{maskName(item.name)}</strong><small>@{item.tag}</small></span></button></li>)}</ul> : <p className="send-empty">맞는 회원이 없어요. 태그 전체를 넣고 찾기를 눌러 주세요.</p>}
+            {!typed && SAMPLE_PHONE && <p className="send-demo-note">휴대폰 번호로도 찾을 수 있어요. 체험용 번호 {josa(formatPhone(SAMPLE_PHONE), '을', '를')} 넣어 보세요.</p>}
+          </>}
+          <button type="submit" className="itd-button itd-secondary send-find" data-testid="send-find" disabled={phoneQuery ? false : !typed}>{findLabel}</button>
         </form>}
 
+        {step === 'scan' && <div data-testid="send-scan-step">
+          <p className="send-scan-lead">앱에서는 카메라로 상대의 QR을 찍어요. 체험판은 카메라를 켜지 않으니, 찍을 QR을 하나 골라 주세요.</p>
+          <ul className="send-qr-list">{SCAN_SAMPLES.map((item) => <li key={item.tag}><button type="button" data-testid={`send-scan-${item.tag}`} onClick={() => pick(item, 'scan')}>
+            <QrCode value={tagLink(item.tag)} size={104} label={`${maskName(item.name)} QR 코드`} />
+            <span><strong>{maskName(item.name)}</strong><small>@{item.tag}</small></span>
+          </button></li>)}</ul>
+        </div>}
+
         {step === 'amount' && member && <form onSubmit={(event) => { event.preventDefault(); if (value && !amountIssue) setStep('review'); }} noValidate>
-          <div className="send-to"><span className="send-avatar" aria-hidden="true">{member.name.charAt(0)}</span><span><strong>{maskName(member.name)}</strong><small>@{member.tag}</small></span></div>
+          <div className="send-to"><span className="send-avatar" aria-hidden="true">{member.name.charAt(0)}</span><span><strong>{maskName(member.name)}</strong><small>@{member.tag}{origin === 'scan' ? ' · QR로 찾음' : origin === 'phone' ? ' · 휴대폰 번호로 찾음' : ''}</small></span></div>
           <div className="itd-amount"><label htmlFor={`${uid}-amount`}>보낼 금액</label><div className="itd-input"><input id={`${uid}-amount`} data-testid="send-amount" type="number" inputMode="numeric" min={POLICY.minimumTopup} step={1} value={value} onChange={(event) => { setValue(event.target.value); setError(''); }} autoComplete="off" ref={amountInput} /><span>원</span></div>
             <div className="itd-available"><span>보낼 수 있는 금액</span><strong>{money(state.spend)}</strong></div></div>
           <div className="itd-presets">{[10_000, 30_000, 50_000].map((preset) => <button type="button" key={preset} disabled={preset > state.spend} onClick={() => setValue(String(preset))}>{won(preset)}원</button>)}</div>
