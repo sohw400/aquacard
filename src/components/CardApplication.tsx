@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { PLANS, POLICY } from '../lib/policy';
 import type { CardStage, CardState, Plan } from '../lib/types';
+import CardVisual from './CardVisual';
 import './CardApplication.css';
 
 interface CardApplicationProps {
@@ -17,18 +18,6 @@ const won = (amount: number) => `${amount.toLocaleString('ko-KR')}원`;
 const steps = ['본인확인', '카드 선택', '신청 확인'];
 const stepByStage: Partial<Record<CardStage, number>> = { identity: 0, plan: 1, details: 1, review: 2 };
 const autoDelays: Partial<Record<CardStage, number>> = { submitted: 1_400, approved: 500, issued: 350 };
-
-function CardPreview({ card, revealed = false }: { card: CardState; revealed?: boolean }) {
-  const issued = card.stage === 'issued' || card.stage === 'active';
-  return (
-    <div className={`cf-card-art ${card.plan === 'plus' ? 'cf-card-art-plus' : ''}`} aria-label={`Aqua ${card.plan === 'plus' ? 'Plus' : 'Basic'} 카드 미리보기`}>
-      <div className="cf-card-art-top"><span className="cf-wordmark">aqua<span /></span><span className="cf-card-art-label">{card.plan === 'plus' ? 'PLUS' : 'BASIC'}</span></div>
-      <div className="cf-chip" aria-hidden="true"><span /><span /><span /></div>
-      <div className="cf-card-art-number">{revealed ? '4242 4242 4242 2048' : `••••  ••••  ••••  ${issued ? card.last4 : '••••'}`}</div>
-      <div className="cf-card-art-bottom"><div><span>CARDHOLDER</span><strong>AQUA MEMBER</strong></div><span className="cf-card-art-demo">VIRTUAL</span></div>
-    </div>
-  );
-}
 
 export default function CardApplication({ card, onChange, onNotify }: CardApplicationProps) {
   const [identityConsent, setIdentityConsent] = useState(false);
@@ -118,7 +107,8 @@ export default function CardApplication({ card, onChange, onNotify }: CardApplic
 
       <div className="cf-layout cf-layout-compact">
         <aside className="cf-showcase">
-          <div className="cf-preview-background"><span className="cf-preview-orbit cf-preview-orbit-one" /><span className="cf-preview-orbit cf-preview-orbit-two" /><CardPreview card={card} revealed={revealed && card.stage === 'active'} /></div>
+          <div className="cf-preview-background"><CardVisual card={card} revealed={revealed && card.stage === 'active'} /></div>
+          <div className="cf-visual-caption"><span>{plan.name}</span><span>가상카드</span></div>
         </aside>
 
         <div className="cf-panel">
@@ -142,8 +132,8 @@ export default function CardApplication({ card, onChange, onNotify }: CardApplic
             <h2>카드 선택</h2>
             <fieldset className="cf-options"><legend className="cf-sr-only">카드 플랜</legend>{(['basic', 'plus'] as Plan[]).map((key) => { const option = PLANS[key]; return <label key={key} className={`cf-option ${card.plan === key ? 'cf-option-selected' : ''}`}><input type="radio" name="card-plan" value={key} checked={card.plan === key} onChange={() => patch({ plan: key })} /><span className="cf-option-main"><span className="cf-option-title">{option.name}</span><span className="cf-option-price">{option.monthlyFee === 0 ? '월 이용료 무료' : `월 ${won(option.monthlyFee)}`}</span><span className="cf-option-detail">페이백 {option.cashbackRate * 100}% · 월 최대 {won(option.cashbackCap)}</span></span><span className="cf-selection-mark">{card.plan === key && <Check size={13} />}</span></label>; })}</fieldset>
             <div className="cf-reference"><span>가상카드</span><strong>무료 · 기본 포함</strong></div>
-            <label className="cf-final-consent"><input type="checkbox" data-testid="card-physical-choice" checked={card.physical} onChange={(event) => patch({ physical: event.target.checked })} /><span>실물카드도 신청</span></label>
-            <p className="cf-panel-description">발급비 {won(POLICY.physicalIssueFee)} · 배송 {POLICY.deliveryEstimate}</p>
+            <div className="cf-physical-option"><label className="cf-final-consent"><input type="checkbox" data-testid="card-physical-choice" checked={card.physical} onChange={(event) => patch({ physical: event.target.checked })} /><span>실물카드도 신청</span></label>
+            <p className="cf-panel-description">발급비 {won(POLICY.physicalIssueFee)} · 배송 {POLICY.deliveryEstimate}</p></div>
             {card.physical && <div className="cf-address"><MapPin size={17} /><div><strong>샘플 배송지</strong><p>서울특별시 아쿠아로 1, 데모동 101호</p></div></div>}
             <button className="cf-button cf-primary" data-testid="card-selection-next" onClick={review}>다음 <ArrowRight size={17} /></button>
             <button className="cf-text-button" onClick={backToIdentity}><ChevronLeft size={15} /> 이전</button>
@@ -151,7 +141,7 @@ export default function CardApplication({ card, onChange, onNotify }: CardApplic
 
           {card.stage === 'review' && <>
             <h2>신청 확인</h2>
-            <dl className="cf-summary"><div><dt>신청자</dt><dd>아쿠아 사용자</dd></div><div><dt>플랜</dt><dd>{plan.name}</dd></div><div><dt>월 이용료</dt><dd>{plan.monthlyFee === 0 ? '무료' : won(plan.monthlyFee)}</dd></div><div><dt>결제 페이백</dt><dd>{plan.cashbackRate * 100}% · 월 최대 {won(plan.cashbackCap)}</dd></div><div><dt>카드</dt><dd>{card.physical ? '가상 + 실물' : '가상카드'}</dd></div><div><dt>발급비</dt><dd>{card.physical ? won(POLICY.physicalIssueFee) : '무료'}</dd></div></dl>
+            <dl className="cf-summary cf-review-summary"><div><dt>신청자</dt><dd>아쿠아 사용자</dd></div><div><dt>플랜</dt><dd>{plan.name}</dd></div><div className="cf-cost-row"><dt>월 이용료</dt><dd>{plan.monthlyFee === 0 ? '무료' : won(plan.monthlyFee)}</dd></div><div><dt>결제 페이백</dt><dd>{plan.cashbackRate * 100}% · 월 최대 {won(plan.cashbackCap)}</dd></div><div><dt>카드</dt><dd>{card.physical ? '가상 + 실물' : '가상카드'}</dd></div><div className="cf-cost-row"><dt>발급비</dt><dd>{card.physical ? won(POLICY.physicalIssueFee) : '무료'}</dd></div></dl>
             <p className="cf-disclaimer">위 금액과 혜택은 체험 조건입니다. 이용료·발급비는 잔액에서 청구하지 않습니다.</p>
             <label className="cf-final-consent"><input type="checkbox" data-testid="card-review-consent" checked={reviewConsent} onChange={(event) => setReviewConsent(event.target.checked)} /><span>선택한 플랜과 신청 조건을 확인했습니다.</span></label>
             <button className="cf-button cf-primary" data-testid="card-submit" disabled={!reviewConsent} onClick={submit}>신청하기 <ArrowRight size={17} /></button>

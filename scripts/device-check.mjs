@@ -25,6 +25,13 @@ async function assertFits(page, description) {
   }
 }
 
+async function assertAmount(locator, expected, description) {
+  const value = await locator.innerText();
+  assert.match(value, /\d/, `${description}: amount is missing`);
+  const amount = Number(value.replaceAll('−', '-').replace(/[^\d.-]/g, ''));
+  assert.equal(amount, expected, description);
+}
+
 try {
   for (const name of profiles) {
     const { defaultBrowserType, ...profile } = devices[name];
@@ -98,11 +105,46 @@ try {
     assert.equal(state.card.stage, 'active');
     assert.equal(state.payments[0].fromReserve, 57_220);
     assert.equal(state.payments[0].cashback, 1_957);
+    assert.equal(state.rewards, 1_957);
+
+    const receipt = page.getByTestId('payment-receipt');
+    await assertAmount(receipt.getByTestId('receipt-rewards-before'), 4_280, `${name} rewards before payment`);
+    await assertAmount(receipt.getByTestId('receipt-rewards-used'), -4_280, `${name} rewards used`);
+    await assertAmount(receipt.getByTestId('receipt-cashback-earned'), 1_957, `${name} earned cashback`);
+    await assertAmount(receipt.getByTestId('receipt-cashback-credit'), 1_957, `${name} credited cashback`);
+    await assertAmount(receipt.getByTestId('receipt-rewards-after'), 1_957, `${name} rewards after payment`);
+    await assertFits(page, `${name} payment receipt`);
+    await receipt.getByTestId('receipt-close').tap();
+    await receipt.waitFor({ state: 'hidden' });
+
+    await page.getByTestId('open-rewards').tap();
+    const benefits = page.getByTestId('dialog-rewards');
+    await assertAmount(benefits.getByTestId('cashback-confirmed'), 1_957, `${name} confirmed monthly cashback`);
+    await assertAmount(benefits.getByTestId('cashback-pending'), 0, `${name} pending monthly cashback`);
+    await assertAmount(benefits.getByTestId('cashback-remaining'), 8_043, `${name} remaining monthly cashback`);
+    await assertAmount(benefits.getByTestId('reward-balance'), 1_957, `${name} spendable reward balance`);
+    assert.equal(await benefits.getByTestId('reserve-pending-rewards').isVisible(), true);
+    assert.match(await benefits.locator('.reserve-pending').innerText(), /미수령 보상.*아직 결제에 사용할 수 없습니다/s);
+    const rewardsAuto = benefits.getByTestId('rewards-auto');
+    const rewardsToggle = await rewardsAuto.boundingBox();
+    assert.ok(rewardsToggle && rewardsToggle.width >= 44 && rewardsToggle.height >= 44, `${name} rewards setting: touch target smaller than 44px`);
+    assert.equal(await rewardsAuto.getAttribute('aria-checked'), 'true');
+    await rewardsAuto.tap();
+    assert.equal(await rewardsAuto.getAttribute('aria-checked'), 'false');
+    assert.equal((await readState()).rewardsAuto, false);
+    await rewardsAuto.tap();
+    assert.equal(await rewardsAuto.getAttribute('aria-checked'), 'true');
+    assert.equal((await readState()).rewardsAuto, true);
+    await assertFits(page, `${name} rewards and cashback overview`);
+    await benefits.getByRole('button', { name: '창 닫기', exact: true }).tap();
+    await benefits.waitFor({ state: 'hidden' });
+
     await page.reload({ waitUntil: 'networkidle' });
     await assertFits(page, `${name} restored home`);
     const restored = await readState();
     assert.equal(restored.card.stage, 'active');
     assert.equal(restored.reserveAuto, true);
+    assert.equal(restored.rewardsAuto, true);
     assert.equal(restored.spend, state.spend);
     assert.equal(restored.reserve, state.reserve);
     assert.equal(restored.rewards, state.rewards);
@@ -110,8 +152,8 @@ try {
     const safeName = name.replace(/[^A-Za-z0-9]+/g, '-').toLowerCase();
     await page.screenshot({ path: new URL(`${safeName}.png`, artifacts).pathname, fullPage: true });
     assert.deepEqual(errors, []);
-    results.push({ profile: name, engine: 'Chromium', emulationOnly: true, viewport: profile.viewport, hasTouch: profile.hasTouch, passed: true, checks: '6 menus, touch targets, deposit input focus and balance, 3-step card application and automatic issue/activation, Reserve payment, cashback, restored state' });
-    console.log(`PASS ${name}: ${profile.viewport.width}px · touch · application · Reserve payment · cashback · reload (Chromium emulation)`);
+    results.push({ profile: name, engine: 'Chromium', emulationOnly: true, viewport: profile.viewport, hasTouch: profile.hasTouch, passed: true, checks: '6 menus, touch targets, deposit input focus and balance, 3-step card application and automatic issue/activation, Reserve payment, receipt reward debit and cashback credit, monthly cashback and unclaimed rewards overview, shared rewards setting, restored state' });
+    console.log(`PASS ${name}: ${profile.viewport.width}px · touch · application · Reserve payment · reward receipt · cashback overview · reload (Chromium emulation)`);
     await context.close();
   }
   await writeFile(new URL('results.json', artifacts), JSON.stringify({ passedProfiles: results.length, failedProfiles: 0, recordedAt: new Date().toISOString(), realDeviceTested: false, safariWebKitTested: false, results }, null, 2));

@@ -62,6 +62,26 @@ test('리워드로 결제한 금액에는 페이백이 없다', () => {
   assert.equal(confirm(pending).rewards, 280);
 });
 
+test('5,800원 반복 결제의 잔액 57원은 실제 리워드 차감 후 새 페이백을 받은 결과다', () => {
+  let state = activeState();
+  for (const [before, cashback] of [[4_280, 15], [15, 57], [57, 57]]) {
+    assert.equal(state.rewards, before);
+    const pending = applyAction(state, { type: 'PAY', merchant: '한강커피', amount: 5_800 }, NOW);
+    assert.equal(pending.payments[0].fromRewards, before);
+    assert.equal(pending.payments[0].fromSpend, 5_800 - before);
+    assert.equal(pending.rewards, 0, '새 페이백을 지급하기 전에 기존 리워드를 실제로 사용한다');
+    assert.equal(pending.payments[0].cashback, cashback);
+    state = confirm(pending);
+    assert.equal(state.rewards, cashback);
+    const repeatedConfirmation = confirm(state);
+    assert.deepEqual(repeatedConfirmation, state, '확정 재요청은 새 페이백을 중복 지급하지 않는다');
+  }
+  assert.equal(state.rewards, 57);
+  assert.equal(state.spend, 115_452);
+  assert.equal(state.monthlyCashback, 129);
+  assert.equal(state.transactions.filter((item) => item.kind === 'payback').length, 3);
+});
+
 test('Reserve 적립은 시간에 비례하며 동일 시각의 재실행과 시계 역행은 중복 적립하지 않는다', () => {
   const initial = createInitialState(NOW);
   const first = applyAction(initial, { type: 'TICK' }, NOW + DAY);

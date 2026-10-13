@@ -1,0 +1,53 @@
+.aqua-card-visual {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  max-width: 340px;
+  aspect-ratio: 1.586;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 25px 27px 23px;
+  border: 1px solid #ffffff12;
+  border-radius: 13px;
+  background: #16283f;
+  color: #eef2f7;
+  box-shadow: 0 14px 27px -17px #16283f48, 0 1px 2px #16283f18;
+  font-family: inherit;
+}
+.aqua-card-visual::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(125deg, #ffffff03, transparent 60%);
+}
+.aqua-card-visual.acv-plus { background: #29405b; }
+.aqua-card-visual .acv-top, .aqua-card-visual .acv-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.aqua-card-visual .acv-brand { font-size: 32px; font-weight: 650; line-height: 1; letter-spacing: -1.6px; }
+.aqua-card-visual .acv-plan { font-size: 8px; font-weight: 500; letter-spacing: 1.8px; color: #b4c2d4; }
+.aqua-card-visual .acv-chip { position: absolute; top: 43%; left: 27px; display: grid; grid-template-columns: 1fr 1fr 1fr; width: 31px; height: 24px; border: 1px solid #b2b8bd; border-radius: 5px; background: #c7ccc9; overflow: hidden; }
+.aqua-card-visual .acv-chip > span { position: relative; border-right: 1px solid #939fa2; }
+.aqua-card-visual .acv-chip > span:last-child { border-right: 0; }
+.aqua-card-visual .acv-chip > span::after { content: ''; position: absolute; height: 1px; top: 50%; inset-inline: 0; background: #939fa2; }
+.aqua-card-visual .acv-number { position: absolute; top: 65%; left: 27px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; font-size: clamp(11px, 1.05vw, 13px); font-weight: 400; line-height: 1.4; letter-spacing: 1.4px; font-variant-numeric: tabular-nums; color: #ccd5e2; white-space: nowrap; }
+.aqua-card-visual .acv-bottom { position: absolute; bottom: 10%; left: 27px; right: 27px; font-size: 8px; line-height: 1.4; color: #bac7d8; }
+.aqua-card-visual .acv-holder { font-size: 7px; letter-spacing: 1.6px; }
+.aqua-card-visual .acv-demo { font-size: 8px; font-weight: 500; letter-spacing: .2px; white-space: nowrap; }
+.aqua-card-visual.acv-compact { width: 120px; max-width: 120px; flex-shrink: 0; padding: 11px 12px 10px; border-radius: 7px; box-shadow: 0 5px 12px -7px #16283f42; }
+.aqua-card-visual.acv-compact .acv-top { gap: 5px; }
+.aqua-card-visual.acv-compact .acv-brand { font-size: 16px; letter-spacing: -.9px; }
+.aqua-card-visual.acv-compact .acv-plan { font-size: 6px; letter-spacing: .6px; }
+.aqua-card-visual.acv-compact .acv-chip { left: 12px; width: 13px; height: 10px; border-radius: 2px; }
+.aqua-card-visual.acv-compact .acv-number { left: 12px; font-size: 7px; letter-spacing: .5px; }
+.aqua-card-visual.acv-compact .acv-bottom { left: 12px; right: 12px; justify-content: flex-end; }
+.aqua-card-visual.acv-compact .acv-holder { display: none; }
+.aqua-card-visual.acv-compact .acv-demo { font-size: 7px; letter-spacing: 0; }
+@media (max-width: 400px) {
+  .aqua-card-visual:not(.acv-compact) { padding: 23px 25px 22px; }
+  .aqua-card-visual:not(.acv-compact) .acv-brand { font-size: 30px; }
+  .aqua-card-visual:not(.acv-compact) .acv-chip, .aqua-card-visual:not(.acv-compact) .acv-number { left: 25px; }
+  .aqua-card-visual:not(.acv-compact) .acv-bottom { left: 25px; right: 25px; }
+  .aqua-card-visual:not(.acv-compact) .acv-number { font-size: 12px; letter-spacing: 1.2px; }
+}

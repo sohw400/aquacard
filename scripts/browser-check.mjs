@@ -15,8 +15,10 @@ const errors = [];
 const external = [];
 let groups = 0;
 let page;
+let failurePage;
 const pass = (name) => { groups += 1; console.log(`PASS ${groups}: ${name}`); };
 const observe = (target) => {
+  failurePage = target;
   target.on('pageerror', (error) => errors.push(error.message));
   target.on('request', (request) => {
     if (/^https?:/.test(request.url()) && new URL(request.url()).origin !== new URL(base).origin) external.push(request.url());
@@ -52,6 +54,26 @@ try {
     await dialog.getByTestId('action-amount').fill(String(amount));
     await dialog.getByTestId('confirm-action').click();
     await dialog.waitFor({ state: 'hidden' });
+  }
+  const displayedAmount = async (locator) => Number((await locator.innerText()).replace(/[^\d]/g, ''));
+  async function paymentReceipt(expected, target = page, screenshot = false) {
+    const receipt = target.getByTestId('payment-receipt');
+    await receipt.waitFor({ state: 'visible' });
+    const amountAt = async (id) => displayedAmount(receipt.getByTestId(id));
+    const { before, used, cashback, credit = cashback, offset = 0, after } = expected;
+    assert.equal(await amountAt('receipt-rewards-before'), before);
+    assert.equal(await amountAt('receipt-rewards-used'), used);
+    assert.equal(await amountAt('receipt-cashback-earned'), cashback);
+    assert.equal(await amountAt('receipt-cashback-credit'), credit);
+    if (offset || await receipt.getByTestId('receipt-cashback-offset').count()) assert.equal(await amountAt('receipt-cashback-offset'), offset);
+    assert.equal(await amountAt('receipt-rewards-after'), after);
+    assert.equal(before - used + credit, after, '결제 전 − 리워드 사용 + 실제 페이백 반영 = 결제 후');
+    if (used > 0) assert.match(await receipt.getByTestId('receipt-rewards-used').innerText(), /[−-]/, '리워드 사용분은 차감으로 표시');
+    if (cashback > 0) assert.match(await receipt.getByTestId('receipt-cashback-earned').innerText(), /\+/, '새 페이백은 적립으로 표시');
+    if (before === after && used > 0 && credit === used) assert.match(await receipt.innerText(), /사용한 리워드와 새 페이백이 같아 잔액은 동일합니다/);
+    if (screenshot) await target.screenshot({ path: new URL('aqua-payment-receipt.png', artifacts).pathname, fullPage: true });
+    await receipt.getByTestId('receipt-close').click();
+    await receipt.waitFor({ state: 'hidden' });
   }
   const flow = () => page.locator('.card-flow');
   async function finishApplication({ plan = 'basic', physical = true } = {}, target = page) {
@@ -146,7 +168,16 @@ try {
   assert.equal(state.reserve, 1_182_780);
   assert.equal(state.rewards, 1_957);
   assert.equal(state.monthlyCashback, 1_957);
-  pass('잔액 부족과 옵트인 Reserve 자동 사용·결제 확정·페이백');
+  await paymentReceipt({ before: 4_280, used: 4_280, cashback: 1_957, after: 1_957 });
+  await page.getByTestId('open-rewards').click();
+  const benefits = page.getByTestId('dialog-rewards');
+  await benefits.waitFor({ state: 'visible' });
+  assert.equal(await displayedAmount(benefits.getByTestId('cashback-confirmed')), 1_957);
+  assert.equal(await displayedAmount(benefits.getByTestId('cashback-pending')), 0);
+  assert.equal(await displayedAmount(benefits.getByTestId('cashback-remaining')), 8_043);
+  await page.keyboard.press('Escape');
+  await benefits.waitFor({ state: 'hidden' });
+  pass('잔액 부족·Reserve 자동 사용·결제 영수증 회계·확정 페이백·남은 혜택 한도');
 
   await nav('activity');
   await page.getByRole('button', { name: '한강커피 환불', exact: true }).click();
@@ -240,6 +271,72 @@ try {
   pass('별도 새 세션에서 체험 도구 없이 Plus 가상카드 자동 발급');
   await primaryContext.close();
 
+  const rewardContext = await browser.newContext({ viewport: { width: 1440, height: 1050 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
+  const rewardPage = await rewardContext.newPage();
+  observe(rewardPage);
+  await rewardPage.goto(base, { waitUntil: 'networkidle' });
+  await rewardPage.getByTestId('nav-card').click();
+  await rewardPage.getByTestId('card-apply').click();
+  await finishApplication({ plan: 'basic', physical: false }, rewardPage);
+  await stateWhen((current) => current.card.stage === 'active', rewardPage);
+
+  async function rewardPayment(amount, expected, screenshot = false) {
+    await rewardPage.getByTestId('nav-home').click();
+    const before = await read(rewardPage);
+    await rewardPage.getByTestId('open-payment').click();
+    const dialog = rewardPage.getByTestId('dialog-payment');
+    await dialog.getByTestId('action-amount').fill(String(amount));
+    await dialog.getByTestId('confirm-action').click();
+    await dialog.waitFor({ state: 'hidden' });
+    const completed = await stateWhen((current) => current.payments.length === before.payments.length + 1 && current.payments[0].status === 'completed', rewardPage);
+    assert.equal(completed.payments[0].fromRewards, expected.used);
+    assert.equal(completed.payments[0].cashback, expected.cashback);
+    assert.equal(completed.rewards, expected.after);
+    await paymentReceipt(expected, rewardPage, screenshot);
+    assert.match(await rewardPage.getByTestId('available-rewards').innerText(), new RegExp(expected.after.toLocaleString('en-US')));
+    return completed;
+  }
+  await rewardPayment(5_800, { before: 4_280, used: 4_280, cashback: 15, after: 15 });
+  await rewardPayment(5_800, { before: 15, used: 15, cashback: 57, after: 57 });
+  await rewardPayment(5_800, { before: 57, used: 57, cashback: 57, after: 57 }, true);
+  pass('동일 잔액 57원의 반복 결제도 영수증에서 사용 −57·새 페이백 +57을 구분');
+
+  await rewardPayment(30, { before: 57, used: 30, cashback: 0, after: 27 });
+  pass('리워드만 사용한 결제는 새 페이백 없이 잔액을 차감');
+
+  await rewardPage.getByTestId('nav-settings').click();
+  assert.equal(await rewardPage.getByTestId('rewards-auto').getAttribute('aria-checked'), 'true');
+  await rewardPage.getByTestId('rewards-auto').click();
+  await stateWhen((current) => !current.rewardsAuto, rewardPage);
+  await rewardPayment(5_800, { before: 27, used: 0, cashback: 58, after: 85 });
+  await rewardPage.getByTestId('nav-settings').click();
+  assert.equal(await rewardPage.getByTestId('rewards-auto').getAttribute('aria-checked'), 'false');
+  await rewardPage.getByTestId('rewards-auto').click();
+  await stateWhen((current) => current.rewardsAuto, rewardPage);
+  await rewardPayment(5_800, { before: 85, used: 85, cashback: 57, after: 57 });
+  await rewardPage.getByTestId('open-rewards').click();
+  const rewardBenefits = rewardPage.getByTestId('dialog-rewards');
+  await rewardBenefits.waitFor({ state: 'visible' });
+  assert.equal(await displayedAmount(rewardBenefits.getByTestId('cashback-confirmed')), 244);
+  assert.equal(await displayedAmount(rewardBenefits.getByTestId('cashback-pending')), 0);
+  assert.equal(await displayedAmount(rewardBenefits.getByTestId('cashback-remaining')), 9_756);
+  assert.equal(await rewardBenefits.getByTestId('rewards-auto').getAttribute('aria-checked'), 'true');
+  await rewardBenefits.getByTestId('rewards-auto').click();
+  await stateWhen((current) => !current.rewardsAuto, rewardPage);
+  await rewardPage.keyboard.press('Escape');
+  await rewardBenefits.waitFor({ state: 'hidden' });
+  await rewardPage.getByTestId('nav-settings').click();
+  assert.equal(await rewardPage.getByTestId('rewards-auto').getAttribute('aria-checked'), 'false', '혜택 화면의 설정을 전체 설정에서도 공유');
+  await rewardPage.getByTestId('rewards-auto').click();
+  await stateWhen((current) => current.rewardsAuto, rewardPage);
+  await rewardPage.getByTestId('nav-home').click();
+  await rewardPage.getByTestId('open-rewards').click();
+  assert.equal(await rewardBenefits.getByTestId('rewards-auto').getAttribute('aria-checked'), 'true', '전체 설정의 변경을 혜택 화면에서도 공유');
+  await rewardPage.keyboard.press('Escape');
+  await rewardBenefits.waitFor({ state: 'hidden' });
+  pass('리워드 우선 사용 OFF·ON 설정을 결제와 혜택 현황에서 공유');
+  await rewardContext.close();
+
   const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul', isMobile: true });
   const mobile = await mobileContext.newPage();
   observe(mobile);
@@ -262,7 +359,7 @@ try {
   await writeFile(new URL('browser-results.json', artifacts), JSON.stringify({ passed: groups, failed: 0, skipped: 0, recordedAt: new Date().toISOString(), desktop: '1440×1050', mobile: '390×844', errors, external }, null, 2));
   console.log(`${groups} browser checks passed. Screenshots written to artifacts/.`);
 } catch (error) {
-  if (page) await page.screenshot({ path: new URL('aqua-failure.png', artifacts).pathname, fullPage: true }).catch(() => {});
+  if (failurePage ?? page) await (failurePage ?? page).screenshot({ path: new URL('aqua-failure.png', artifacts).pathname, fullPage: true }).catch(() => {});
   console.error(error);
   await writeFile(new URL('browser-results.json', artifacts), JSON.stringify({ passed: groups, failed: 1, recordedAt: new Date().toISOString(), error: String(error), errors, external }, null, 2)).catch(() => {});
   process.exitCode = 1;
