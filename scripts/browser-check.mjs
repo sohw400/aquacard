@@ -88,9 +88,10 @@ try {
       await target.getByTestId(`nav-${name}`).click();
     }
   }
+  const portfolioOf = (state) => state.spend + state.reserve + state.fundingOperations.reduce((sum, item) => sum + (item.kind === 'withdrawal' && ['reviewing', 'broadcasting'].includes(item.status) ? item.amountWon : 0), 0);
   const ledgerSnapshot = (state) => ({
     spend: state.spend, reserve: state.reserve, rewards: state.rewards, rewardDebt: state.rewardDebt,
-    holdings: state.holdings, card: state.card, payments: state.payments, transactions: state.transactions,
+    card: state.card, payments: state.payments, transactions: state.transactions,
     fundingOperations: state.fundingOperations,
     reserveAuto: state.reserveAuto, rewardsAuto: state.rewardsAuto, monthlyCashback: state.monthlyCashback,
   });
@@ -103,7 +104,7 @@ try {
   async function submitAmount(type, amount) {
     const dialog = page.getByTestId(`dialog-${type}`);
     await dialog.getByTestId('action-amount').fill(String(amount));
-    if (type === 'convert' || type === 'transfer') {
+    if (type === 'transfer') {
       const before = ledgerSnapshot(await read());
       await dialog.getByTestId('transfer-next').click();
       assert.deepEqual(ledgerSnapshot(await read()), before, '내부 이동 확인 단계에서는 원장을 변경하지 않는다');
@@ -140,16 +141,10 @@ try {
     await target.clock.setFixedTime(wallNow + 3_001);
     return operationWhen(id, nextStatus, target);
   }
-  async function fundingRoute({ mode = 'deposit', symbol = 'USDC', network = 'polygon', source = 'spend', target = page, open = true } = {}) {
+  async function fundingRoute({ mode = 'deposit', symbol = 'USDC', network = 'polygon', target = page, open = true } = {}) {
     if (open) {
       await nav('wallet', target);
-      if (source === 'holdings') {
-        const asset = target.getByTestId(`asset-select-${symbol}`);
-        if (await asset.getAttribute('aria-expanded') !== 'true') await asset.click();
-        await target.getByRole('button', { name: `${symbol} 출금`, exact: true }).click();
-      } else {
-        await target.getByTestId(mode === 'deposit' ? 'wallet-deposit' : 'wallet-withdraw').click();
-      }
+      await target.getByTestId(mode === 'deposit' ? 'wallet-deposit' : 'wallet-withdraw').click();
     }
     const dialog = fundingDialogAt(target);
     await dialog.waitFor({ state: 'visible' });
@@ -176,7 +171,6 @@ try {
     const operation = state.fundingOperations[0];
     assert.equal(operation.status, 'awaiting_deposit');
     assert.equal(state.spend, before.spend, '입금 대기 금액은 사용 가능한 결제 잔액이 아니다');
-    assert.deepEqual(state.holdings, before.holdings);
     return operation;
   }
   async function prepareWithdrawal(amount, target = page, outcome = 'success') {
@@ -236,6 +230,14 @@ try {
     await cardFlow.getByTestId('card-identity-next').click();
     await cardFlow.getByRole('radio', { name: new RegExp(`Aqua ${plan === 'plus' ? 'Plus' : 'Basic'}`) }).check();
     await cardFlow.getByTestId('card-physical-choice').setChecked(physical);
+    if (physical && (await read(target)).card.address === null) {
+      assert.equal(await cardFlow.getByTestId('card-selection-next').isDisabled(), true, '실물카드는 배송지를 넣어야 다음으로 간다');
+      await cardFlow.getByTestId('card-address-open').click();
+      await target.getByTestId('address-query').fill('아쿠아로');
+      await target.getByTestId('address-result-04500').click();
+      await target.getByTestId('address-detail').fill('101호');
+      await target.getByTestId('address-save').click();
+    }
     await cardFlow.getByTestId('card-selection-next').click();
     assert.equal(await cardFlow.getByTestId('card-submit').isDisabled(), true, '최종 확인 전에는 접수할 수 없다');
     await cardFlow.getByTestId('card-review-consent').check();
@@ -328,8 +330,15 @@ try {
   await flow().getByTestId('card-demo-shipped').click();
   await flow().getByTestId('card-demo-delivered').click();
   await flow().getByTestId('card-physical-activate').click();
+  await page.getByTestId('pin-input').fill('1234');
+  assert.equal(await page.getByTestId('pin-submit').isDisabled(), true, '이어지는 숫자는 카드 비밀번호로 쓸 수 없다');
+  await page.getByTestId('pin-input').fill('2580');
+  await page.getByTestId('pin-again').fill('2580');
+  await page.getByTestId('pin-submit').click();
   state = await stateWhen((state) => state.card.physicalActive);
-  assert.equal(state.spend, 128_500, '모의 발급비는 실제 잔액에서 청구하지 않는다');
+  assert.equal(state.spend, 118_600, '실물카드 발급비는 결제 잔액에서 낸다');
+  assert.ok(state.card.pinSet && !JSON.stringify(state).includes('2580'), '카드 비밀번호는 저장하지 않는다');
+  assert.equal(state.card.address.road, '서울특별시 중구 아쿠아로 1');
   await page.screenshot({ path: new URL('aqua-card.png', artifacts).pathname, fullPage: true });
   pass('자동 승인·가상 발급·활성화·실물 배송·수령 활성화');
 
@@ -357,8 +366,8 @@ try {
   await submitAmount('payment', 200_000);
   state = await stateWhen((state) => state.payments[0]?.status === 'completed');
   const paymentId = state.payments[0].id;
-  assert.deepEqual([state.payments[0].fromRewards, state.payments[0].fromSpend, state.payments[0].fromReserve], [4_280, 128_500, 67_220]);
-  assert.equal(state.reserve, 1_182_780);
+  assert.deepEqual([state.payments[0].fromRewards, state.payments[0].fromSpend, state.payments[0].fromReserve], [4_280, 118_600, 77_120]);
+  assert.equal(state.reserve, 1_172_880);
   assert.equal(state.rewards, 1_957);
   assert.equal(state.monthlyCashback, 1_957);
   await paymentReceipt({ before: 4_280, used: 4_280, cashback: 1_957, after: 1_957 });
@@ -398,16 +407,11 @@ try {
   pass('부분·전액 환불과 원금·리워드 복원·페이백 조정');
 
   await nav('wallet');
-  assert.equal(await page.getByRole('button', { name: 'USDC 전환', exact: true }).count(), 0, '자산 선택 전에는 개별 코인 작업을 노출하지 않는다');
-  await page.getByTestId('asset-select-USDC').click();
-  assert.equal(await page.getByTestId('asset-select-USDC').getAttribute('aria-expanded'), 'true');
-  await page.getByRole('button', { name: 'USDC 전환', exact: true }).click();
-  await submitAmount('convert', 10);
-  state = await stateWhen((state) => state.holdings.USDC === 90);
-  assert.equal(state.spend, 209_720, '14,000원 평가액을 수수료 없이 결제 잔액에 반영');
-  assert.equal(await page.getByRole('button', { name: 'USDC 입금', exact: true }).count(), 0, '새 외부 입금은 기존 코인 보유량에 쌓지 않는다');
+  assert.equal(await page.getByTestId('accepted-coins').count(), 1);
+  assert.doesNotMatch(await page.getByTestId('page-wallet').innerText(), /보유 코인|코인 평가액/, '코인은 보유 자산으로 보이지 않는다');
   const beforeFunding = await read();
-  const fundingDialog = await fundingRoute();
+  await page.getByTestId('deposit-coin-USDC').click();
+  const fundingDialog = await fundingRoute({ open: false });
   await fundingDialog.getByTestId('action-amount').fill('10');
   assert.equal(await displayedAmount(fundingDialog.getByTestId('quote-gross')), 14_000);
   assert.equal(await displayedAmount(fundingDialog.getByTestId('quote-fee')), 0, '입금은 수수료가 없다');
@@ -417,21 +421,12 @@ try {
   const depositOperation = await requestDeposit(10);
   await settleFunding(depositOperation);
   state = await stateWhen((state) => state.spend === beforeFunding.spend + 14_000);
-  assert.deepEqual(state.holdings, beforeFunding.holdings);
+  assert.equal(portfolioOf(state), portfolioOf(beforeFunding) + 14_000, '입금한 코인은 원화 스테이블로만 남는다');
   assert.equal(state.reserve, beforeFunding.reserve);
   assert.equal(state.rewards, beforeFunding.rewards);
   assert.equal(state.transactions.find((item) => item.fundingId === depositOperation.id).status, 'completed');
   await closeFunding();
-  await fundingRoute({ mode: 'withdraw', source: 'holdings' });
-  const coinWithdrawal = await requestWithdrawal(5);
-  assert.equal(coinWithdrawal.source, 'holdings');
-  assert.equal(coinWithdrawal.feeWon, 0, '기존 코인 출금은 원화 전환 수수료가 없다');
-  assert.equal(coinWithdrawal.networkFeeWon, 140);
-  await settleFunding(coinWithdrawal);
-  await stateWhen((state) => state.holdings.USDC === 85);
-  assert.equal((await read()).spend, beforeFunding.spend + 14_000);
-  await closeFunding();
-  pass('기존 코인 확인 후 전환·네트워크 출금과 신규 입금 확인·원화 전환');
+  pass('입금한 코인은 보유하지 않고 확인 즉시 원화 스테이블로 바꿔 결제 잔액에 반영');
 
   const beforeWithdrawal = await read();
   await fundingRoute({ mode: 'withdraw' });
@@ -446,7 +441,6 @@ try {
   const spendWithdrawal = (await stateWhen((current) => current.fundingOperations.length === beforeWithdrawal.fundingOperations.length + 1)).fundingOperations[0];
   await settleFunding(spendWithdrawal);
   state = await stateWhen((state) => state.spend === beforeWithdrawal.spend - 10_000);
-  assert.deepEqual(state.holdings, beforeWithdrawal.holdings);
   assert.equal(state.reserve, beforeWithdrawal.reserve);
   assert.equal(state.rewards, beforeWithdrawal.rewards);
   assert.equal(state.transactions[0].amount, -10_000);
@@ -478,7 +472,6 @@ try {
   state = await stateWhen((state) => state.reserve === beforeDesignation.reserve);
   assert.equal(state.spend, beforeDesignation.spend);
   assert.equal(state.rewards, beforeDesignation.rewards);
-  assert.deepEqual(state.holdings, beforeDesignation.holdings);
   assert.equal(state.transactions.filter((item) => item.kind === 'convert').length, priorConversions);
   pass('원화의 Reserve 지정·해제에는 추가 매도·수수료·코인 변동 없음');
 
@@ -489,14 +482,14 @@ try {
   const beforeDays = await read();
   await page.getByTestId('advance-day').click();
   state = await stateWhen((state) => state.clockOffsetMs === 86_400_000);
-  assert.ok(Math.abs(earnedSince(beforeDays, state) - 1_182_780 * 0.05 / 365) < 0.1);
-  assert.ok(state.rewards >= beforeDays.rewards + 161, '하루치 보상은 받기 없이 리워드에 더해진다');
+  assert.ok(Math.abs(earnedSince(beforeDays, state) - 1_172_880 * 0.05 / 365) < 0.1);
+  assert.ok(state.rewards >= beforeDays.rewards + 160, '하루치 보상은 받기 없이 리워드에 더해진다');
   assert.ok(state.accrued < 1);
   const afterFirstDay = state;
   await page.getByTestId('rate-8').click();
   await page.getByTestId('advance-day').click();
   state = await stateWhen((state) => state.clockOffsetMs === 172_800_000);
-  assert.ok(Math.abs(earnedSince(afterFirstDay, state) - 1_182_780 * 0.08 / 365) < 0.1);
+  assert.ok(Math.abs(earnedSince(afterFirstDay, state) - 1_172_880 * 0.08 / 365) < 0.1);
   await nav('benefits');
   assert.equal(await displayedAmount(benefits.getByTestId('reward-balance')), (await read()).rewards);
   const liveNumber = async (testId) => Number((await benefits.getByTestId(testId).locator('..').innerText()).replace(/[^\d.]/g, ''));
@@ -513,7 +506,6 @@ try {
   assert.equal(state.spend, beforeReload.spend);
   assert.equal(state.reserve, beforeReload.reserve);
   assert.ok(Math.abs(state.rewards + state.accrued - beforeReload.rewards - beforeReload.accrued) < 0.5, '새로고침 사이에 쌓인 보상만큼만 리워드가 늘어난다');
-  assert.equal(state.holdings.USDC, 85);
   assert.equal(state.reserveRate, 0.08);
   assert.equal(state.payments[0].status, 'refunded');
   await nav('home');
@@ -533,10 +525,33 @@ try {
   assert.equal(primaryState.card.plan, 'plus');
   assert.equal(primaryState.card.physical, false);
   assert.equal(primaryState.card.delivery, 'none');
-  assert.equal(primaryState.spend, 128_500);
+  assert.equal(primaryState.spend, 123_600, 'Plus 첫 달 이용료를 결제 잔액에서 낸다');
   assert.equal(primaryState.payments.length, 0);
-  assert.equal(await primary.getByTestId('card-demo-tools').count(), 0, '가상카드 발급 후에는 배송 체험 도구가 필요하지 않는다');
-  pass('별도 새 세션에서 체험 도구 없이 Plus 가상카드 자동 발급');
+  assert.ok(primaryState.card.billingAt > Date.now(), 'Plus는 다음 결제일을 잡는다');
+  assert.match(await primary.getByTestId('card-billing-date').innerText(), /\d+월 \d+일/);
+  await details('card-demo-tools', true, primary);
+  assert.equal(await primary.getByTestId('card-demo-shipped').count(), 0, '가상카드는 배송 체험이 없다');
+  assert.equal(await primary.getByTestId('card-demo-billing').count(), 1, 'Plus는 결제일 이동을 체험할 수 있다');
+  await details('card-demo-tools', false, primary);
+  pass('별도 새 세션에서 Plus 가상카드 자동 발급·첫 달 이용료·다음 결제일');
+
+  await primary.getByTestId('wallet-add-samsung').click();
+  const walletSheet = primary.getByTestId('dialog-wallet');
+  assert.equal(await walletSheet.getByTestId('wallet-next').isDisabled(), true, '등록 동의 전에는 다음으로 갈 수 없다');
+  await walletSheet.getByTestId('wallet-terms').check();
+  await walletSheet.getByTestId('wallet-next').click();
+  await walletSheet.getByTestId('wallet-send-code').click();
+  await walletSheet.getByTestId('wallet-code').fill(await sixDigits(walletSheet.getByTestId('wallet-demo-code')));
+  await walletSheet.getByTestId('wallet-confirm').click();
+  await walletSheet.getByTestId('wallet-done').click();
+  await walletSheet.waitFor({ state: 'hidden' });
+  assert.deepEqual((await read(primary)).card.wallets, ['samsung']);
+  await primary.getByTestId('wallet-added-samsung').waitFor();
+  await primary.getByTestId('card-lock-toggle').click();
+  assert.equal(await primary.getByTestId('wallet-add-apple').isDisabled(), true, '잠긴 카드는 휴대폰에 추가할 수 없다');
+  await primary.getByTestId('card-lock-toggle').click();
+  assert.equal((await read(primary)).card.locked, false);
+  pass('삼성페이 추가는 등록 동의·휴대폰 인증 뒤 저장하고 잠긴 카드는 추가할 수 없음');
 
   await primary.getByTestId('nav-settings').click();
   assert.match(await primary.locator('.account-section').innerText(), /de\*\*@aqua\.example.*010-\*\*\*\*-5678/s, '계정 정보는 가려서 보여준다');
@@ -561,7 +576,7 @@ try {
   const afterLogin = await read(primary);
   assert.equal(afterLogin.signedIn, true);
   assert.equal(afterLogin.card.plan, 'plus');
-  assert.equal(afterLogin.spend, 128_500);
+  assert.equal(afterLogin.spend, 123_600);
   assert.ok(!JSON.stringify(afterLogin).includes('newpass2026'), '비밀번호 원문은 저장하지 않는다');
   pass('로그아웃·틀린 비밀번호 거절·이메일 코드로 재설정·새 비밀번호 로그인과 자산 유지');
   await primaryContext.close();
@@ -717,7 +732,6 @@ try {
   assert.equal(restoredCompleted.spend, beforePendingReload.spend + 14_000);
   assert.equal(restoredCompleted.fundingOperations.length, 1);
   assert.equal(restoredCompleted.transactions.filter((item) => item.fundingId === pendingDeposit.id).length, 1);
-  assert.deepEqual(restoredCompleted.holdings, beforePendingReload.holdings);
   pass('확인 중 입금 재개·전환 완료에만 원화 한 번 반영·완료 후 재로딩 멱등성');
 
   const beforeHeldWithdrawal = await read(movementPage);
@@ -752,7 +766,6 @@ try {
   assert.equal(cancelledState.spend, beforeHeldWithdrawal.spend, '출금 취소는 수수료를 포함한 전체 원금을 돌려준다');
   assert.equal(cancelledState.reserve, beforeHeldWithdrawal.reserve);
   assert.equal(cancelledState.rewards, beforeHeldWithdrawal.rewards);
-  assert.deepEqual(cancelledState.holdings, beforeHeldWithdrawal.holdings);
   await closeFunding(movementPage);
   assert.equal(await movementPage.getByTestId('funding-held').count(), 0);
   await reopenFunding(heldWithdrawal.id, movementPage);
@@ -779,7 +792,6 @@ try {
   assert.equal(afterFailedWithdrawal.spend, beforeFailedWithdrawal.spend, '실패한 출금은 전환·네트워크 수수료를 공제하지 않는다');
   assert.equal(afterFailedWithdrawal.reserve, beforeFailedWithdrawal.reserve);
   assert.equal(afterFailedWithdrawal.rewards, beforeFailedWithdrawal.rewards);
-  assert.deepEqual(afterFailedWithdrawal.holdings, beforeFailedWithdrawal.holdings);
   assert.equal(afterFailedWithdrawal.transactions.find((item) => item.fundingId === failedWithdrawal.id).status, 'failed');
   assert.match(await movementDialog.innerText(), /반환되었습니다.*수수료는 차감되지 않았습니다/s);
   await movementDialog.getByTestId('funding-retry').click();
@@ -796,29 +808,6 @@ try {
   assert.equal(await movementPage.getByTestId('funding-held').count(), 0);
   pass('출금 실패는 수수료 포함 원금 전액 복구·실패 기록 보존·재입력 후 정상 완료');
 
-  const beforeFailedCoinWithdrawal = await read(movementPage);
-  await fundingRoute({ mode: 'withdraw', source: 'holdings', target: movementPage });
-  const failedCoinWithdrawal = await requestWithdrawal(2, movementPage, 'failure');
-  assert.equal((await read(movementPage)).holdings.USDC, beforeFailedCoinWithdrawal.holdings.USDC - 2);
-  assert.equal((await read(movementPage)).spend, beforeFailedCoinWithdrawal.spend);
-  await advanceFundingClock(failedCoinWithdrawal.id, 'failed', movementPage);
-  const afterFailedCoinWithdrawal = await read(movementPage);
-  assert.deepEqual(afterFailedCoinWithdrawal.holdings, beforeFailedCoinWithdrawal.holdings, '보유 코인 출금 실패는 원물 수량을 그대로 복구한다');
-  assert.equal(afterFailedCoinWithdrawal.spend, beforeFailedCoinWithdrawal.spend);
-  assert.equal(afterFailedCoinWithdrawal.reserve, beforeFailedCoinWithdrawal.reserve);
-  assert.equal(afterFailedCoinWithdrawal.rewards, beforeFailedCoinWithdrawal.rewards);
-  await movementDialog.getByTestId('funding-retry').click();
-  await fundingRoute({ mode: 'withdraw', source: 'holdings', target: movementPage, open: false });
-  const recoveredCoinWithdrawal = await requestWithdrawal(2, movementPage);
-  assert.equal(recoveredCoinWithdrawal.source, 'holdings', '재시도 시 코인 원물을 원화 출금으로 바꾸지 않는다');
-  assert.equal(recoveredCoinWithdrawal.retryOf, failedCoinWithdrawal.id);
-  await advanceFundingClock(recoveredCoinWithdrawal.id, 'broadcasting', movementPage);
-  await advanceFundingClock(recoveredCoinWithdrawal.id, 'completed', movementPage);
-  assert.equal((await read(movementPage)).holdings.USDC, beforeFailedCoinWithdrawal.holdings.USDC - 2);
-  assert.equal((await read(movementPage)).spend, beforeFailedCoinWithdrawal.spend);
-  await closeFunding(movementPage);
-  pass('보유 코인 출금 실패는 원물 전액 복구·재시도에서도 출금 원천 유지');
-
   const beforeFailedDeposit = await read(movementPage);
   await fundingRoute({ target: movementPage });
   const failedDeposit = await requestDeposit(10, movementPage, 'failure');
@@ -827,7 +816,6 @@ try {
   await advanceFundingClock(failedDeposit.id, 'failed', movementPage);
   const afterFailedDeposit = await read(movementPage);
   assert.equal(afterFailedDeposit.spend, beforeFailedDeposit.spend, '실패한 입금은 원화 결제 잔액을 늘리지 않는다');
-  assert.deepEqual(afterFailedDeposit.holdings, beforeFailedDeposit.holdings);
   assert.equal(afterFailedDeposit.reserve, beforeFailedDeposit.reserve);
   assert.equal(afterFailedDeposit.rewards, beforeFailedDeposit.rewards);
   await movementDialog.getByTestId('funding-retry').click();
@@ -850,7 +838,6 @@ try {
   await movementDialog.getByTestId('funding-cancel').click();
   await operationWhen(cancelledDeposit.id, 'cancelled', movementPage);
   assert.equal((await read(movementPage)).spend, beforeCancelledDeposit.spend);
-  assert.deepEqual((await read(movementPage)).holdings, beforeCancelledDeposit.holdings);
   await closeFunding(movementPage);
   await movementPage.reload({ waitUntil: 'networkidle' });
   assert.equal((await read(movementPage)).fundingOperations.find((item) => item.id === cancelledDeposit.id).status, 'cancelled');
@@ -882,7 +869,6 @@ try {
   assert.equal(expiredState.spend, beforeExpiry.spend);
   assert.equal(expiredState.reserve, beforeExpiry.reserve);
   assert.equal(expiredState.rewards, beforeExpiry.rewards);
-  assert.deepEqual(expiredState.holdings, beforeExpiry.holdings);
   assert.equal(expiredState.transactions.length, beforeExpiry.transactions.length);
   assert.equal(expiredState.fundingOperations.length, beforeExpiry.fundingOperations.length);
   await quoteDialog.getByTestId('refresh-quote').click();
@@ -897,7 +883,6 @@ try {
   await advanceFundingClock(renewedDeposit.id, 'converting', quotePage);
   await advanceFundingClock(renewedDeposit.id, 'completed', quotePage);
   const renewedState = await stateWhen((current) => current.spend === 142_500, quotePage);
-  assert.deepEqual(renewedState.holdings, beforeExpiry.holdings);
   await closeFunding(quotePage);
   pass('입금 견적 31초 만료 강제 제출도 원장 불변·갱신 후 확인·전환 완료에만 반영');
 
@@ -927,29 +912,6 @@ try {
   await closeFunding(quotePage);
   pass('출금 최종 확인 중 견적 만료는 보류 없이 거절·갱신 후 한 번만 출금');
 
-  await nav('wallet', quotePage);
-  await quotePage.getByTestId('asset-select-USDC').click();
-  await quotePage.getByRole('button', { name: 'USDC 전환', exact: true }).click();
-  const expiredTransfer = quotePage.getByTestId('dialog-convert');
-  await expiredTransfer.getByTestId('action-amount').fill('10');
-  await expiredTransfer.getByTestId('transfer-next').click();
-  const beforeConvertExpiry = await read(quotePage);
-  const convertQuoteTime = await quotePage.evaluate(() => Date.now());
-  await quotePage.clock.setFixedTime(convertQuoteTime + 31_000);
-  await quotePage.waitForFunction(() => document.querySelector('[data-testid="quote-ttl"]')?.textContent === '견적 만료');
-  assert.equal(await expiredTransfer.getByTestId('confirm-action').isDisabled(), true);
-  await expiredTransfer.locator('form').evaluate((form) => form.requestSubmit());
-  await expiredTransfer.getByRole('alert').waitFor({ state: 'visible' });
-  assert.deepEqual(ledgerSnapshot(await read(quotePage)), ledgerSnapshot(beforeConvertExpiry));
-  await expiredTransfer.getByTestId('refresh-quote').click();
-  await expiredTransfer.getByTestId('confirm-action').click();
-  await expiredTransfer.getByTestId('transfer-completed').waitFor({ state: 'visible' });
-  const convertedState = await read(quotePage);
-  assert.equal(convertedState.spend, beforeConvertExpiry.spend + 14_000);
-  assert.equal(convertedState.holdings.USDC, beforeConvertExpiry.holdings.USDC - 10);
-  assert.equal(await displayedAmount(expiredTransfer.getByTestId('transfer-target-after')), convertedState.spend);
-  await expiredTransfer.getByTestId('transfer-done').click();
-  pass('코인 내부 전환도 입력·확인·영수증 및 만료 강제 제출 차단을 지원');
   await quoteContext.close();
 
   const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul', isMobile: true });
@@ -983,6 +945,115 @@ try {
   assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, '모바일 입금 완료 화면');
   await closeFunding(mobile);
   pass('390px 모바일 큰 홈 카드·전체 메뉴·코인 충전 전 단계·가로 넘침');
+
+  const lifeContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
+  const life = await lifeContext.newPage();
+  observe(life);
+  life.setDefaultTimeout(10_000);
+  await life.goto(base, { waitUntil: 'networkidle' });
+  await signUp(life);
+  await nav('settings', life);
+  await life.getByTestId('open-limits').click();
+  await life.getByTestId('page-limits').waitFor();
+  assert.equal(await life.getByTestId('limits-save').isDisabled(), true, '바꾸기 전에는 저장할 수 없다');
+  await life.getByTestId('limit-perPayment').fill('100000');
+  await life.getByTestId('limit-daily').fill('200000');
+  await life.getByTestId('limits-save').click();
+  let lifeState = await stateWhen((current) => current.controls.perPayment === 100_000, life);
+  assert.deepEqual([lifeState.controls.daily, lifeState.controls.monthly], [200_000, 5_000_000]);
+  await life.getByTestId('go-back').click();
+  await life.getByTestId('open-channels').click();
+  await life.getByTestId('channel-online').click();
+  await stateWhen((current) => current.controls.online === false, life);
+  await life.getByTestId('go-back').click();
+  assert.match(await life.getByTestId('open-channels').innerText(), /온라인 막음/);
+  pass('결제 한도 화면에서 1회·하루 한도를 낮추고 온라인 결제를 막는다');
+
+  await nav('card', life);
+  await life.getByTestId('card-apply').click();
+  await finishApplication({ physical: false }, life);
+  await stateWhen((current) => current.card.stage === 'active', life);
+  await nav('home', life);
+  await life.getByTestId('open-payment').click();
+  const lifePayment = life.getByTestId('dialog-payment');
+  await lifePayment.getByTestId('pay-channel-online').click();
+  assert.match(await lifePayment.innerText(), /온라인 결제를 막아 두었습니다/);
+  await lifePayment.getByTestId('action-amount').fill('5000');
+  await lifePayment.getByTestId('confirm-action').click();
+  assert.match(await lifePayment.getByRole('alert').innerText(), /온라인 결제를 막아/);
+  await lifePayment.getByTestId('pay-channel-store').click();
+  await lifePayment.getByTestId('action-amount').fill('110000');
+  await lifePayment.getByTestId('confirm-action').click();
+  assert.match(await lifePayment.getByRole('alert').innerText(), /1회 결제 한도는 10만원/);
+  await lifePayment.getByTestId('action-amount').fill('5800');
+  await lifePayment.getByTestId('confirm-action').click();
+  lifeState = await stateWhen((current) => current.payments[0]?.status === 'completed', life);
+  assert.equal(lifeState.payments[0].channel, 'store');
+  await life.keyboard.press('Escape');
+  await nav('activity', life);
+  const paymentEntry = lifeState.transactions.find((item) => item.kind === 'payment');
+  await life.getByTestId(`tx-detail-${paymentEntry.id}`).click();
+  const txSheet = life.getByTestId('transaction-sheet');
+  assert.match(await txSheet.getByTestId('transaction-approval').innerText(), /^AQ\d{8}$/);
+  assert.match(await txSheet.innerText(), /매장[\s\S]*결제 잔액에서/);
+  await life.keyboard.press('Escape');
+  pass('막아 둔 결제 방식과 낮춘 한도로 결제를 거절하고 거래 상세에 승인번호·결제 구성을 보여준다');
+
+  await nav('card', life);
+  const spendBeforePlan = (await read(life)).spend;
+  await life.getByTestId('card-plan-change').click();
+  assert.equal(await displayedAmount(life.getByTestId('card-sheet-cost')), 4_900);
+  await life.getByTestId('card-sheet-confirm').click();
+  lifeState = await stateWhen((current) => current.card.plan === 'plus', life);
+  assert.equal(lifeState.spend, spendBeforePlan - 4_900);
+  await life.getByTestId('card-plan-change').click();
+  await life.getByTestId('card-sheet-confirm').click();
+  await stateWhen((current) => current.card.nextPlan === 'basic', life);
+  await life.getByTestId('card-plan-keep').click();
+  await stateWhen((current) => current.card.nextPlan === null, life);
+  await life.getByTestId('card-physical-add').click();
+  await life.getByTestId('address-result-06100').click();
+  await life.getByTestId('address-save').click();
+  await life.getByTestId('card-sheet-confirm').click();
+  lifeState = await stateWhen((current) => current.card.physical, life);
+  assert.deepEqual([lifeState.spend, lifeState.card.address.zip, lifeState.card.delivery], [spendBeforePlan - 14_800, '06100', 'preparing']);
+  const oldLast4 = lifeState.card.last4;
+  await life.getByTestId('card-reissue').click();
+  await life.getByTestId('card-sheet-confirm').click();
+  lifeState = await stateWhen((current) => current.card.last4 !== oldLast4, life);
+  assert.equal(lifeState.spend, spendBeforePlan - 24_700, '실물카드가 있으면 재발급비를 낸다');
+  await life.getByTestId('card-close').click();
+  assert.equal(await life.getByTestId('card-sheet-confirm').isDisabled(), true, '해지는 내용을 확인해야 한다');
+  await life.getByTestId('card-sheet-consent').check();
+  await life.getByTestId('card-sheet-confirm').click();
+  lifeState = await stateWhen((current) => current.card.stage === 'not_applied', life);
+  assert.equal(lifeState.spend, spendBeforePlan - 24_700, '해지해도 잔액은 남는다');
+  pass('Plus 업그레이드·Basic 예약과 취소·실물카드 추가 배송지·분실 재발급·해지를 결제 잔액과 함께 처리');
+
+  await nav('settings', life);
+  const hashBefore = (await read(life)).account.passwordHash;
+  await life.getByTestId('open-password').click();
+  await life.getByTestId('password-current').fill(PASSWORD);
+  await life.getByTestId('password-next').fill('aqua2027pass');
+  await life.getByTestId('password-confirm').fill('aqua2027pass');
+  await life.getByTestId('password-submit').click();
+  await stateWhen((current) => current.account.passwordHash !== hashBefore, life);
+  await life.getByTestId('open-notifications').click();
+  await life.getByTestId('notify-marketing').click();
+  lifeState = await stateWhen((current) => current.notifications.marketing, life);
+  assert.ok(lifeState.notifications.marketingChangedAt > 0);
+  assert.match(await life.getByTestId('marketing-status').innerText(), /동의했습니다/);
+  await life.getByTestId('go-back').click();
+  for (const [opener, pageId] of [['open-faq', 'page-faq'], ['open-terms', 'page-terms']]) {
+    await life.getByTestId(opener).click();
+    await life.getByTestId(pageId).waitFor();
+    await life.getByTestId('go-back').click();
+  }
+  await life.getByTestId('open-closure').click();
+  assert.match(await life.getByTestId('closure-blockers').innerText(), /결제 잔액을 모두 출금/);
+  await life.keyboard.press('Escape');
+  pass('비밀번호 변경·광고성 정보 수신 동의 날짜·자주 묻는 질문·약관·탈퇴 전 정리 안내');
+  await lifeContext.close();
 
   assert.deepEqual(errors, [], '브라우저 실행 오류');
   assert.deepEqual([...new Set(external)], [], 'PoC는 외부 금융·폰트 요청을 하지 않는다');

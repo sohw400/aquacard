@@ -14,7 +14,8 @@ export interface FundingMovementQuoteRequest {
   kind: 'deposit' | 'withdrawal';
   symbol: FundingSymbol;
   network: FundingNetwork;
-  source: 'spend' | 'holdings';
+  /** Every movement goes through the won-stablecoin spend balance; coins are never held. */
+  source: 'spend';
   amount?: number;
   units?: number;
 }
@@ -58,11 +59,9 @@ export function createFundingQuote(request: FundingMovementQuoteRequest): Fundin
   if (!request) throw new Error('입출금 요청을 확인해 주세요.');
   const network = getFundingNetworks(request.symbol).find((option) => option.id === request.network);
   if (!network) throw new Error('선택한 코인에서 지원하는 네트워크를 선택해 주세요.');
-  if (request.source !== 'spend' && request.source !== 'holdings') throw new Error('출금할 잔액을 선택해 주세요.');
-  if (request.source === 'holdings' && request.symbol === 'KRWS') throw new Error('원화 스테이블은 결제 잔액에서 출금합니다.');
+  if (request.source !== 'spend') throw new Error('입출금은 결제 잔액으로만 처리합니다.');
 
   if (request.kind === 'deposit') {
-    if (request.source !== 'spend') throw new Error('입금한 코인은 원화 결제 잔액으로 전환됩니다.');
     const quote = getFundingQuote({ direction: 'receive', symbol: request.symbol, units: request.units! });
     if (quote.netWon <= 0) throw new Error('수수료를 제외한 입금 금액이 0원보다 커야 합니다.');
     return {
@@ -74,15 +73,13 @@ export function createFundingQuote(request: FundingMovementQuoteRequest): Fundin
   if (request.kind !== 'withdrawal') throw new Error('입출금 방향을 확인해 주세요.');
   // Receive quotes already floor decimal quantities exactly and check won bounds.
   // Asset precision in ASSETS is display precision; it does not limit transfers.
-  const quote = request.source === 'holdings'
-    ? getFundingQuote({ direction: 'receive', symbol: request.symbol, units: request.units! })
-    : getFundingQuote({ direction: 'withdraw', symbol: request.symbol, amount: request.amount! });
-  const feeWon = request.source === 'holdings' ? 0 : quote.feeWon;
+  const quote = getFundingQuote({ direction: 'withdraw', symbol: request.symbol, amount: request.amount! });
+  const feeWon = quote.feeWon;
   const netWon = quote.grossWon - feeWon - network.feeWon;
   if (netWon <= 0) throw new Error('출금 금액이 전환·네트워크 수수료보다 커야 합니다.');
   return {
     amountWon: quote.grossWon,
-    units: request.source === 'holdings' ? quote.inputUnits : quote.grossWon / FUNDING_ASSETS[request.symbol].price,
+    units: quote.grossWon / FUNDING_ASSETS[request.symbol].price,
     feeWon, networkFeeWon: network.feeWon, netWon,
     outputUnits: netWon / FUNDING_ASSETS[request.symbol].price,
   };

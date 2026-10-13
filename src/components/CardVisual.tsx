@@ -22,7 +22,7 @@ export default function CardVisual({ card, revealed = false, compact = false, va
   const plan = card.plan === 'plus' ? 'Plus' : 'Basic';
   const number = compact
     ? issued ? `•• ${card.last4}` : '•• ••••'
-    : revealed && issued ? '4242 4242 4242 2048' : `••••  ••••  ••••  ${issued ? card.last4 : '••••'}`;
+    : revealed && issued ? `4242 4242 4242 ${card.last4}` : `••••  ••••  ••••  ${issued ? card.last4 : '••••'}`;
 
   const cancelFrame = () => {
     if (frame.current !== null) {
@@ -94,7 +94,7 @@ export default function CardVisual({ card, revealed = false, compact = false, va
       ref={face}
       className={`aqua-card-visual${card.plan === 'plus' ? ' acv-plus' : ''}${compact ? ' acv-compact' : ''}${variant === 'hero' && !compact ? ' acv-hero' : ''}${motionAllowed && interactive ? ' acv-interactive' : ''}${revealed ? ' acv-revealed' : ''}`}
       role="img"
-      aria-label={`Aqua ${plan} 체험 카드${issued ? `, 끝 번호 ${card.last4}` : ', 디자인 미리보기'}`}
+      aria-label={`Aqua ${plan} 체험 카드${issued ? `, 끝번호 ${card.last4}` : ', 디자인 미리보기'}`}
       aria-description={interactive && motionAllowed ? '방향키로 카드 각도를 조절하고 Esc로 되돌릴 수 있습니다.' : undefined}
       aria-keyshortcuts={interactive && motionAllowed ? 'ArrowLeft ArrowRight ArrowUp ArrowDown Escape' : undefined}
       tabIndex={interactive && motionAllowed ? 0 : undefined}

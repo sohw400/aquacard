@@ -174,7 +174,7 @@ try {
     assert.equal(await page.locator('.toast').count(), 0, `${name}: toast overlays the funding sheet`);
     await assertAmount(funding.getByTestId('quote-units'), 10, `${name} default coin amount`);
     await assertAmount(funding.getByTestId('quote-fee'), 0, `${name} deposits carry no fee`);
-    await assertAmount(funding.getByTestId('quote-network-fee'), 0, `${name} deposit network fee`);
+    assert.equal(await funding.getByTestId('quote-network-fee').count(), 0, `${name} deposits show no network fee row`);
     await assertAmount(funding.getByTestId('quote-net'), 14_000, `${name} received won balance preview`);
     assert.equal(await funding.getByTestId('confirm-action').isDisabled(), true);
     await funding.getByTestId('funding-consent').check();
@@ -220,7 +220,6 @@ try {
     const funded = await readState();
     const fundedSpend = initial.spend + 14_000;
     assert.equal(funded.spend, fundedSpend);
-    assert.deepEqual(funded.holdings, initial.holdings);
     assert.equal(funded.fundingOperations.length, 1);
     await funding.getByTestId('funding-done').tap();
     await funding.waitFor({ state: 'hidden' });
@@ -271,7 +270,6 @@ try {
     await funding.getByTestId('funding-simulate-deposit').tap();
     await waitFundingStatus(page, failedDeposit.id, 'failed');
     assert.equal((await readState()).spend, fundedSpend);
-    assert.deepEqual((await readState()).holdings, initial.holdings);
     await assertFits(page, `${name} failed deposit result`);
     await funding.getByRole('button', { name: '창 닫기', exact: true }).tap();
     await funding.waitFor({ state: 'hidden' });

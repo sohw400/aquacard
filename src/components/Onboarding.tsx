@@ -4,6 +4,7 @@ import Logo from './Logo';
 import { EMAIL_PATTERN } from '../lib/engine';
 import { CARRIERS, demoCode, FUND_SOURCES, hashPassword, ID_TYPES, OCCUPATIONS, passwordIssue, PURPOSES } from '../lib/auth';
 import type { Action, AppState, KycAnswers } from '../lib/types';
+import heroCards from '../assets/aqua-cards.webp';
 import './Onboarding.css';
 
 type Screen = 'welcome' | 'account' | 'phone' | 'identity' | 'questions' | 'review' | 'login' | 'reset';
@@ -114,7 +115,7 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
   }
 
   const stepIndex = SIGNUP_STEPS.findIndex(([key]) => key === screen);
-  const progress = stepIndex >= 0 && <ol className="onboarding-steps" aria-label="가입 단계">{SIGNUP_STEPS.map(([key, label], index) => <li key={key} className={index < stepIndex ? 'done' : index === stepIndex ? 'current' : ''} aria-current={index === stepIndex ? 'step' : undefined}><span>{index < stepIndex ? <Check size={12} strokeWidth={3} /> : index + 1}</span>{label}</li>)}</ol>;
+  const progress = stepIndex >= 0 && <div className="onboarding-progress"><div className="onboarding-bars" aria-hidden="true">{SIGNUP_STEPS.map(([key], index) => <span key={key} className={index <= stepIndex ? 'filled' : ''} />)}</div><p>가입 {stepIndex + 1}/{SIGNUP_STEPS.length} · {SIGNUP_STEPS[stepIndex][1]}</p></div>;
   const errorBox = error && <p className="form-error" role="alert">{error}</p>;
   const field = (key: string, label: string, input: ReactNode, aside?: ReactNode) => <div className="form-field"><div className="onboarding-label-row"><label htmlFor={id(key)}>{label}</label>{aside}</div>{input}</div>;
   const back = (target: Screen, label = '이전') => <button type="button" className="onboarding-back" onClick={() => go(target)}><ChevronLeft size={18} />{label}</button>;
@@ -137,9 +138,10 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
   let body: ReactNode;
   if (screen === 'welcome') {
     body = <div className="onboarding-form welcome">
-      <h1 ref={heading} tabIndex={-1}>코인을 넣으면<br />바로 쓰는 카드</h1>
-      <p className="onboarding-lead">받은 코인은 원화 스테이블로 바뀌어 결제 잔액이 됩니다. 리저브에 두면 보상이 계속 쌓입니다.</p>
-      <dl className="onboarding-facts"><div><dt>입금 수수료</dt><dd>없음</dd></div><div><dt>리저브 보상</dt><dd>1초마다 적립</dd></div><div><dt>카드 페이백</dt><dd>결제액의 1%부터</dd></div></dl>
+      <img className="onboarding-hero" src={heroCards} width={960} height={630} alt="Aqua Basic과 Aqua Plus 카드" />
+      <h1 ref={heading} tabIndex={-1}>쓰면 돌려받고<br />두면 쌓이는 카드</h1>
+      <p className="onboarding-lead">원화 스테이블로 충전해 결제하면 결제액의 1%를 돌려받고, 리저브에 둔 돈에는 보상이 1초마다 쌓입니다.</p>
+      <dl className="onboarding-facts"><div><dt>결제 페이백</dt><dd>결제액의 1%부터</dd></div><div><dt>리저브 보상</dt><dd>1초마다 적립</dd></div><div><dt>충전 수수료</dt><dd>없음</dd></div></dl>
       <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="auth-signup" onClick={() => go('account')}>가입하기</button><button type="button" className="btn neutral block" data-testid="auth-login" onClick={() => go('login')}>로그인</button></div>
     </div>;
   } else if (screen === 'account') {
@@ -156,7 +158,7 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
     body = <form className="onboarding-form" noValidate onSubmit={(event) => { event.preventDefault(); if (phoneVerified) go('identity'); }}>
       {back('account')}
       <h1 ref={heading} tabIndex={-1}>휴대폰 본인인증</h1>
-      <p className="onboarding-lead">본인 명의 휴대폰으로 확인합니다. 코인을 받아 원화 스테이블로 바꾸려면 가입할 때 본인확인(KYC)이 필요합니다.</p>
+      <p className="onboarding-lead">본인 명의 휴대폰으로 확인합니다. 카드를 만들고 충전하려면 법에 따라 가입할 때 본인확인이 필요합니다.</p>
       <button type="button" className="onboarding-text-button" data-testid="kyc-sample" onClick={() => { setName(SAMPLE.name); setBirth(SAMPLE.birth); setPhone(SAMPLE.phone); setPhoneCode(null); setError(''); }}>샘플 정보 채우기</button>
       {field('name', '이름', <input id={id('name')} data-testid="kyc-name" autoComplete="name" maxLength={30} value={name} disabled={phoneVerified} onChange={(event) => { setName(event.target.value); setPhoneCode(null); setError(''); }} />)}
       {field('birth', '생년월일 8자리', <input id={id('birth')} data-testid="kyc-birth" inputMode="numeric" maxLength={8} placeholder="19950412" value={birth} disabled={phoneVerified} onChange={(event) => { setBirth(event.target.value.replace(/\D/g, '')); setPhoneCode(null); setError(''); }} />)}
@@ -176,13 +178,15 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
       <h1 ref={heading} tabIndex={-1}>신분증과 얼굴 확인</h1>
       <p className="onboarding-lead">신분증 진위를 확인하고, 사진 속 얼굴이 본인인지 맞춰 봅니다.</p>
       <fieldset className="onboarding-choice"><legend>신분증</legend><div>{(Object.keys(ID_TYPES) as KycAnswers['idType'][]).map((key) => <button type="button" key={key} data-testid={`kyc-id-${key}`} className={idType === key ? 'selected' : ''} aria-pressed={idType === key} disabled={idScan !== 'none'} onClick={() => setIdType(key)}>{ID_TYPES[key]}</button>)}</div></fieldset>
-      <div className="onboarding-check">
-        <div><strong>{ID_TYPES[idType]} 촬영</strong><p>{idScan === 'done' ? `${name} · ${birth.slice(0, 4)}.${birth.slice(4, 6)}.${birth.slice(6, 8)} 일치 · 진위 확인 완료` : idScan === 'checking' ? '진위를 확인하고 있습니다.' : '빛 반사 없이 네 모서리가 보이게 찍습니다.'}</p></div>
+      <div className={`onboarding-check${idScan === 'done' ? ' done' : ''}`}>
+        <strong>{ID_TYPES[idType]} 촬영</strong>
         {idScan === 'done' ? <span className="onboarding-done" data-testid="kyc-id-done"><Check size={18} strokeWidth={2.6} />완료</span> : <button type="button" className="btn small neutral" data-testid="kyc-id-scan" disabled={idScan === 'checking'} onClick={() => setIdScan('checking')}>{idScan === 'checking' ? '확인 중' : '촬영 체험'}</button>}
+        <p>{idScan === 'done' ? `${name} · ${birth.slice(0, 4)}.${birth.slice(4, 6)}.${birth.slice(6, 8)}` : idScan === 'checking' ? '진위를 확인하고 있습니다.' : '빛 반사 없이 네 모서리가 보이게 찍습니다.'}</p>
       </div>
-      <div className="onboarding-check">
-        <div><strong>얼굴 확인</strong><p>{faceScan === 'done' ? '신분증 사진과 같은 사람입니다.' : faceScan === 'checking' ? '얼굴을 맞춰 보고 있습니다.' : idScan === 'done' ? '화면 안내에 따라 고개를 천천히 돌립니다.' : '신분증을 먼저 확인해 주세요.'}</p></div>
+      <div className={`onboarding-check${faceScan === 'done' ? ' done' : ''}`}>
+        <strong>얼굴 확인</strong>
         {faceScan === 'done' ? <span className="onboarding-done" data-testid="kyc-face-done"><Check size={18} strokeWidth={2.6} />완료</span> : <button type="button" className="btn small neutral" data-testid="kyc-face-scan" disabled={idScan !== 'done' || faceScan === 'checking'} onClick={() => setFaceScan('checking')}>{faceScan === 'checking' ? '확인 중' : '촬영 체험'}</button>}
+        <p>{faceScan === 'done' ? '신분증 사진과 같은 사람입니다.' : faceScan === 'checking' ? '얼굴을 맞춰 보고 있습니다.' : idScan === 'done' ? '화면 안내에 따라 고개를 천천히 돌립니다.' : '신분증을 먼저 확인해 주세요.'}</p>
       </div>
       <p className="onboarding-hint">체험에서는 카메라를 켜지 않고 확인 과정만 보여줍니다.</p>
       <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="kyc-id-next" disabled={idScan !== 'done' || faceScan !== 'done'} onClick={() => go('questions')}>다음</button></div>
@@ -198,7 +202,7 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
       {select('occupation', '직업', occupation, OCCUPATIONS, setOccupation)}
       {select('purpose', '주로 쓰려는 목적', purpose, PURPOSES, setPurpose)}
       {select('source', '자금 출처', source, FUND_SOURCES, setSource)}
-      <label className="onboarding-consent"><input type="checkbox" data-testid="kyc-consent" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>입력한 본인확인 정보를 수집·이용하고, 고객확인 기록으로 거래가 끝난 뒤 5년간 보관하는 데 동의합니다.</span></label>
+      <label className="onboarding-consent"><input type="checkbox" data-testid="kyc-consent" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>본인확인 정보를 수집·이용하고, 거래가 끝난 뒤 5년간 보관하는 데 동의합니다.</span></label>
       {errorBox}
       <div className="onboarding-actions"><button type="submit" className="btn primary block" data-testid="kyc-submit" disabled={!ready}>제출</button></div>
     </form>;

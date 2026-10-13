@@ -14,9 +14,9 @@
 .card-flow .cf-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 4px 0 14px; padding: 0; list-style: none; }
 .card-flow .cf-steps > li { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; padding-top: 14px; color: var(--subtle); font-size: 13px; line-height: 1.4; }
 .card-flow .cf-steps > li::before { content: ''; position: absolute; top: 0; right: 0; left: 0; height: 4px; border-radius: 2px; background: var(--fill-strong); transition: background-color .3s; }
-.card-flow .cf-steps .cf-step-current::before, .card-flow .cf-steps .cf-step-done::before { background: var(--accent); }
-.card-flow .cf-steps > li > span { display: grid; place-items: center; flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--fill-strong); color: var(--subtle); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.card-flow .cf-steps .cf-step-current > span, .card-flow .cf-steps .cf-step-done > span { background: var(--accent); color: var(--on-accent); }
+.card-flow .cf-steps .cf-step-current::before, .card-flow .cf-steps .cf-step-done::before { background: var(--primary); }
+.card-flow .cf-steps > li > span { flex-shrink: 0; color: inherit; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card-flow .cf-steps .cf-step-current > span, .card-flow .cf-steps .cf-step-done > span { color: inherit; }
 .card-flow .cf-steps > li > strong { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .card-flow .cf-steps .cf-step-current { color: var(--ink); }
 .card-flow .cf-steps .cf-step-done { color: var(--muted); }
@@ -44,6 +44,7 @@
 .card-flow .cf-avatar { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%; background: var(--fill-strong); color: var(--ink); font-size: 18px; font-weight: 700; }
 .card-flow .cf-profile strong { color: var(--ink); font-size: 16px; font-weight: 600; }
 .card-flow .cf-profile p { margin: 2px 0 0; color: var(--subtle); font-size: 14px; line-height: 1.5; }
+.card-flow .cf-profile p + p { margin-top: 0; }
 .card-flow .cf-profile-status { margin-left: auto; padding: 3px 10px; border-radius: 999px; background: var(--fill-strong); color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
 
 /* Checkboxes and radios stay native inputs, restyled. */
@@ -83,6 +84,9 @@
 .card-flow .cf-address > svg { width: 17px; height: 17px; margin-top: 2px; flex-shrink: 0; }
 .card-flow .cf-address strong { color: var(--ink-soft); font-size: 14px; font-weight: 600; }
 .card-flow .cf-address p { margin: 2px 0 0; font-size: 14px; line-height: 1.6; }
+.card-flow .cf-address > div { flex: 1; min-width: 0; }
+.card-flow .cf-address-button { flex-shrink: 0; align-self: center; min-height: 40px; padding: 0 14px; border: 0; border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 600; cursor: pointer; }
+.card-flow .cf-inline-link { margin-left: auto; padding: 4px 2px; border: 0; background: none; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
 
 /* Summaries and references. */
 .card-flow .cf-reference { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 52px; margin: 0 0 16px; padding: 12px 16px; border-radius: var(--radius-md); background: var(--sunken); }
@@ -93,7 +97,16 @@
 .card-flow .cf-summary > div:last-child { border-bottom: 0; }
 .card-flow .cf-summary dt { color: var(--muted); }
 .card-flow .cf-summary dd { margin: 0; color: var(--ink); font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
-.card-flow .cf-review-summary > .cf-cost-row dd { font-size: 19px; font-weight: 700; letter-spacing: -.4px; }
+.card-flow .cf-cost { margin: 8px 0 0; padding: 16px; border-radius: var(--radius-md); background: var(--sunken); }
+.card-flow .cf-cost-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.card-flow .cf-cost-head > span { color: var(--ink-soft); font-size: 15px; font-weight: 600; }
+.card-flow .cf-cost-head > strong { color: var(--ink); font-size: 20px; font-weight: 700; letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
+.card-flow .cf-cost-lines { display: grid; gap: 4px; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); list-style: none; }
+.card-flow .cf-cost-lines > li { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 14px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.card-flow .cf-cost > p { margin: 10px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
+.card-flow .cf-shortfall { display: flex; align-items: center; gap: 12px; margin: 12px 0 0; padding: 12px 14px; border-radius: var(--radius-md); background: var(--warning-weak); }
+.card-flow .cf-shortfall > p { flex: 1; margin: 0; color: var(--warning); font-size: 14px; font-weight: 600; line-height: 1.55; }
+.card-flow .cf-shortfall > .cf-button { flex-shrink: 0; width: auto; min-height: 40px; padding: 8px 14px; background: var(--surface); }
 
 /* Status. */
 .card-flow .cf-status-head { display: flex; align-items: flex-start; gap: 14px; margin: 0 0 18px; }
@@ -136,6 +149,24 @@
 .card-flow .cf-warning-box { background: var(--warning-weak); }
 .card-flow .cf-warning-box p, .card-flow .cf-warning-box svg { color: var(--warning); }
 
+/* Plan, physical card offer and card management. */
+.card-flow .cf-plan-name { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; font-weight: 700; white-space: nowrap; }
+.card-flow .cf-plan-name .cf-plan-thumb { width: 26px; height: 17px; border-radius: 3px; }
+.card-flow .cf-plan-group .cf-active-header { margin-bottom: 4px; }
+.card-flow .cf-plan-button { margin-top: 12px; min-height: 48px; }
+.card-flow .cf-limits-link { display: block; margin: 4px 0 0 auto; padding: 8px 0; }
+.card-flow .cf-physical-offer .cf-delivery-heading > div { flex: 1; min-width: 0; }
+.card-flow .cf-physical-offer .cf-delivery-heading p { margin: 2px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.card-flow .cf-manage { padding-bottom: 8px; }
+.card-flow .cf-manage-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 10px 0; border: 0; background: none; color: var(--faint); text-align: left; cursor: pointer; }
+.card-flow .cf-manage-row + .cf-manage-row { border-top: 1px solid var(--fill); }
+.card-flow .cf-manage-row > span { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.card-flow .cf-manage-row strong { color: var(--ink); font-size: 15px; font-weight: 700; line-height: 1.45; }
+.card-flow .cf-manage-row small { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.card-flow .cf-manage-danger strong { color: var(--danger); }
+.card-flow .cf-demo-list { display: grid; gap: 8px; }
+.card-flow .cf-demo-list > p { margin: 0; }
+
 /* Physical card delivery. */
 .card-flow .cf-delivery-heading { display: flex; align-items: center; gap: 12px; }
 .card-flow .cf-delivery-heading h3 { margin: 0; color: var(--ink); font-size: 17px; font-weight: 700; }
@@ -146,8 +177,11 @@
 .card-flow .cf-delivery-steps > .cf-delivery-done { color: var(--ink-soft); font-weight: 600; }
 .card-flow .cf-delivery-steps > .cf-delivery-done::before { background: var(--accent); }
 .card-flow .cf-delivery-address { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
+.card-flow .cf-delivery-address > svg { flex-shrink: 0; }
 .card-flow .cf-delivery .cf-button { margin-top: 16px; }
-.card-flow .cf-physical-active { display: flex; align-items: center; gap: 6px; margin-top: 12px; color: var(--success); font-size: 14px; font-weight: 600; }
+.card-flow .cf-physical-active { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.card-flow .cf-physical-active > span { display: inline-flex; align-items: center; gap: 6px; color: var(--success); font-size: 14px; font-weight: 600; }
+.card-flow .cf-physical-active .cf-inline-link { margin-left: 0; }
 
 /* Demo tools. */
 .card-flow .cf-demo-tools { padding: 2px 20px; border-radius: var(--radius-lg); background: var(--surface); }
@@ -175,3 +209,13 @@
   .card-flow .cf-option:hover { border-color: var(--control); }
   .card-flow .cf-action:hover { background: var(--fill); }
 }
+
+.card-flow .cf-wallets { display: grid; gap: 0; margin: 4px 0 0; padding: 0; list-style: none; }
+.card-flow .cf-wallets > li { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 0; }
+.card-flow .cf-wallets > li + li { border-top: 1px solid var(--fill); }
+.card-flow .cf-wallets > li > div { flex: 1; min-width: 0; }
+.card-flow .cf-wallets strong { display: block; color: var(--ink); font-size: 15px; font-weight: 700; line-height: 1.45; }
+.card-flow .cf-wallets p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.card-flow .cf-wallet-add { flex-shrink: 0; width: auto; min-width: 64px; min-height: 44px; padding: 8px 16px; }
+.card-flow .cf-wallet-added { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; color: var(--accent); font-size: 14px; font-weight: 700; }
+.card-flow .cf-wallet-note { margin: 6px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }

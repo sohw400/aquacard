@@ -4,13 +4,15 @@ export type FundingSymbol = 'KRWS' | AssetSymbol;
 export type Plan = 'basic' | 'plus';
 export type CardStage = 'not_applied' | 'identity' | 'plan' | 'details' | 'review' | 'submitted' | 'needs_info' | 'approved' | 'issued' | 'active' | 'rejected';
 export type DeliveryStage = 'none' | 'preparing' | 'shipped' | 'delivered';
+export type MobileWallet = 'samsung' | 'apple';
 export type FundingNetwork = 'polygon' | 'ethereum' | 'bitcoin';
 
 export interface FundingOperation {
   id: string;
   requestId: string;
   kind: 'deposit' | 'withdrawal';
-  source: 'spend' | 'holdings';
+  /** Coins are converted on arrival, so every movement settles against the spend balance. */
+  source: 'spend';
   symbol: FundingSymbol;
   network: FundingNetwork;
   amountWon: number;
@@ -48,6 +50,31 @@ export interface Account {
   verifiedAt: number;
 }
 
+export type PaymentChannel = 'store' | 'online' | 'overseas';
+
+/** Limits and channels the holder sets for the card, within the issuer's maximums. */
+export interface PaymentControls {
+  perPayment: number;
+  daily: number;
+  monthly: number;
+  online: boolean;
+  overseas: boolean;
+}
+
+export interface NotificationSettings {
+  payments: boolean;
+  funding: boolean;
+  marketing: boolean;
+  /** Advertising consent must show when it changed. */
+  marketingChangedAt: number | null;
+}
+
+export interface ShippingAddress {
+  zip: string;
+  road: string;
+  detail: string;
+}
+
 export interface CardState {
   stage: CardStage;
   plan: Plan;
@@ -60,11 +87,23 @@ export interface CardState {
   reference: string;
   submittedAt: number | null;
   issuedAt: number | null;
+  /** Phone wallets the active card has been added to. */
+  wallets: MobileWallet[];
+  /** Fees taken from the spend balance at submission; returned if the application comes back or is declined. */
+  chargedFee: number;
+  /** Next Plus fee date on the demo clock; null while no monthly fee is due. */
+  billingAt: number | null;
+  /** Plan that takes over on the next billing date (a scheduled move to Basic). */
+  nextPlan: Plan | null;
+  /** Where the physical card goes; editable until it ships. */
+  address: ShippingAddress | null;
+  /** A PIN was chosen for the physical card. The PIN itself is never stored. */
+  pinSet: boolean;
 }
 
 export interface Transaction {
   id: string;
-  kind: 'deposit' | 'transfer' | 'convert' | 'payment' | 'refund' | 'reward' | 'payback' | 'rate';
+  kind: 'deposit' | 'transfer' | 'convert' | 'payment' | 'refund' | 'reward' | 'payback' | 'rate' | 'card';
   title: string;
   amount: number;
   timestamp: number;
@@ -89,6 +128,7 @@ export interface Payment {
   cashbackMonth: string;
   timestamp: number;
   status: 'pending' | 'completed' | 'refunded' | 'partially_refunded';
+  channel?: PaymentChannel;
 }
 
 export interface RatePeriod { rate: number; timestamp: number }
@@ -102,12 +142,13 @@ export interface AppState {
   rewards: number;
   accrued: number;
   rewardDebt: number;
-  holdings: Record<AssetSymbol, number>;
   reserveAuto: boolean;
   rewardsAuto: boolean;
   reserveRate: number;
   rateHistory: RatePeriod[];
   card: CardState;
+  controls: PaymentControls;
+  notifications: NotificationSettings;
   payments: Payment[];
   transactions: Transaction[];
   fundingOperations: FundingOperation[];
@@ -130,20 +171,26 @@ export type Action =
   | { type: 'RESET_PASSWORD'; email: string; passwordHash: string }
   | { type: 'ADVANCE_DAY' }
   | { type: 'CHANGE_RATE'; rate: number }
-  | { type: 'DEPOSIT'; bucket: 'spend' | 'reserve'; amount: number }
-  | { type: 'RECEIVE_ASSET'; symbol: AssetSymbol; units: number; quotedAt: number }
-  | { type: 'WITHDRAW_CRYPTO'; symbol: AssetSymbol; amount: number; quotedAt: number }
-  | { type: 'START_FUNDING'; requestId: string; kind: 'deposit' | 'withdrawal'; symbol: FundingSymbol; network: FundingNetwork; source: 'spend' | 'holdings'; amount?: number; units?: number; address?: string; recipient?: string; quotedAt: number; simulation?: 'success' | 'failure'; retryOf?: string }
+  | { type: 'START_FUNDING'; requestId: string; kind: 'deposit' | 'withdrawal'; symbol: FundingSymbol; network: FundingNetwork; source: 'spend'; amount?: number; units?: number; address?: string; recipient?: string; quotedAt: number; simulation?: 'success' | 'failure'; retryOf?: string }
   | { type: 'SIMULATE_FUNDING_DEPOSIT'; id: string }
   | { type: 'CANCEL_FUNDING'; id: string }
-  | { type: 'DEPOSIT_ASSET'; symbol: AssetSymbol; units: number }
-  | { type: 'WITHDRAW_ASSET'; symbol: AssetSymbol; units: number }
-  | { type: 'WITHDRAW_FUNDS'; bucket: 'spend' | 'reserve'; amount: number }
   | { type: 'TRANSFER_RESERVE'; direction: 'in' | 'out'; amount: number }
-  | { type: 'CONVERT'; symbol: AssetSymbol; units: number; quotedAt?: number }
-  | { type: 'PAY'; merchant: string; amount: number }
+  | { type: 'PAY'; merchant: string; amount: number; channel?: PaymentChannel }
   | { type: 'CONFIRM_PAYMENT'; id: string }
   | { type: 'REFUND'; id: string; amount?: number }
   | { type: 'SET_RESERVE_AUTO'; enabled: boolean }
   | { type: 'SET_REWARDS_AUTO'; enabled: boolean }
-  | { type: 'SET_CARD'; card: CardState };
+  | { type: 'SET_CARD'; card: CardState }
+  | { type: 'SUBMIT_CARD' }
+  | { type: 'CHANGE_PLAN'; plan: Plan }
+  | { type: 'ADD_PHYSICAL_CARD'; address: ShippingAddress }
+  | { type: 'REISSUE_CARD' }
+  | { type: 'CLOSE_CARD' }
+  | { type: 'ADVANCE_TO_BILLING' }
+  | { type: 'DELETE_ACCOUNT'; passwordHash: string }
+  | { type: 'ACTIVATE_PHYSICAL'; pin: string }
+  | { type: 'SET_CARD_PIN'; pin: string }
+  | { type: 'SET_LIMITS'; perPayment: number; daily: number; monthly: number }
+  | { type: 'SET_CHANNEL'; channel: 'online' | 'overseas'; enabled: boolean }
+  | { type: 'SET_NOTIFICATION'; key: 'payments' | 'funding' | 'marketing'; enabled: boolean }
+  | { type: 'CHANGE_PASSWORD'; currentHash: string; nextHash: string };

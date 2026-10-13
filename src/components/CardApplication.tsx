@@ -1,38 +1,61 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ArrowRight, Check, ChevronLeft, CircleAlert, CircleCheck, CirclePercent, Clock3, CreditCard,
-  Eye, EyeOff, LockKeyhole, MapPin, Package, RefreshCw, Truck, UnlockKeyhole,
+  ArrowRight, CalendarClock, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, CirclePercent, Clock3, CreditCard,
+  Eye, EyeOff, LockKeyhole, MapPin, Package, RefreshCw, Smartphone, Truck, UnlockKeyhole,
 } from 'lucide-react';
+import { cardApplicationFee } from '../lib/engine';
+import { addressLine } from '../lib/address';
+import { maskPhone } from '../lib/auth';
+import { monthDay } from '../lib/format';
 import { PLANS, POLICY } from '../lib/policy';
-import type { Account, CardStage, CardState, Plan } from '../lib/types';
+import type { Account, Action, CardStage, CardState, MobileWallet, PaymentControls, Plan, ShippingAddress } from '../lib/types';
+import AddressSheet from './AddressSheet';
+import { PinSheet } from './SecuritySheets';
+import WalletSheet, { WALLET_NAMES } from './WalletSheet';
+import CardActionSheet from './CardActionSheet';
 import CardVisual from './CardVisual';
 import './CardApplication.css';
 
 interface CardApplicationProps {
   card: CardState;
   account: Account;
+  /** Spend balance that card fees come out of. */
+  spend: number;
+  controls: PaymentControls;
+  onOpenLimits: () => void;
   onChange: (next: CardState) => void;
+  /** Runs an engine action; false when it was refused (the reason is already shown). */
+  onAction: (action: Action, message?: string) => boolean;
+  onDeposit: () => void;
   onNotify: (message: string) => void;
 }
 
+type Sheet = 'upgrade' | 'downgrade' | 'physical' | 'reissue' | 'close';
+
 const won = (amount: number) => `${amount.toLocaleString('ko-KR')}원`;
 const steps = ['본인확인', '카드 선택', '신청 확인'];
-const deliveryEstimate = '영업일 5일부터 7일';
 const stepByStage: Partial<Record<CardStage, number>> = { identity: 0, plan: 1, details: 1, review: 2 };
 const autoDelays: Partial<Record<CardStage, number>> = { submitted: 1_400, approved: 500, issued: 350 };
 const preparingProgress: Partial<Record<CardStage, number>> = { submitted: 34, approved: 67, issued: 90 };
 
-export default function CardApplication({ card, account, onChange, onNotify }: CardApplicationProps) {
+export default function CardApplication({ card, account, spend, controls, onOpenLimits, onChange, onAction, onDeposit, onNotify }: CardApplicationProps) {
   const [identityConsent, setIdentityConsent] = useState(false);
   const [reviewConsent, setReviewConsent] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [walletSheet, setWalletSheet] = useState<MobileWallet | null>(null);
+  const [sheet, setSheet] = useState<Sheet | null>(null);
+  const [addressSheet, setAddressSheet] = useState<'select' | 'change' | 'physical' | null>(null);
+  const [pendingAddress, setPendingAddress] = useState<ShippingAddress | null>(null);
+  const [pinSheet, setPinSheet] = useState<'activate' | 'change' | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef({ card, onChange, onNotify });
   const plan = PLANS[card.plan];
   const applicationStep = stepByStage[card.stage];
   const selectingCard = card.stage === 'plan' || card.stage === 'details';
   const preparingCard = card.stage === 'submitted' || card.stage === 'approved' || card.stage === 'issued';
+  const fee = cardApplicationFee(card);
+  const shortfall = Math.max(0, fee - spend);
 
   useEffect(() => { latest.current = { card, onChange, onNotify }; }, [card, onChange, onNotify]);
 
@@ -53,7 +76,7 @@ export default function CardApplication({ card, account, onChange, onNotify }: C
       if (expectedStage === 'submitted') {
         current.onChange({ ...current.card, stage: 'approved' });
       } else if (expectedStage === 'approved') {
-        current.onChange({ ...current.card, stage: 'issued', issuedAt: Date.now(), last4: '2048', delivery: current.card.physical ? 'preparing' : 'none' });
+        current.onChange({ ...current.card, stage: 'issued', issuedAt: Date.now(), delivery: current.card.physical ? 'preparing' : 'none' });
       } else {
         current.onChange({ ...current.card, stage: 'active', locked: false });
         current.onNotify('카드가 준비되었습니다.');
@@ -81,8 +104,7 @@ export default function CardApplication({ card, account, onChange, onNotify }: C
 
   const submit = () => {
     setToolsOpen(false);
-    patch({ stage: 'submitted', reference: card.reference || `AQ-DEMO-${String(Date.now()).slice(-8)}`, submittedAt: Date.now() });
-    onNotify('신청을 접수했습니다.');
+    onAction({ type: 'SUBMIT_CARD' }, fee ? `${won(fee)}을 내고 신청을 접수했습니다.` : '신청을 접수했습니다.');
   };
 
   const restart = () => {
@@ -127,7 +149,7 @@ export default function CardApplication({ card, account, onChange, onNotify }: C
 
           {card.stage === 'identity' && <div className="cf-group">
             <h2>본인확인</h2><p className="cf-panel-description">가입할 때 확인한 정보로 신청합니다. 다시 촬영할 필요가 없습니다.</p>
-            <div className="cf-profile"><span className="cf-avatar" aria-hidden="true">{account.name.charAt(0)}</span><div><strong>{account.name}</strong><p>{account.birthDate.replaceAll('-', '.')} · 휴대폰 {account.phone.slice(0, 3)}-****-{account.phone.slice(-4)}</p></div><span className="cf-profile-status">확인 완료</span></div>
+            <div className="cf-profile"><span className="cf-avatar" aria-hidden="true">{account.name.charAt(0)}</span><div><strong>{account.name}</strong><p>{account.birthDate.replaceAll('-', '.')}</p><p>{maskPhone(account.phone)}</p></div><span className="cf-profile-status">확인 완료</span></div>
             <label className="cf-final-consent"><input type="checkbox" data-testid="card-identity-consent" checked={identityConsent} onChange={(event) => setIdentityConsent(event.target.checked)} /><span>본인확인 정보를 카드 발급사에 제공하는 데 동의합니다.</span></label>
             <details className="cf-terms"><summary>체험 안내</summary><p>카드 발급·자금 이동·비용 청구는 모의 처리되며 체험 데이터는 이 브라우저에 저장됩니다.</p></details>
             <button className="cf-button cf-primary" data-testid="card-identity-next" disabled={!identityConsent} onClick={() => patch({ identityVerified: true, stage: 'plan' })}>다음 <ArrowRight size={17} /></button>
@@ -139,18 +161,23 @@ export default function CardApplication({ card, account, onChange, onNotify }: C
             <fieldset className="cf-options"><legend className="cf-sr-only">카드 플랜</legend>{(['basic', 'plus'] as Plan[]).map((key) => { const option = PLANS[key]; return <label key={key} className={`cf-option ${card.plan === key ? 'cf-option-selected' : ''}`}><input type="radio" name="card-plan" value={key} checked={card.plan === key} onChange={() => patch({ plan: key })} /><span className={`cf-plan-thumb cf-plan-${key}`} aria-hidden="true" /><span className="cf-option-main"><span className="cf-option-title">{option.name}</span><span className="cf-option-price">{option.monthlyFee === 0 ? '무료' : won(option.monthlyFee)}<small> / 월</small></span><span className="cf-option-detail">페이백 {option.cashbackRate * 100}% · 월 최대 {won(option.cashbackCap)}</span></span></label>; })}</fieldset>
             <div className="cf-reference"><span>가상카드</span><strong>무료 · 기본 포함</strong></div>
             <div className="cf-physical-option"><label className="cf-final-consent"><input type="checkbox" data-testid="card-physical-choice" checked={card.physical} onChange={(event) => patch({ physical: event.target.checked })} /><span>실물카드도 신청</span><strong>{won(POLICY.physicalIssueFee)}</strong></label>
-            <p className="cf-panel-description">발급비 1회 · 배송 {deliveryEstimate}</p></div>
-            {card.physical && <div className="cf-address"><MapPin size={17} /><div><strong>샘플 배송지</strong><p>서울특별시 아쿠아로 1, 데모동 101호</p></div></div>}
-            <button className="cf-button cf-primary" data-testid="card-selection-next" onClick={review}>다음 <ArrowRight size={17} /></button>
+            <p className="cf-panel-description">발급비 1회 · 배송 {POLICY.deliveryEstimate}</p></div>
+            {card.physical && <div className="cf-address" data-testid="card-address"><MapPin size={17} /><div>{card.address ? <><strong>{card.address.road}</strong><p>{card.address.detail || '상세 주소 없음'} · 우편번호 {card.address.zip}</p></> : <><strong>배송지를 입력해 주세요</strong><p>본인만 받을 수 있습니다.</p></>}</div><button type="button" className="cf-address-button" data-testid="card-address-open" onClick={() => setAddressSheet('select')}>{card.address ? '변경' : '입력'}</button></div>}
+            <button className="cf-button cf-primary" data-testid="card-selection-next" disabled={card.physical && !card.address} onClick={review}>다음 <ArrowRight size={17} /></button>
             <button className="cf-text-button" onClick={backToIdentity}><ChevronLeft size={15} /> 이전</button>
           </div>}
 
           {card.stage === 'review' && <div className="cf-group">
             <h2>신청 확인</h2><p className="cf-panel-description">신청 내용을 확인해 주세요.</p>
-            <dl className="cf-summary cf-review-summary"><div><dt>신청자</dt><dd>아쿠아 사용자</dd></div><div><dt>플랜</dt><dd>{plan.name}</dd></div><div className="cf-cost-row"><dt>월 이용료</dt><dd>{plan.monthlyFee === 0 ? '무료' : won(plan.monthlyFee)}</dd></div><div><dt>결제 페이백</dt><dd>{plan.cashbackRate * 100}% · 월 최대 {won(plan.cashbackCap)}</dd></div><div><dt>카드</dt><dd>{card.physical ? '가상카드와 실물카드' : '가상카드'}</dd></div><div className="cf-cost-row"><dt>발급비 · 1회</dt><dd>{card.physical ? won(POLICY.physicalIssueFee) : '무료'}</dd></div></dl>
-            <p className="cf-disclaimer">위 금액과 혜택은 체험 조건입니다. 이용료·발급비는 잔액에서 청구하지 않습니다.</p>
-            <label className="cf-final-consent"><input type="checkbox" data-testid="card-review-consent" checked={reviewConsent} onChange={(event) => setReviewConsent(event.target.checked)} /><span>선택한 플랜과 신청 조건을 확인했습니다.</span></label>
-            <button className="cf-button cf-primary" data-testid="card-submit" disabled={!reviewConsent} onClick={submit}>신청하기 <ArrowRight size={17} /></button>
+            <dl className="cf-summary cf-review-summary"><div><dt>신청자</dt><dd>{account.name}</dd></div><div><dt>플랜</dt><dd>{plan.name}</dd></div><div><dt>결제 페이백</dt><dd>{plan.cashbackRate * 100}% · 월 최대 {won(plan.cashbackCap)}</dd></div><div><dt>월 이용료</dt><dd>{plan.monthlyFee === 0 ? '무료' : won(plan.monthlyFee)}</dd></div><div><dt>카드</dt><dd>{card.physical ? '가상카드와 실물카드' : '가상카드'}</dd></div>{card.physical && card.address && <div><dt>배송지</dt><dd>{addressLine(card.address)}</dd></div>}</dl>
+            <div className="cf-cost" data-testid="card-fee">
+              <div className="cf-cost-head"><span>신청할 때 낼 금액</span><strong data-testid="card-fee-total">{fee ? won(fee) : '없음'}</strong></div>
+              {fee > 0 && <ul className="cf-cost-lines">{card.plan === 'plus' && <li><span>Aqua Plus 첫 달 이용료</span><span>{won(PLANS.plus.monthlyFee)}</span></li>}{card.physical && <li><span>실물카드 발급비</span><span>{won(POLICY.physicalIssueFee)}</span></li>}<li><span>지금 결제 잔액</span><span>{won(spend)}</span></li></ul>}
+              <p>{fee ? '결제 잔액에서 냅니다. 승인되지 않으면 돌려드립니다.' : 'Basic 가상카드는 비용이 들지 않습니다.'}{card.plan === 'plus' ? ' Plus 이용료는 다음 달부터 같은 날 결제 잔액에서 나갑니다.' : ''}</p>
+            </div>
+            {shortfall > 0 && <div className="cf-shortfall" role="alert" data-testid="card-fee-shortfall"><p>결제 잔액이 {won(shortfall)} 부족합니다. 충전한 뒤 신청해 주세요.</p><button className="cf-button cf-secondary" data-testid="card-fee-deposit" onClick={onDeposit}>충전하기</button></div>}
+            <label className="cf-final-consent"><input type="checkbox" data-testid="card-review-consent" checked={reviewConsent} onChange={(event) => setReviewConsent(event.target.checked)} /><span>{fee ? '선택한 플랜과 낼 금액을 확인했습니다.' : '선택한 플랜과 신청 조건을 확인했습니다.'}</span></label>
+            <button className="cf-button cf-primary" data-testid="card-submit" disabled={!reviewConsent || shortfall > 0} onClick={submit}>{fee ? `${won(fee)} 내고 신청하기` : '신청하기'} <ArrowRight size={17} /></button>
             <button className="cf-text-button" onClick={() => nextStage('details')}><ChevronLeft size={15} /> 이전</button>
           </div>}
 
@@ -162,13 +189,13 @@ export default function CardApplication({ card, account, onChange, onNotify }: C
           </div>}
 
           {card.stage === 'needs_info' && <div className="cf-group">
-            <div className="cf-status-head cf-status-warning"><span className="cf-status-icon"><CircleAlert /></span><div><h2>본인확인을 다시 진행해 주세요.</h2><p>샘플 프로필의 재확인이 필요합니다.</p></div></div>
+            <div className="cf-status-head cf-status-warning"><span className="cf-status-icon"><CircleAlert /></span><div><h2>본인확인을 다시 진행해 주세요.</h2><p>발급사가 본인확인 정보를 한 번 더 확인해 달라고 요청했습니다. 낸 비용은 돌려드렸고 다시 신청할 때 냅니다.</p></div></div>
             <div className="cf-reference"><span>접수번호</span><strong>{card.reference}</strong></div>
             <button className="cf-button cf-primary" data-testid="card-resubmit" onClick={() => { setIdentityConsent(false); setReviewConsent(false); setToolsOpen(false); patch({ stage: 'identity', identityVerified: false }); }}>다시 확인하기 <ArrowRight size={17} /></button>
           </div>}
 
           {card.stage === 'rejected' && <div className="cf-group">
-            <div className="cf-status-head cf-status-danger"><span className="cf-status-icon"><CircleAlert /></span><div><h2>신청이 승인되지 않았습니다.</h2><p>지갑 자산은 그대로 유지됩니다.</p></div></div>
+            <div className="cf-status-head cf-status-danger"><span className="cf-status-icon"><CircleAlert /></span><div><h2>신청이 승인되지 않았습니다.</h2><p>신청할 때 낸 비용은 결제 잔액으로 돌려드렸습니다. 다른 자산은 그대로입니다.</p></div></div>
             <button className="cf-button cf-primary" data-testid="card-restart" onClick={restart}>다시 신청하기 <RefreshCw size={17} /></button>
           </div>}
 
@@ -177,17 +204,66 @@ export default function CardApplication({ card, account, onChange, onNotify }: C
               <div className="cf-active-header"><h2>카드 정보</h2><span className={`cf-card-status ${card.locked ? 'cf-card-status-locked' : ''}`} data-testid="card-status">{card.locked ? <LockKeyhole size={13} /> : <CircleCheck size={13} />}{card.locked ? '일시 잠금' : '사용 가능'}</span></div>
               <div className="cf-reference"><span>{plan.name} · 가상카드</span><strong>•••• {card.last4}</strong></div>
               <div className="cf-card-actions"><button className="cf-action" data-testid="card-details-toggle" onClick={() => setRevealed(!revealed)}><span className="cf-action-icon">{revealed ? <EyeOff /> : <Eye />}</span><span>{revealed ? '카드 정보 숨기기' : '카드 정보 보기'}</span></button><button className={`cf-action ${card.locked ? 'cf-action-highlight' : ''}`} data-testid="card-lock-toggle" onClick={() => { patch({ locked: !card.locked }); onNotify(card.locked ? '카드 잠금을 해제했습니다.' : '카드를 일시 잠금했습니다.'); }}><span className="cf-action-icon">{card.locked ? <UnlockKeyhole /> : <LockKeyhole />}</span><span>{card.locked ? '잠금 해제' : '일시 잠금'}</span></button></div>
-              {revealed && <div className="cf-demo-details"><span className="cf-simulation-label">모의 카드 정보 · 실제 결제 불가</span><dl><div><dt>카드번호</dt><dd>4242 4242 4242 2048</dd></div><div><dt>유효기간</dt><dd>12/30</dd></div><div><dt>보안코드</dt><dd>123</dd></div></dl></div>}
+              {revealed && <div className="cf-demo-details"><span className="cf-simulation-label">모의 카드 정보 · 실제 결제 불가</span><dl><div><dt>카드번호</dt><dd>4242 4242 4242 {card.last4}</dd></div><div><dt>유효기간</dt><dd>12/30</dd></div><div><dt>보안코드</dt><dd>123</dd></div></dl></div>}
               {card.locked && <div className="cf-info-box cf-warning-box"><LockKeyhole size={18} /><p>새 결제는 차단됩니다. 기존 결제 취소·환불은 가능합니다.</p></div>}
             </div>
-            <div className="cf-group"><h3 className="cf-group-title">한도와 혜택</h3><dl className="cf-summary cf-limits"><div><dt>1회 결제 한도</dt><dd>{won(POLICY.perPaymentLimit)}</dd></div><div><dt>일 / 월 한도</dt><dd>{won(POLICY.dailyPaymentLimit)} / {won(POLICY.monthlyPaymentLimit)}</dd></div><div><dt>결제 페이백</dt><dd>{plan.cashbackRate * 100}% · 월 최대 {won(plan.cashbackCap)}</dd></div></dl></div>
-            {card.physical && <div className="cf-group cf-delivery"><div className="cf-delivery-heading"><span className="cf-feature-icon" aria-hidden="true"><Package /></span><h3>실물카드</h3><span>{card.physicalActive ? '활성화 완료' : card.delivery === 'preparing' ? '제작 준비' : card.delivery === 'shipped' ? '배송 중' : '배송 완료'}</span></div><ol className="cf-delivery-steps"><li className="cf-delivery-done">제작 준비</li><li className={card.delivery === 'shipped' || card.delivery === 'delivered' ? 'cf-delivery-done' : ''}>배송 중</li><li className={card.delivery === 'delivered' ? 'cf-delivery-done' : ''}>도착</li></ol><p className="cf-delivery-address"><MapPin size={14} /> 샘플 배송지 · 서울특별시 아쿠아로 1</p>{card.delivery === 'delivered' && !card.physicalActive && <button className="cf-button cf-primary" data-testid="card-physical-activate" onClick={() => { patch({ physicalActive: true }); onNotify('실물카드를 활성화했습니다.'); }}>실물카드 활성화 <ArrowRight size={16} /></button>}{card.physicalActive && <p className="cf-physical-active"><CircleCheck size={16} /> 활성화 완료</p>}</div>}
+            <div className="cf-group cf-wallets-group"><h3 className="cf-group-title">휴대폰 결제</h3>
+              <ul className="cf-wallets">{(Object.keys(WALLET_NAMES) as MobileWallet[]).map((wallet) => {
+                const added = card.wallets.includes(wallet);
+                return <li key={wallet}><span className="cf-feature-icon" aria-hidden="true"><Smartphone /></span><div><strong>{WALLET_NAMES[wallet]}</strong><p>{added ? `추가됨 · 끝번호 ${card.last4}` : '휴대폰을 단말기에 대고 결제합니다.'}</p></div>{added ? <span className="cf-wallet-added" data-testid={`wallet-added-${wallet}`}><Check size={14} strokeWidth={2.6} />추가됨</span> : <button className="cf-button cf-secondary cf-wallet-add" data-testid={`wallet-add-${wallet}`} disabled={card.locked} onClick={() => setWalletSheet(wallet)}>추가</button>}</li>;
+              })}</ul>
+              {card.locked && <p className="cf-wallet-note">카드 잠금을 해제하면 추가할 수 있습니다.</p>}
+            </div>
+            <div className="cf-group cf-plan-group" data-testid="card-plan"><div className="cf-active-header"><h3 className="cf-group-title">플랜과 한도</h3><span className="cf-plan-name"><span className={`cf-plan-thumb cf-plan-${card.plan}`} aria-hidden="true" />{plan.name}</span></div>
+              <dl className="cf-summary cf-limits"><div><dt>결제 페이백</dt><dd>{plan.cashbackRate * 100}% · 월 최대 {won(plan.cashbackCap)}</dd></div><div><dt>월 이용료</dt><dd>{plan.monthlyFee ? won(plan.monthlyFee) : '무료'}</dd></div>{card.billingAt !== null && <div><dt>{card.nextPlan ? 'Basic이 되는 날' : '다음 결제일'}</dt><dd data-testid="card-billing-date">{monthDay(card.billingAt)}</dd></div>}<div><dt>1회 결제 한도</dt><dd>{won(controls.perPayment)}</dd></div><div><dt>일 / 월 한도</dt><dd>{won(controls.daily)} / {won(controls.monthly)}</dd></div></dl>
+              <button type="button" className="cf-inline-link cf-limits-link" data-testid="card-open-limits" onClick={onOpenLimits}>결제 한도 바꾸기</button>
+              {card.nextPlan === 'basic' && card.billingAt !== null && <div className="cf-info-box"><CalendarClock /><p>{monthDay(card.billingAt)}부터 Basic이 됩니다. 그때까지 Plus 혜택이 그대로이고 이용료는 더 나가지 않습니다.</p></div>}
+              {card.plan === 'basic' ? <button className="cf-button cf-secondary cf-plan-button" data-testid="card-plan-change" onClick={() => setSheet('upgrade')}>Plus로 바꾸기 · 월 {won(PLANS.plus.monthlyFee)}</button>
+                : card.nextPlan === 'basic' ? <button className="cf-button cf-secondary cf-plan-button" data-testid="card-plan-keep" onClick={() => onAction({ type: 'CHANGE_PLAN', plan: 'plus' }, 'Plus를 계속 씁니다.')}>Plus 계속 쓰기</button>
+                  : <button className="cf-button cf-secondary cf-plan-button" data-testid="card-plan-change" onClick={() => setSheet('downgrade')}>Basic으로 바꾸기</button>}
+            </div>
+            {!card.physical && <div className="cf-group cf-physical-offer"><div className="cf-delivery-heading"><span className="cf-feature-icon" aria-hidden="true"><Package /></span><div><h3>실물카드</h3><p>발급비 {won(POLICY.physicalIssueFee)} · 배송 {POLICY.deliveryEstimate}</p></div><button className="cf-button cf-secondary cf-wallet-add" data-testid="card-physical-add" onClick={() => setAddressSheet('physical')}>신청</button></div></div>}
+            {card.physical && <div className="cf-group cf-delivery"><div className="cf-delivery-heading"><span className="cf-feature-icon" aria-hidden="true"><Package /></span><h3>실물카드</h3><span>{card.physicalActive ? '활성화 완료' : card.delivery === 'preparing' ? '제작 준비' : card.delivery === 'shipped' ? '배송 중' : '배송 완료'}</span></div><ol className="cf-delivery-steps"><li className="cf-delivery-done">제작 준비</li><li className={card.delivery === 'shipped' || card.delivery === 'delivered' ? 'cf-delivery-done' : ''}>배송 중</li><li className={card.delivery === 'delivered' ? 'cf-delivery-done' : ''}>도착</li></ol>{card.address && <p className="cf-delivery-address"><MapPin size={14} /><span>{addressLine(card.address)}</span>{card.delivery === 'preparing' && <button type="button" className="cf-inline-link" data-testid="card-address-change" onClick={() => setAddressSheet('change')}>변경</button>}</p>}{card.delivery === 'delivered' && !card.physicalActive && <button className="cf-button cf-primary" data-testid="card-physical-activate" onClick={() => setPinSheet('activate')}>실물카드 활성화 <ArrowRight size={16} /></button>}{card.physicalActive && <div className="cf-physical-active"><span><CircleCheck size={16} /> 활성화 완료</span><button type="button" className="cf-inline-link" data-testid="card-pin-change" onClick={() => setPinSheet('change')}>카드 비밀번호 변경</button></div>}</div>}
+            <div className="cf-group cf-manage"><h3 className="cf-group-title">카드 관리</h3>
+              <button className="cf-manage-row" data-testid="card-reissue" onClick={() => setSheet('reissue')}><span><strong>분실·도난 신고</strong><small>지금 카드를 막고 새 번호로 다시 발급합니다.</small></span><ChevronRight size={18} /></button>
+              <button className="cf-manage-row cf-manage-danger" data-testid="card-close" onClick={() => setSheet('close')}><span><strong>카드 해지</strong><small>잔액과 리워드는 그대로 남습니다.</small></span><ChevronRight size={18} /></button>
+            </div>
             <p className="cf-disclaimer cf-footnote">모의 카드입니다. 실제 카드·배송은 제공되지 않습니다.</p>
+            {walletSheet && <WalletSheet wallet={walletSheet} card={card} phone={account.phone} onClose={() => setWalletSheet(null)} onAdd={() => patch({ wallets: [...card.wallets, walletSheet] })} />}
+            {sheet === 'upgrade' && <CardActionSheet title="Aqua Plus로 바꾸기" lead="바꾸는 즉시 Plus 혜택이 적용됩니다." spend={spend} cost={PLANS.plus.monthlyFee} onDeposit={onDeposit} onClose={() => setSheet(null)}
+              points={[`결제 페이백 ${PLANS.plus.cashbackRate * 100}%, 월 최대 ${won(PLANS.plus.cashbackCap)}까지 받습니다.`, `이용료 ${won(PLANS.plus.monthlyFee)}을 지금 내고, 다음 달부터 같은 날 결제 잔액에서 나갑니다.`, '결제일에 결제 잔액이 모자라면 Basic으로 돌아갑니다.']}
+              confirmLabel={`${won(PLANS.plus.monthlyFee)} 내고 바꾸기`} onConfirm={() => onAction({ type: 'CHANGE_PLAN', plan: 'plus' }, 'Aqua Plus로 바꿨습니다.')} />}
+            {sheet === 'downgrade' && card.billingAt !== null && <CardActionSheet title="Basic으로 바꾸기" spend={spend} onDeposit={onDeposit} onClose={() => setSheet(null)}
+              points={[`${monthDay(card.billingAt)}까지는 Plus 혜택을 그대로 씁니다.`, '그날부터 Basic이 되고 이용료가 더 나가지 않습니다.', '이미 낸 이번 달 이용료는 돌려드리지 않습니다.', `Basic 페이백은 ${PLANS.basic.cashbackRate * 100}%, 월 최대 ${won(PLANS.basic.cashbackCap)}입니다.`]}
+              confirmLabel="Basic으로 바꾸기 예약" onConfirm={() => onAction({ type: 'CHANGE_PLAN', plan: 'basic' }, `${monthDay(card.billingAt!)}부터 Basic이 됩니다.`)} />}
+            {sheet === 'physical' && pendingAddress && <CardActionSheet title="실물카드 신청" lead="가게 단말기에 꽂거나 대서 결제하는 카드입니다." spend={spend} cost={POLICY.physicalIssueFee} onDeposit={onDeposit} onClose={() => setSheet(null)}
+              points={['가상카드와 같은 잔액으로 결제합니다.', `${addressLine(pendingAddress)}로 보내 드리며 ${POLICY.deliveryEstimate}이 걸립니다.`, '받은 뒤 앱에서 활성화하면 쓸 수 있습니다.']}
+              confirmLabel={`${won(POLICY.physicalIssueFee)} 내고 신청`} onConfirm={() => onAction({ type: 'ADD_PHYSICAL_CARD', address: pendingAddress }, '실물카드를 신청했습니다.')} />}
+            {sheet === 'reissue' && <CardActionSheet title="분실·도난 신고" lead="지금 카드를 바로 막고 새 번호로 다시 발급합니다." spend={spend} cost={card.physical ? POLICY.physicalIssueFee : undefined} onDeposit={onDeposit} onClose={() => setSheet(null)}
+              points={[`끝번호 ${card.last4} 카드는 바로 결제가 막힙니다.`, '가상카드는 새 번호가 바로 나옵니다.', ...(card.wallets.length ? ['휴대폰 결제에 추가한 카드는 지워지니 새 카드로 다시 추가해 주세요.'] : []), ...(card.physical ? [`실물카드는 ${card.address ? addressLine(card.address) : '등록한 배송지'}로 새로 보내 드리며 재발급비 ${won(POLICY.physicalIssueFee)}이 듭니다.`] : [])]}
+              confirmLabel={card.physical ? `${won(POLICY.physicalIssueFee)} 내고 재발급` : '신고하고 재발급'} onConfirm={() => { const done = onAction({ type: 'REISSUE_CARD' }, '새 카드를 발급했습니다.'); if (done) setRevealed(false); return done; }} />}
+            {sheet === 'close' && <CardActionSheet title="카드 해지" lead="해지한 카드는 다시 쓸 수 없습니다." spend={spend} onDeposit={onDeposit} onClose={() => setSheet(null)} danger consent="위 내용을 확인했습니다."
+              points={['카드 번호와 휴대폰 결제가 바로 멈춥니다.', '결제 잔액과 리저브는 그대로 남습니다.', '리워드는 카드를 다시 만들면 쓸 수 있습니다.', ...(card.plan === 'plus' ? ['이미 낸 이번 달 Plus 이용료는 돌려드리지 않습니다.'] : []), '확정 전 결제와 환불은 그대로 처리됩니다.']}
+              confirmLabel="카드 해지" onConfirm={() => { const done = onAction({ type: 'CLOSE_CARD' }, '카드를 해지했습니다.'); if (done) setRevealed(false); return done; }} />}
           </>}
 
-          {(card.stage === 'submitted' || card.stage === 'active' && card.physical) && <details className="cf-demo-tools" data-testid="card-demo-tools" open={toolsOpen} onToggle={(event) => { stopTimer(); setToolsOpen(event.currentTarget.open); }}><summary>체험 도구</summary>
+          {pinSheet && <PinSheet mode={pinSheet} onClose={() => setPinSheet(null)} onSubmit={(pin) => onAction(pinSheet === 'activate' ? { type: 'ACTIVATE_PHYSICAL', pin } : { type: 'SET_CARD_PIN', pin }, pinSheet === 'activate' ? '실물카드를 활성화했습니다.' : '카드 비밀번호를 바꿨습니다.')} />}
+          {addressSheet && <AddressSheet initial={addressSheet === 'physical' ? pendingAddress : card.address} holder={account.name} confirmLabel={addressSheet === 'physical' ? '다음' : '이 주소로 받기'} onClose={() => setAddressSheet(null)}
+            onSave={(address) => {
+              setAddressSheet(null);
+              if (addressSheet === 'physical') { setPendingAddress(address); setSheet('physical'); return; }
+              patch({ address });
+              if (addressSheet === 'change') onNotify('배송지를 바꿨습니다.');
+            }} />}
+
+          {(card.stage === 'submitted' || card.stage === 'active') && <details className="cf-demo-tools" data-testid="card-demo-tools" open={toolsOpen} onToggle={(event) => { stopTimer(); setToolsOpen(event.currentTarget.open); }}><summary>체험 도구</summary>
             {card.stage === 'submitted' && <div className="cf-simulation"><p>도구를 닫으면 모의 심사가 자동으로 진행됩니다.</p><button className="cf-button cf-secondary" data-testid="card-demo-approve" onClick={() => simulateResult('approved')}>심사 승인</button><div className="cf-button-row"><button className="cf-button cf-secondary" data-testid="card-demo-needs-info" onClick={() => simulateResult('needs_info')}>보완 요청</button><button className="cf-button cf-secondary" data-testid="card-demo-reject" onClick={() => simulateResult('rejected')}>신청 거절</button></div></div>}
-            {card.stage === 'active' && card.physical && <div className="cf-simulation">{card.delivery === 'preparing' && <button className="cf-button cf-secondary" data-testid="card-demo-shipped" onClick={() => patch({ delivery: 'shipped' })}><Truck size={16} /> 배송 시작</button>}{card.delivery === 'shipped' && <button className="cf-button cf-secondary" data-testid="card-demo-delivered" onClick={() => patch({ delivery: 'delivered' })}><Package size={16} /> 배송 완료</button>}{card.delivery === 'delivered' && <p>배송 완료 상태입니다.</p>}</div>}
+            {card.stage === 'active' && <div className="cf-simulation cf-demo-list">
+              {card.billingAt !== null && <button className="cf-button cf-secondary" data-testid="card-demo-billing" onClick={() => onAction({ type: 'ADVANCE_TO_BILLING' }, '다음 결제일로 이동했습니다.')}><CalendarClock size={16} /> 다음 결제일({monthDay(card.billingAt)})로 이동</button>}
+              {card.physical && card.delivery === 'preparing' && <button className="cf-button cf-secondary" data-testid="card-demo-shipped" onClick={() => patch({ delivery: 'shipped' })}><Truck size={16} /> 실물카드 배송 시작</button>}
+              {card.physical && card.delivery === 'shipped' && <button className="cf-button cf-secondary" data-testid="card-demo-delivered" onClick={() => patch({ delivery: 'delivered' })}><Package size={16} /> 실물카드 배송 완료</button>}
+              {card.billingAt === null && (!card.physical || card.delivery === 'delivered') && <p>지금은 체험할 단계가 없습니다. Plus로 바꾸면 결제일 이동을 체험할 수 있습니다.</p>}
+            </div>}
           </details>}
         </div>
       </div>
