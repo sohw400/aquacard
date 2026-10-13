@@ -14,6 +14,7 @@ PR 단계에서 도는 검사 워크플로는 없으므로, `main`에 머지하�
 | --- | --- | --- | --- |
 | 2026-10-13 | 첫 공개 배포 | [실행 3](https://github.com/sohw400/aquacard/actions/runs/38338232648) | `build`와 `deploy` 성공. 공개 주소의 HTTP 200 응답과 Aqua Card 제목, JS·CSS·favicon의 콘텐츠 형식을 확인했고, 내려받은 HTML·파일이 검증한 프로덕션 빌드와 바이트 단위로 일치했다 |
 | 2026-10-13 | [PR #1](https://github.com/sohw400/aquacard/pull/1): KAST 구조 재편, 멤버십, 보내기와 받기, 연간 거래 내역, 모바일 앱 준비 문서 | [실행 9](https://github.com/sohw400/aquacard/actions/runs/38402574590) | `build`(로직 테스트 115개 포함)와 `deploy` 성공. GitHub API에서 머지 커밋(`a10d032`)의 `github-pages` 배포 상태가 `success`인 것을 확인했다. 작업 환경의 네트워크 정책이 공개 주소와 Actions 산출물 저장소를 막아 공개 사이트는 직접 열지 못했다. 브라우저·기기 검사는 머지 전에 같은 코드로 마쳤다 |
+| 2026-10-14 | [PR #3](https://github.com/sohw400/aquacard/pull/3): 모든 화면의 여백·정렬, 누를 때·마우스를 올릴 때 반응, 상태 문구, 화면 점검 도구 | [실행 11](https://github.com/sohw400/aquacard/actions/runs/38484068984) | `build`(로직 테스트 115개 포함)와 `deploy` 성공. GitHub API에서 머지 커밋(`8ec8d29`)의 `github-pages` 배포 상태가 `success`인 것을 확인했다. 공개 사이트는 이번에도 작업 환경의 네트워크 정책에 막혀 직접 열지 못했다. 브라우저·기기 검사와 4개 화면 설정의 화면 점검은 머지 전에 같은 코드로 마쳤다 |
 
 현재 앱은 정적 웹 PoC이며 API 서버·비밀값·실제 결제 기능이 필요하지 않다. 공개 화면에도 데모임을 표시한다. 브라우저의 데모 상태는 공개 사이트에서 별도로 생성되고 다른 방문자와 공유되지 않는다.
 
