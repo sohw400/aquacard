@@ -15,7 +15,9 @@ const finalConsonant = (word: string) => {
   const code = word.charCodeAt(word.length - 1) - 0xac00;
   return code >= 0 && code <= 11_171 ? code % 28 : 0;
 };
+/** The particle alone, for when the word itself is laid out separately. */
+export const particle = (word: string, afterConsonant: string, afterVowel: string) => finalConsonant(word) ? afterConsonant : afterVowel;
 /** Attaches the particle that fits the last syllable: josa('프리미엄', '을', '를') → '프리미엄을'. */
-export const josa = (word: string, afterConsonant: string, afterVowel: string) => `${word}${finalConsonant(word) ? afterConsonant : afterVowel}`;
+export const josa = (word: string, afterConsonant: string, afterVowel: string) => `${word}${particle(word, afterConsonant, afterVowel)}`;
 /** 로 after a vowel or ㄹ, 으로 otherwise: ro('프리미엄') → '프리미엄으로', ro('스탠다드') → '스탠다드로'. */
 export const ro = (word: string) => `${word}${[0, 8].includes(finalConsonant(word)) ? '로' : '으로'}`;

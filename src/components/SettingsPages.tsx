@@ -56,7 +56,7 @@ export function NotificationsPage({ state, onChange }: { state: AppState; onChan
     <section className="panel">
       <h2 className="panel-title">서비스 알림</h2>
       <Switch checked={notifications.payments} label="결제 알림" detail="카드 결제와 환불을 바로 알려 드려요." testId="notify-payments" onChange={(value) => onChange('payments', value)} />
-      <Switch checked={notifications.funding} label="입출금 알림" detail="충전과 보내기 진행 상황을 알려 드려요." testId="notify-funding" onChange={(value) => onChange('funding', value)} />
+      <Switch checked={notifications.funding} label="입출금 알림" detail="충전과 보내기 진행 상황, 회원에게 받은 돈을 알려 드려요." testId="notify-funding" onChange={(value) => onChange('funding', value)} />
     </section>
     <section className="panel">
       <h2 className="panel-title">광고성 정보 수신</h2>
@@ -72,7 +72,7 @@ const FAQ: [string, [string, string][]][] = [
     ['어떤 코인으로 충전할 수 있나요?', '원화 스테이블코인, USDC, USDT, BTC, ETH로 충전할 수 있어요. 다른 코인은 받는 즉시 원화 스테이블로 바뀌어 잔액에 들어가요.'],
     ['충전하거나 보낼 때 수수료는 얼마인가요?', '충전 수수료는 없어요. 보낼 때는 네트워크 비용이 들어요. 다른 코인으로 바꿔 보내면 전환 수수료 0.5%가 붙어요.'],
     ['거래소에서 바로 보낼 수 있나요?', '네. 충전 화면에서 국내 거래소를 고르면 주소와 보내는 방법을 알려 드려요. 100만원 이상 보낼 때 거래소가 받는 곳을 물으면 Aqua를 골라 주세요.'],
-    ['다른 Aqua 회원에게는 어떻게 보내나요?', '보내기 › Aqua 회원에게에서 태그나 휴대폰 번호로 찾거나, QR 코드 찍기로 상대의 QR을 찍어 보내요. 수수료 없이 바로 가요. 휴대폰 번호는 상대가 번호로 찾기를 켰을 때만 찾을 수 있어요.'],
+    ['다른 Aqua 회원에게는 어떻게 보내나요?', '보내기 › Aqua 회원에게에서 태그, 휴대폰 번호, 이메일로 찾거나 QR 코드 찍기로 상대의 QR을 찍어 보내요. 수수료 없이 바로 가요. 휴대폰 번호와 이메일은 상대가 그 방법으로 찾기를 켰을 때만 찾을 수 있어요.'],
   ]],
   ['리저브와 리워드', [
     ['리저브 보상은 언제 받나요?', '1초마다 계산해서 1원이 될 때마다 리워드에 바로 더해요. 따로 받을 필요는 없어요.'],

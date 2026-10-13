@@ -34,7 +34,7 @@ export default function TransactionSheet({ item, payment, card, status, onRefund
 
   return <div className="itd-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="internal-transfer-dialog wallet-sheet tx-sheet" ref={panel} role="dialog" aria-modal="true" aria-labelledby={`${id}-heading`} tabIndex={-1} data-testid="transaction-sheet">
-      <header className="itd-header"><div><h2 id={`${id}-heading`} ref={heading} tabIndex={-1}>{item.title}</h2><p>{item.kind === 'transfer' && item.amount < 0 ? '보내기' : KIND_LABELS[item.kind]} · {shortDate(item.timestamp)}</p></div><button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button></header>
+      <header className="itd-header"><div><h2 id={`${id}-heading`} ref={heading} tabIndex={-1}>{item.title}</h2><p>{item.kind === 'transfer' && item.amount < 0 ? '보내기' : item.kind === 'transfer' && item.member ? '받기' : KIND_LABELS[item.kind]} · {shortDate(item.timestamp)}</p></div><button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button></header>
       <div className="itd-body">
         {amount && <strong className={`tx-amount${item.amount > 0 ? ' positive' : ''}`} data-testid="transaction-amount">{amount}</strong>}
         <dl className="card-sheet-cost tx-facts">

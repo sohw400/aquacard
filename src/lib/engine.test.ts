@@ -1442,23 +1442,43 @@ test('실물카드 등급이 없던 저장 카드는 지금 멤버십 카드로,
   delete legacy.card.replacement;
   delete legacy.account.tag;
   delete legacy.account.findByPhone;
+  delete legacy.account.findByEmail;
   values.set(STORAGE_KEY, JSON.stringify(legacy));
   const restored = loadState();
   assert.deepEqual([restored.card.physicalPlan, restored.card.replacement], ['standard', null]);
-  assert.deepEqual([restored.account?.tag, restored.account?.findByPhone], ['junho2', false], '체험용 회원과 겹치는 태그에는 숫자를 붙인다');
+  assert.deepEqual([restored.account?.tag, restored.account?.findByPhone, restored.account?.findByEmail], ['junho2', false, false], '체험용 회원과 겹치는 태그에는 숫자를 붙인다');
 }));
 
 test('태그는 처음에 이메일로 만들고, 규칙에 맞으면서 아무도 쓰지 않는 태그로만 바꾼다', () => {
   let state = applyAction(createInitialState(NOW), signup, NOW);
-  assert.deepEqual([state.account?.tag, state.account?.findByPhone], ['tester', false], '휴대폰 번호로 찾기는 꺼진 채 시작한다');
+  assert.deepEqual([state.account?.tag, state.account?.findByPhone, state.account?.findByEmail], ['tester', false, false], '휴대폰 번호와 이메일로 찾기는 꺼진 채 시작한다');
   const refused: [string, RegExp][] = [['junho', /이미 누가/], ['aqua', /이미 누가/], ['ab', /3~20자/], ['Tester', /지금 쓰는 태그/],
     ['.tester', /맨 앞과 맨 끝/], ['a..b', /이어 쓸 수/], ['01012345678', /숫자만/], ['한글태그', /3~20자/]];
   for (const [tag, error] of refused) assert.throws(() => applyAction(state, { type: 'SET_TAG', tag }, NOW), error, tag);
   state = applyAction(state, { type: 'SET_TAG', tag: ' @Aqua_Tester ' }, NOW);
   assert.equal(state.account?.tag, 'aqua_tester');
-  state = applyAction(state, { type: 'SET_FIND_BY_PHONE', enabled: true }, NOW);
-  assert.equal(state.account?.findByPhone, true);
+  state = applyAction(state, { type: 'SET_FINDABLE', by: 'phone', enabled: true }, NOW);
+  state = applyAction(state, { type: 'SET_FINDABLE', by: 'email', enabled: true }, NOW);
+  assert.deepEqual([state.account?.findByPhone, state.account?.findByEmail], [true, true]);
+  assert.throws(() => applyAction(state, { type: 'SET_FINDABLE', by: 'fax' as 'phone', enabled: true }, NOW), /설정 값/);
   const signedOut = applyAction(state, { type: 'SIGN_OUT' }, NOW);
   assert.throws(() => applyAction(signedOut, { type: 'SET_TAG', tag: 'someone' }, NOW), /로그인한 뒤/);
-  assert.throws(() => applyAction(signedOut, { type: 'SET_FIND_BY_PHONE', enabled: false }, NOW), /로그인한 뒤/);
+  assert.throws(() => applyAction(signedOut, { type: 'SET_FINDABLE', by: 'phone', enabled: false }, NOW), /로그인한 뒤/);
+});
+
+test('회원에게 받기 체험은 받은 금액을 잔액에 바로 더하고 받기 내역으로 남기며, 보내기 내역에도 상대 태그를 적는다', () => {
+  let state = applyAction(createInitialState(NOW), signup, NOW);
+  const before = state.spend;
+  state = applyAction(state, { type: 'RECEIVE_FROM_MEMBER', tag: '@Minji.K', amount: 10_000 }, NOW);
+  assert.equal(state.spend, before + 10_000);
+  assert.deepEqual([state.transactions[0].kind, state.transactions[0].title, state.transactions[0].amount, state.transactions[0].member, state.transactions[0].status],
+    ['transfer', '김*지님이 보냄', 10_000, 'minji.k', 'completed']);
+  assert.match(state.transactions[0].note, /내 태그 @tester로 보냈어요/);
+  assert.deepEqual([state.reserve, state.rewards], [createInitialState(NOW).reserve, createInitialState(NOW).rewards], '받은 돈은 잔액에만 더한다');
+  state = applyAction(state, { type: 'SEND_TO_MEMBER', tag: 'junho', amount: 3_000 }, NOW);
+  assert.equal(state.transactions[0].member, 'junho');
+  for (const [tag, amount, error] of [['nobody', 10_000, /보낸 회원/], ['minji.k', 999, /1,000원 이상/], ['minji.k', 1_000.5, /정수/]] as const) {
+    assert.throws(() => applyAction(state, { type: 'RECEIVE_FROM_MEMBER', tag, amount }, NOW), error, `${tag} ${amount}`);
+  }
+  assert.throws(() => applyAction(applyAction(state, { type: 'SIGN_OUT' }, NOW), { type: 'RECEIVE_FROM_MEMBER', tag: 'minji.k', amount: 10_000 }, NOW), /로그인한 뒤/);
 });

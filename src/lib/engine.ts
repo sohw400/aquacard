@@ -399,7 +399,7 @@ function signupAccount(action: Extract<Action, { type: 'COMPLETE_SIGNUP' }>, wal
   if (age > 120) throw new Error('생년월일을 확인해 주세요.');
   const { idType, occupation, purpose, source } = action.kyc;
   return { email, passwordHash: action.passwordHash, name, birthDate, phone: action.phone, kyc: { idType, occupation, purpose, source }, verifiedAt: wallNow,
-    tag: initialTag(email), findByPhone: false };
+    tag: initialTag(email), findByPhone: false, findByEmail: false };
 }
 
 function validateCardChange(previous: CardState, next: CardState): void {
@@ -494,8 +494,18 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       integer(action.amount, POLICY.minimumTopup);
       if (state.spend < action.amount) throw new Error('잔액이 부족해요. 보낼 금액을 줄여 주세요.');
       state.spend -= action.amount;
-      transaction(state, now, { kind: 'transfer', title: `${maskName(member.name)}님에게 보냄`, amount: -action.amount, status: 'completed',
+      transaction(state, now, { kind: 'transfer', title: `${maskName(member.name)}님에게 보냄`, amount: -action.amount, status: 'completed', member: member.tag,
         note: `@${member.tag}에게 수수료 없이 바로 보냈어요. 체험판이라 실제로 보내지는 않아요.` });
+      return state;
+    }
+    case 'RECEIVE_FROM_MEMBER': {
+      if (!state.account || !state.signedIn) throw new Error('로그인한 뒤 받을 수 있어요.');
+      const member = typeof action.tag === 'string' ? findMember(action.tag) : undefined;
+      if (!member) throw new Error('보낸 회원을 찾지 못했어요.');
+      integer(action.amount, POLICY.minimumTopup);
+      creditSpend(state, action.amount);
+      transaction(state, now, { kind: 'transfer', title: `${maskName(member.name)}님이 보냄`, amount: action.amount, status: 'completed', member: member.tag,
+        note: `@${member.tag}님이 내 태그 @${state.account.tag}로 보냈어요. 수수료 없이 잔액에 바로 더했어요. 체험판이라 실제로 받은 돈은 아니에요.` });
       return state;
     }
     case 'SET_TAG': {
@@ -507,10 +517,10 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       state.account = { ...state.account, tag };
       return state;
     }
-    case 'SET_FIND_BY_PHONE':
+    case 'SET_FINDABLE':
       if (!state.account || !state.signedIn) throw new Error('로그인한 뒤 바꿀 수 있어요.');
-      if (typeof action.enabled !== 'boolean') throw new Error('설정 값을 확인해 주세요.');
-      state.account = { ...state.account, findByPhone: action.enabled };
+      if ((action.by !== 'phone' && action.by !== 'email') || typeof action.enabled !== 'boolean') throw new Error('설정 값을 확인해 주세요.');
+      state.account = { ...state.account, [action.by === 'phone' ? 'findByPhone' : 'findByEmail']: action.enabled };
       return state;
     case 'SET_RESERVE_AUTO':
       if (typeof action.enabled !== 'boolean') throw new Error('리저브 자동 사용 설정을 확인해 주세요.');
@@ -867,7 +877,7 @@ function validAccount(value: unknown): value is Account {
     && typeof value.name === 'string' && value.name.trim().length >= 2 && value.name.length <= 30
     && typeof value.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.birthDate)
     && typeof value.phone === 'string' && PHONE_PATTERN.test(value.phone) && validKyc(value.kyc) && timestamp(value.verifiedAt)
-    && typeof value.tag === 'string' && TAG_PATTERN.test(value.tag) && typeof value.findByPhone === 'boolean');
+    && typeof value.tag === 'string' && TAG_PATTERN.test(value.tag) && typeof value.findByPhone === 'boolean' && typeof value.findByEmail === 'boolean');
 }
 
 function validState(value: unknown): value is AppState {
@@ -906,7 +916,8 @@ function validState(value: unknown): value is AppState {
     && ['deposit', 'transfer', 'convert', 'payment', 'refund', 'reward', 'payback', 'rate', 'card'].includes(item.kind as string)
     && ['pending', 'completed', 'refunded', 'partially_refunded', 'failed', 'cancelled'].includes(item.status as string)
     && (item.paymentId === undefined || typeof item.paymentId === 'string')
-    && (item.fundingId === undefined || typeof item.fundingId === 'string'));
+    && (item.fundingId === undefined || typeof item.fundingId === 'string')
+    && (item.member === undefined || typeof item.member === 'string'));
   if (!transactionsValid) return false;
   const transactions = value.transactions as Transaction[];
   if (transactions.some((item) => item.fundingId && !operations.some((operation) => operation.id === item.fundingId))) return false;
@@ -954,9 +965,9 @@ function migrateCard(card: Record<string, unknown>): Record<string, unknown> {
   return filled;
 }
 
-/** Older saves: accounts from before tags were stored get one made from the email, the way new accounts do; finding by phone stays off. */
+/** Older saves: accounts from before tags were stored get one made from the email, the way new accounts do; finding by phone or email stays off. */
 function migrateAccount(account: Record<string, unknown>): Record<string, unknown> {
-  return { findByPhone: false, ...(typeof account.email === 'string' ? { tag: initialTag(account.email) } : {}), ...account };
+  return { findByPhone: false, findByEmail: false, ...(typeof account.email === 'string' ? { tag: initialTag(account.email) } : {}), ...account };
 }
 
 export function loadState(): AppState {

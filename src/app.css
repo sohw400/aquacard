@@ -516,3 +516,9 @@ a { color: var(--accent); }
   .nav-item:hover { color: var(--ink); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0s !important; transition-duration: 0s !important; } }
+/* Annual statement */
+.statement-page .statement-copy { gap: 10px; }
+.statement-page .statement-copy .btn { gap: 8px; }
+.statement-copied { display: flex; align-items: center; gap: 6px; color: var(--accent-strong); font-size: 14px; line-height: 1.6; }
+.statement-text { box-sizing: border-box; width: 100%; min-height: 150px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--sunken); color: var(--ink); font: 16px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; white-space: pre; overflow: auto; }
+.activity-statement { padding-top: 4px; }

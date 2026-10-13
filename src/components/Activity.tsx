@@ -24,8 +24,9 @@ export const signed = (amount: number, positive: boolean, plain = false) => amou
 function ActivityRow({ item, payment, coin, onRefund, onFunding, onDetail, detailed }: { item: Transaction; payment?: Payment; coin?: FundingSymbol; onRefund: (payment: Payment) => void; onFunding?: (id: string) => void; onDetail?: (item: Transaction) => void; detailed: boolean }) {
   const refundable = detailed && payment && ['completed', 'partially_refunded'].includes(payment.status);
   const unsettled = Boolean(item.fundingId) && item.status !== 'completed';
-  const positive = !unsettled && ['deposit', 'refund', 'reward', 'payback', 'card'].includes(item.kind) && item.amount > 0;
-  const Icon = item.kind === 'transfer' && item.amount < 0 ? ArrowUpRight : ICONS[item.kind];
+  const received = item.kind === 'transfer' && Boolean(item.member) && item.amount > 0;
+  const positive = !unsettled && (['deposit', 'refund', 'reward', 'payback', 'card'].includes(item.kind) || received) && item.amount > 0;
+  const Icon = item.kind === 'transfer' && item.amount < 0 ? ArrowUpRight : received ? ArrowDownLeft : ICONS[item.kind];
   const status = statusOf(item);
   return <div className="activity-row">
     {coin ? <CoinIcon symbol={coin} /> : <span className={`activity-icon${item.kind === 'payment' ? ' merchant' : ''}`} aria-hidden="true">{item.kind === 'payment' ? item.title.trim().charAt(0) : <Icon />}</span>}

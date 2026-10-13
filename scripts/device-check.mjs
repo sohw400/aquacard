@@ -376,7 +376,7 @@ try {
     await send.getByTestId('send-own-qr').tap();
     const receive = page.getByTestId('receive-sheet');
     await receive.waitFor({ state: 'visible' });
-    for (const id of ['receive-copy', 'receive-edit', 'find-by-phone']) await assertTouchTarget(receive.getByTestId(id), `${name} ${id}`);
+    for (const id of ['receive-copy', 'receive-edit', 'find-by-phone', 'find-by-email', 'receive-demo']) await assertTouchTarget(receive.getByTestId(id), `${name} ${id}`);
     const qrBox = await receive.locator('svg.qr-code').boundingBox();
     assert.ok(qrBox && qrBox.width >= 150, `${name}: my QR code is too small to scan (${qrBox?.width}px)`);
     await assertFits(page, `${name} my tag and QR`);
@@ -394,6 +394,16 @@ try {
     await send.getByTestId('send-amount').waitFor({ state: 'visible' });
     await page.keyboard.press('Escape');
     await send.waitFor({ state: 'hidden' });
+
+    // 연간 거래 내역
+    await page.getByTestId('nav-activity').tap();
+    await assertTouchTarget(page.getByTestId('open-statement'), `${name} open statement`);
+    await page.getByTestId('open-statement').tap();
+    await page.getByTestId('page-statement').waitFor({ state: 'visible' });
+    await assertTouchTarget(page.getByTestId('statement-copy'), `${name} statement copy`);
+    await assertFits(page, `${name} annual statement`);
+    await page.getByTestId('nav-home').tap();
+    await page.getByTestId('spend-balance').waitFor({ state: 'visible' });
 
     // Card tab: three-step application, automatic issue and the full-width card.
     await page.getByTestId('nav-card').tap();
@@ -501,7 +511,7 @@ try {
     assert.deepEqual(errors, []);
     const fontFamily = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
     results.push({ profile: name, engine: 'Chromium', emulationOnly: true, viewport: profile.viewport, hasTouch: profile.hasTouch, fontFamily, passed: true, checks: 'home balance with 충전·보내기 and card offer, 4 primary tabs and 3 details with return navigation, touch targets, deposit sheet fees/consent/focus trap/Escape, awaiting deposit close/reload/reopen from the home status line and delayed credit, 보내기 › 지갑 주소로 review and cancellation with held-principal restoration, failed deposit without credit, Reserve round trip, member transfer by tag with focus kept in the sheet, 3-step card application with automatic issue and full-width card, Reserve payment, reward receipt, unobstructed overlays, benefits and shared settings, restored payments and funding operations' });
-    console.log(`PASS ${name}: ${profile.viewport.width}px · home balance · deposit and send sheets · member transfer · my tag and QR · touch · application · card · Reserve payment · reward receipt · cashback overview · reload (Chromium emulation)`);
+    console.log(`PASS ${name}: ${profile.viewport.width}px · home balance · deposit and send sheets · member transfer · my tag and QR · annual statement · touch · application · card · Reserve payment · reward receipt · cashback overview · reload (Chromium emulation)`);
     await context.close();
   }
   await writeFile(new URL('results.json', artifacts), JSON.stringify({ passedProfiles: results.length, failedProfiles: 0, recordedAt: new Date().toISOString(), realDeviceTested: false, safariWebKitTested: false, results }, null, 2));

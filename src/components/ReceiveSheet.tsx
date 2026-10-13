@@ -3,14 +3,18 @@ import { Check, ChevronLeft, Copy, PencilLine, X } from 'lucide-react';
 import { useModal } from './useModal';
 import QrCode from './QrCode';
 import { Toggle } from './ui';
-import { maskName, normalizeTag, tagIssue, tagLink } from '../lib/directory';
-import { josa, ro } from '../lib/format';
+import { findMember, maskName, normalizeTag, tagIssue, tagLink } from '../lib/directory';
+import { josa, money, ro } from '../lib/format';
 import type { Account, Action, AppState } from '../lib/types';
 import './InternalTransferDialog.css';
 import './SendSheet.css';
 import './ReceiveSheet.css';
 
-/** How other members reach this account: the tag, its QR code and, when allowed, the phone number. */
+/** The fictional member who sends in the receive demo, and how much. */
+const DEMO_SENDER = findMember('minji.k')!;
+const DEMO_AMOUNT = 10_000;
+
+/** How other members reach this account: the tag, its QR code and, when allowed, the phone number or email. */
 export default function ReceiveSheet({ account, onClose, dispatch, notify }: {
   account: Account; onClose: () => void;
   dispatch: (action: Action) => AppState; notify: (message: string, type?: 'success' | 'error' | 'info') => void;
@@ -51,12 +55,23 @@ export default function ReceiveSheet({ account, onClose, dispatch, notify }: {
       setError(failure instanceof Error ? failure.message : '바꾸지 못했어요. 다시 시도해 주세요.');
     }
   }
-  function findByPhone(enabled: boolean) {
+  function setFindable(by: 'phone' | 'email', enabled: boolean) {
+    const what = by === 'phone' ? '휴대폰 번호' : '이메일';
     try {
-      dispatch({ type: 'SET_FIND_BY_PHONE', enabled });
-      notify(enabled ? '이제 휴대폰 번호로도 나를 찾을 수 있어요.' : '휴대폰 번호로는 나를 찾을 수 없게 했어요.');
+      dispatch({ type: 'SET_FINDABLE', by, enabled });
+      notify(enabled ? `이제 ${what}로도 나를 찾을 수 있어요.` : `${what}로는 나를 찾을 수 없게 했어요.`);
     } catch (failure) {
       notify(failure instanceof Error ? failure.message : '바꾸지 못했어요. 다시 시도해 주세요.', 'error');
+    }
+  }
+  // The demo has no other people, so a fictional member sends instead; closing first lets the alert show over the page.
+  function receiveDemo() {
+    try {
+      dispatch({ type: 'RECEIVE_FROM_MEMBER', tag: DEMO_SENDER.tag, amount: DEMO_AMOUNT });
+      onClose();
+      notify(`${maskName(DEMO_SENDER.name)}님이 ${money(DEMO_AMOUNT)}을 보냈어요.`);
+    } catch (failure) {
+      notify(failure instanceof Error ? failure.message : '받지 못했어요. 다시 시도해 주세요.', 'error');
     }
   }
 
@@ -80,7 +95,12 @@ export default function ReceiveSheet({ account, onClose, dispatch, notify }: {
           </div>
           {copied && <p className={copied === 'done' ? 'receive-note' : 'itd-error'} role="status">{copied === 'done' ? `${josa(`@${account.tag}`, '을', '를')} 복사했어요.` : '복사하지 못했어요. 태그를 길게 눌러 복사해 주세요.'}</p>}
           <div className="receive-phone">
-            <Toggle checked={account.findByPhone} onChange={findByPhone} label="휴대폰 번호로 찾기" detail="켜면 내 번호를 아는 회원이 번호 전체를 넣어 나를 찾을 수 있어요. 이름은 가려서 보여 줘요." testId="find-by-phone" />
+            <Toggle checked={account.findByPhone} onChange={(enabled) => setFindable('phone', enabled)} label="휴대폰 번호로 찾기" detail="켜면 내 번호를 아는 회원이 번호 전체를 넣어 나를 찾을 수 있어요. 이름은 가려서 보여 줘요." testId="find-by-phone" />
+            <Toggle checked={account.findByEmail} onChange={(enabled) => setFindable('email', enabled)} label="이메일로 찾기" detail="켜면 내 이메일 주소 전체를 아는 회원이 나를 찾을 수 있어요." testId="find-by-email" />
+          </div>
+          <div className="receive-demo">
+            <p><strong>받아 보기</strong>{maskName(DEMO_SENDER.name)}님이 내 태그로 {money(DEMO_AMOUNT)}을 보낸 것처럼 받아요. 체험판이라 실제 돈은 아니에요.</p>
+            <button type="button" className="itd-button itd-secondary" data-testid="receive-demo" onClick={receiveDemo}>받기</button>
           </div>
         </> : <form onSubmit={save} noValidate>
           <label className="send-tag-field" htmlFor={`${uid}-tag`}><span aria-hidden="true">@</span><input ref={input} id={`${uid}-tag`} data-testid="tag-input" value={draft} maxLength={21} placeholder={account.tag} onChange={(event) => { setDraft(event.target.value); setError(''); }} autoComplete="off" autoCapitalize="none" spellCheck={false} aria-describedby={`${uid}-rules`} /></label>

@@ -53,6 +53,8 @@ export interface Account {
   tag: string;
   /** Other members can find this account by typing its whole phone number. Off until the holder turns it on. */
   findByPhone: boolean;
+  /** The same for the whole email address. */
+  findByEmail: boolean;
 }
 
 export type PaymentChannel = 'store' | 'online' | 'overseas';
@@ -125,6 +127,8 @@ export interface Transaction {
   note: string;
   paymentId?: string;
   fundingId?: string;
+  /** The other member's tag on a member-to-member transfer, in either direction. */
+  member?: string;
 }
 
 export interface Payment {
@@ -190,8 +194,10 @@ export type Action =
   | { type: 'CANCEL_FUNDING'; id: string }
   | { type: 'TRANSFER_RESERVE'; direction: 'in' | 'out'; amount: number }
   | { type: 'SEND_TO_MEMBER'; tag: string; amount: number }
+  /** Demo: a fictional member sends to this account's tag. */
+  | { type: 'RECEIVE_FROM_MEMBER'; tag: string; amount: number }
   | { type: 'SET_TAG'; tag: string }
-  | { type: 'SET_FIND_BY_PHONE'; enabled: boolean }
+  | { type: 'SET_FINDABLE'; by: 'phone' | 'email'; enabled: boolean }
   | { type: 'PAY'; merchant: string; amount: number; channel?: PaymentChannel }
   | { type: 'CONFIRM_PAYMENT'; id: string }
   | { type: 'REFUND'; id: string; amount?: number }

@@ -1,17 +1,19 @@
-/** Fictional Aqua members the demo can send to by tag, QR or phone number. Real lookups need the member service. */
+/** Fictional Aqua members the demo can send to by tag, QR, phone number or email. Real lookups need the member service. */
 export interface Member {
   tag: string;
   name: string;
   /** Made-up numbers in the 010-0000 block, set only for members who let others find them by phone. */
   phone?: string;
+  /** Addresses on the reserved .example domain, set only for members who let others find them by email. */
+  email?: string;
 }
 
 export const MEMBERS: readonly Member[] = [
-  { tag: 'minji.k', name: '김민지', phone: '01000000101' },
+  { tag: 'minji.k', name: '김민지', phone: '01000000101', email: 'minji.kim@aqua.example' },
   { tag: 'junho', name: '박준호', phone: '01000000102' },
   { tag: 'seoyeon_lee', name: '이서연' },
-  { tag: 'haneul', name: '정하늘', phone: '01000000104' },
-  { tag: 'aqua.coffee', name: '아쿠아커피' },
+  { tag: 'haneul', name: '정하늘', phone: '01000000104', email: 'haneul@aqua.example' },
+  { tag: 'aqua.coffee', name: '아쿠아커피', email: 'hello@aqua.example' },
 ];
 
 /** Tags are 3 to 20 lowercase letters, digits, dots or underscores; a leading @ is optional. */
@@ -28,6 +30,12 @@ export const phoneDigits = (value: string) => value.replace(/[\s-]/g, '');
 export const findMemberByPhone = (value: string) => {
   const digits = phoneDigits(value);
   return PHONE_SEARCH.test(digits) ? MEMBERS.find((member) => member.phone === digits) : undefined;
+};
+/** Something shaped like a whole email address; lookups never match part of one. */
+export const EMAIL_SEARCH = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const findMemberByEmail = (value: string) => {
+  const email = value.trim().toLowerCase();
+  return EMAIL_SEARCH.test(email) ? MEMBERS.find((member) => member.email === email) : undefined;
 };
 export const formatPhone = (digits: string) => digits.length === 11 ? `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}` : digits;
 

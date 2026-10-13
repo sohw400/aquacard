@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findMemberByPhone, formatPhone, initialTag, tagIssue, tagLink } from './directory';
+import { findMemberByEmail, findMemberByPhone, formatPhone, initialTag, tagIssue, tagLink } from './directory';
 import { josa, ro } from './format';
 
 test('처음 태그는 이메일 앞부분으로 만들고, 겹치거나 규칙에 맞지 않으면 고쳐 쓴다', () => {
@@ -22,6 +22,10 @@ test('휴대폰 번호는 번호 전체가 맞을 때만, 번호로 찾기를 �
   assert.equal(findMemberByPhone('0100000'), undefined, '번호 일부로는 찾지 않는다');
   assert.equal(findMemberByPhone('01000000103'), undefined, '번호로 찾기를 끈 회원은 나오지 않는다');
   assert.equal(formatPhone('01000000101'), '010-0000-0101');
+  assert.equal(findMemberByEmail(' Minji.Kim@Aqua.example ')?.tag, 'minji.k', '이메일은 대소문자와 앞뒤 공백을 무시한다');
+  assert.equal(findMemberByEmail('minji.kim@aqua'), undefined, '이메일 일부로는 찾지 않는다');
+  assert.equal(findMemberByEmail('minji@aqua.example'), undefined);
+  assert.equal(findMemberByEmail('junho@aqua.example'), undefined, '이메일로 찾기를 끈 회원은 나오지 않는다');
   assert.equal(tagLink('minji.k'), 'https://aqua.example/@minji.k');
 });
 

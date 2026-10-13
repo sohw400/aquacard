@@ -19,12 +19,13 @@ import Benefits from './pages/Benefits';
 import Reserve from './pages/Reserve';
 import Settings from './pages/Settings';
 import ActivityPage, { type ActivityFilter } from './pages/ActivityPage';
+import Statement from './pages/Statement';
 import { applyAction, createInitialState, loadState, saveState } from './lib/engine';
 import { money, percent, won } from './lib/format';
 import { PLANS } from './lib/policy';
 import type { Action, AppState, CardStage, FundingSymbol, Payment, PaymentChannel, Transaction } from './lib/types';
 
-type Page = 'home' | 'card' | 'benefits' | 'settings' | 'reserve' | 'activity' | 'limits' | 'channels' | 'notifications' | 'faq' | 'terms';
+type Page = 'home' | 'card' | 'benefits' | 'settings' | 'reserve' | 'activity' | 'statement' | 'limits' | 'channels' | 'notifications' | 'faq' | 'terms';
 type MainPage = 'home' | 'card' | 'benefits' | 'settings';
 type Dialog = { type: 'payment' } | { type: 'refund'; payment: Payment } | { type: 'guide' } | { type: 'reset' };
 type Toast = { message: string; type: 'success' | 'error' | 'info' };
@@ -36,7 +37,7 @@ const STAGE_NAMES: Record<CardStage, string> = {
 };
 const PAGE_TITLES: Record<Page, string> = {
   home: '홈', card: '카드', benefits: '혜택', settings: '전체',
-  reserve: '리저브', activity: '거래 내역', limits: '결제 한도', channels: '온라인·해외 결제', notifications: '알림', faq: '자주 묻는 질문', terms: '약관 및 정책',
+  reserve: '리저브', activity: '거래 내역', statement: '연간 거래 내역', limits: '결제 한도', channels: '온라인·해외 결제', notifications: '알림', faq: '자주 묻는 질문', terms: '약관 및 정책',
 };
 const PAYMENT_PRESETS = [['한강커피', 5_800, 'store'], ['온라인 쇼핑', 89_000, 'online'], ['도쿄 카페', 7_200, 'overseas']] as const;
 const CHANNELS: [PaymentChannel, string][] = [['store', '매장'], ['online', '온라인'], ['overseas', '해외']];
@@ -231,7 +232,8 @@ export default function App() {
         onChange={(card) => { perform({ type: 'SET_CARD', card }); }} onAction={(action, message) => perform(action, message) !== null} onDeposit={() => setFunding({ mode: 'deposit' })} onNotify={(message) => notify(message)} /></div>}
       {page === 'benefits' && <Benefits state={state} onReserve={() => navigate('reserve')} onRewardsAuto={setRewardsAuto} />}
       {page === 'reserve' && <Reserve state={state} onMove={setReserveMove} onAutoUse={setReserveAuto} />}
-      {page === 'activity' && <ActivityPage state={state} filter={activityFilter} onFilter={setActivityFilter} onFunding={openFundingOperation} onDetail={setDetailItem} onRefund={openRefund} />}
+      {page === 'activity' && <ActivityPage state={state} filter={activityFilter} onFilter={setActivityFilter} onFunding={openFundingOperation} onDetail={setDetailItem} onRefund={openRefund} onStatement={() => navigate('statement')} />}
+      {page === 'statement' && <Statement state={state} now={Date.now() + state.clockOffsetMs} />}
       {page === 'settings' && <Settings state={state} account={account} cardStatus={cardStatus} go={(target) => navigate(target as Page)} onRewardsAuto={setRewardsAuto} onReserveAuto={setReserveAuto}
         onReceive={() => setReceiving(true)} onPassword={() => setPasswordSheet(true)} onSignOut={() => perform({ type: 'SIGN_OUT' })} onClose={() => setClosingAccount(true)}
         onAdvanceDay={() => perform({ type: 'ADVANCE_DAY' }, '하루치 보상을 쌓았어요.')} onRate={(rate) => perform({ type: 'CHANGE_RATE', rate }, `리저브 기본 보상률을 연 ${percent(rate)}로 바꿨어요.`)} onReset={() => setDialog({ type: 'reset' })} />}

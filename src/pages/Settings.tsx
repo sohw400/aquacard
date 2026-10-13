@@ -8,7 +8,7 @@ interface SettingsProps {
   state: AppState;
   account: Account;
   cardStatus: string;
-  go: (page: 'card' | 'activity' | 'limits' | 'channels' | 'notifications' | 'faq' | 'terms') => void;
+  go: (page: 'card' | 'activity' | 'statement' | 'limits' | 'channels' | 'notifications' | 'faq' | 'terms') => void;
   onRewardsAuto: (enabled: boolean) => void;
   onReserveAuto: (enabled: boolean) => void;
   onReceive: () => void;
@@ -36,6 +36,7 @@ export default function Settings({ state, account, cardStatus, go, onRewardsAuto
       <NavRow label="결제 한도" value={`1회 ${state.controls.perPayment / 10_000}만원`} testId="open-limits" onClick={() => go('limits')} />
       <NavRow label="온라인·해외 결제" value={channelText(state.controls.online, state.controls.overseas)} testId="open-channels" onClick={() => go('channels')} />
       <NavRow label="이용 내역" onClick={() => go('activity')} />
+      <NavRow label="연간 거래 내역" detail="세금 신고에 쓸 내역 복사" testId="settings-statement" onClick={() => go('statement')} />
     </section>
 
     <section className="settings-group" aria-labelledby="settings-pay">
@@ -46,7 +47,7 @@ export default function Settings({ state, account, cardStatus, go, onRewardsAuto
 
     <section className="settings-group" aria-labelledby="settings-account">
       <h2 id="settings-account">계정</h2>
-      <NavRow label="내 태그와 QR" detail={account.findByPhone ? '휴대폰 번호로도 찾을 수 있어요' : '태그와 QR로 받아요'} value={`@${account.tag}`} testId="open-receive" onClick={onReceive} />
+      <NavRow label="내 태그와 QR" detail={`태그·QR${account.findByPhone ? '·휴대폰 번호' : ''}${account.findByEmail ? '·이메일' : ''}로 받아요`} value={`@${account.tag}`} testId="open-receive" onClick={onReceive} />
       <dl className="breakdown plain"><div><dt>이메일</dt><dd>{maskEmail(account.email)}</dd></div><div><dt>휴대폰</dt><dd>{maskPhone(account.phone)}</dd></div><div><dt>본인확인</dt><dd>{dateLabel(account.verifiedAt)}</dd></div></dl>
       <NavRow label="비밀번호 변경" testId="open-password" onClick={onPassword} />
       <NavRow label="알림" value={state.notifications.payments && state.notifications.funding ? '모두 받음' : '일부 끔'} testId="open-notifications" onClick={() => go('notifications')} />
