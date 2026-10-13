@@ -12,7 +12,7 @@ export const POLICY = {
   monthlyPaymentLimit: 5_000_000,
   secondsPerYear: 365 * 24 * 60 * 60,
   physicalIssueFee: 9_900,
-  deliveryEstimate: '영업일 5–7일',
+  deliveryEstimate: '영업일 5일부터 7일',
 } as const;
 
 export const PLANS: Record<Plan, { name: string; monthlyFee: number; cashbackRate: number; cashbackCap: number }> = {

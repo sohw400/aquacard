@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  ArrowDownLeft, ArrowLeftRight, ArrowUpRight, CheckCircle2, ChevronRight,
-  Clock3, CreditCard, Info, LayoutDashboard, List, Plus, RefreshCw, ArrowRight, LockKeyhole,
-  Settings, Wallet, Waves, X,
+  ArrowDownLeft, ArrowUpRight, CheckCircle2, ChevronRight, ChevronLeft,
+  Clock3, CreditCard, Info, List, RefreshCw, LockKeyhole, CirclePercent, Menu,
+  Wallet, Waves, X,
 } from 'lucide-react';
 import CardApplication from './components/CardApplication';
 import CardVisual from './components/CardVisual';
@@ -12,9 +12,10 @@ import PaymentReceipt, { type PaymentReceiptData } from './components/PaymentRec
 import { applyAction, availableToSpend, createInitialState, loadState, portfolioValue, saveState } from './lib/engine';
 import { money, percent, shortDate, won } from './lib/format';
 import { ASSETS, PLANS, POLICY } from './lib/policy';
+import { getCashbackSummary } from './lib/rewards';
 import type { Action, AppState, AssetSymbol, CardStage, Payment, Transaction } from './lib/types';
 
-type Page = 'home' | 'wallet' | 'card' | 'reserve' | 'activity' | 'settings';
+type Page = 'home' | 'wallet' | 'benefits' | 'card' | 'reserve' | 'activity' | 'settings';
 type Dialog =
   | { type: 'fund'; bucket: 'spend' | 'reserve' }
   | { type: 'withdraw'; bucket: 'spend' | 'reserve' }
@@ -23,13 +24,12 @@ type Dialog =
   | { type: 'convert'; symbol: AssetSymbol }
   | { type: 'payment' }
   | { type: 'refund'; payment: Payment }
-  | { type: 'rewards' }
   | { type: 'guide' }
   | { type: 'reset' };
 type Toast = { message: string; type: 'success' | 'error' | 'info' };
 
 const SYMBOLS: AssetSymbol[] = ['USDC', 'USDT', 'BTC', 'ETH'];
-const MAIN_PAGES: Page[] = ['home', 'wallet', 'card', 'reserve'];
+const MAIN_PAGES: Page[] = ['home', 'wallet', 'benefits', 'settings'];
 const COIN_GLYPHS: Record<AssetSymbol, string> = { USDC: '$', USDT: '₮', BTC: '₿', ETH: 'Ξ' };
 const STAGE_NAMES: Record<CardStage, string> = {
   not_applied: '미발급', identity: '신청 중', plan: '신청 중', details: '신청 중',
@@ -37,12 +37,13 @@ const STAGE_NAMES: Record<CardStage, string> = {
   issued: '활성화 대기', active: '사용 가능', rejected: '신청 미승인',
 };
 const PAGES = {
-  home: { title: '홈', icon: LayoutDashboard },
-  wallet: { title: '지갑', icon: Wallet },
-  card: { title: '카드', icon: CreditCard },
+  home: { title: '카드', icon: CreditCard },
+  wallet: { title: '자산', icon: Wallet },
+  benefits: { title: '혜택', icon: CirclePercent },
+  card: { title: '카드 관리', icon: CreditCard },
   reserve: { title: '리저브', icon: Waves },
   activity: { title: '이용 내역', icon: List },
-  settings: { title: '설정', icon: Settings },
+  settings: { title: '전체', icon: Menu },
 };
 
 function sourcesFor(state: AppState, amount: number) {
@@ -73,7 +74,7 @@ function ActivityList({ items, onRefund, payments, detailed = false }: { items: 
     return <div className="activity-row" key={item.id}>
       <span className="activity-icon"><Icon size={18} /></span>
       <div className="activity-copy"><strong>{item.title}</strong><span>{shortDate(item.timestamp)}{item.status === 'pending' ? ' · 승인 중' : item.status === 'refunded' ? ' · 전액 환불' : item.status === 'partially_refunded' ? ' · 부분 환불' : ''}</span>{detailed && <details className="transaction-details"><summary>상세</summary><p>{item.note}</p></details>}</div>
-      <div className={`activity-amount${positive ? ' positive' : ''}`}><strong>{item.amount === 0 ? '—' : `${item.amount < 0 ? '−' : positive ? '+' : ''}${money(Math.abs(item.amount))}`}</strong>{refundable && <button className="text-button" onClick={() => onRefund(payment)} aria-label={`${payment.merchant} 환불`}>환불</button>}</div>
+      <div className={`activity-amount${positive ? ' positive' : ''}`}><strong>{item.amount === 0 ? money(0) : `${item.amount < 0 ? '−' : positive ? '+' : ''}${money(Math.abs(item.amount))}`}</strong>{refundable && <button className="text-button" onClick={() => onRefund(payment)} aria-label={`${payment.merchant} 환불`}>환불</button>}</div>
     </div>;
   })}</div>;
 }
@@ -106,6 +107,8 @@ export default function App() {
   const [state, setState] = useState<AppState>(() => loadState());
   const stateRef = useRef(state);
   const [page, setPage] = useState<Page>('home');
+  const [trail, setTrail] = useState<Page[]>([]);
+  const [activityFilter, setActivityFilter] = useState<'all' | 'payment' | 'cash'>('all');
   const [selectedAsset, setSelectedAsset] = useState<AssetSymbol | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [funding, setFunding] = useState<{ mode: 'deposit' | 'withdraw'; symbol?: AssetSymbol } | null>(null);
@@ -185,20 +188,26 @@ export default function App() {
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
   function startPayment() {
-    if (state.card.stage !== 'active') {
-      setPage('card');
-      notify('카드를 발급하고 활성화해 주세요.', 'info');
+    if (state.card.stage === 'not_applied') {
+      const result = perform({ type: 'SET_CARD', card: { ...state.card, stage: 'identity' } });
+      if (result) navigate('card');
       return;
     }
-    if (state.card.locked) {
-      setPage('card');
-      notify('카드 잠금을 해제해 주세요.', 'info');
+    if (state.card.stage !== 'active' || state.card.locked) {
+      navigate('card');
       return;
     }
     setDialog({ type: 'payment' });
   }
   function navigate(next: Page) {
+    if (next === page) return;
+    setTrail(MAIN_PAGES.includes(next) ? [] : [...trail, page]);
     setPage(next);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+  function goBack() {
+    setPage(trail.at(-1) ?? 'home');
+    setTrail(trail.slice(0, -1));
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
   function resetDemo() {
@@ -218,58 +227,68 @@ export default function App() {
   const accruedDisplay = state.accrued.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const dailyReward = Math.min(state.reserve, POLICY.reserveEligibleCap) * state.reserveRate / 365;
   const cardStatus = state.card.locked && state.card.stage === 'active' ? '일시 잠금' : STAGE_NAMES[state.card.stage];
-  const cardAction = state.card.stage === 'not_applied' ? '카드 신청' : state.card.stage === 'active' ? '카드 관리' : '신청 이어하기';
+  const cardAction = state.card.stage === 'not_applied' ? '카드 신청' : state.card.stage === 'active' ? state.card.locked ? '잠금 해제' : '결제 체험' : state.card.stage === 'needs_info' ? '정보 확인' : ['submitted', 'approved', 'issued'].includes(state.card.stage) ? '발급 상태' : state.card.stage === 'rejected' ? '다시 신청' : '신청 이어하기';
+  const activeTab = MAIN_PAGES.includes(page) ? page : trail.find((item) => MAIN_PAGES.includes(item)) ?? 'home';
+  const cashback = getCashbackSummary(state);
+  const filteredTransactions = state.transactions.filter((item) => activityFilter === 'all' || (activityFilter === 'payment' ? item.kind === 'payment' || item.kind === 'refund' : ['deposit', 'convert', 'transfer'].includes(item.kind)));
+  const claimRewards = () => perform({ type: 'REDEEM_ACCRUAL' }, '리워드를 받았습니다.');
   const reserveToggle = <Toggle checked={state.reserveAuto} onChange={(enabled) => perform({ type: 'SET_RESERVE_AUTO', enabled }, `리저브 자동 사용 ${enabled ? '켜짐' : '꺼짐'}`)} label="리저브 자동 사용" detail="결제 잔액이 부족할 때만 원금을 사용합니다. 사용한 금액은 적립이 중단됩니다." testId="reserve-auto" />;
   const rewardsToggle = <Toggle checked={state.rewardsAuto} onChange={(enabled) => perform({ type: 'SET_REWARDS_AUTO', enabled }, `리워드 우선 사용 ${enabled ? '켜짐' : '꺼짐'}`)} label="리워드 우선 사용" detail="카드 결제에 리워드를 먼저 사용합니다." testId="rewards-auto" />;
 
   return <div className={`app-shell page-${page}`}>
-    <aside className="sidebar">
-      <button className="brand" onClick={() => navigate('home')} aria-label="Aqua Card 홈"><span className="brand-word">aqua</span><span className="brand-caption">CARD</span></button>
-      <nav className="sidebar-nav bottom-nav" aria-label="주 메뉴">{MAIN_PAGES.map((key) => {
+    <header className="app-header">
+      <button className="brand" onClick={() => navigate('home')} aria-label="Aqua Card 첫 화면">Aqua Card</button>
+      <nav className="primary-nav bottom-nav" aria-label="주 메뉴">{MAIN_PAGES.map((key) => {
         const Icon = PAGES[key].icon;
-        return <button key={key} className={`nav-item${page === key ? ' active' : ''}`} aria-current={page === key ? 'page' : undefined} data-testid={`nav-${key}`} onClick={() => navigate(key)}><Icon size={21} /><span>{PAGES[key].title}</span></button>;
+        return <button key={key} className={`nav-item${activeTab === key ? ' active' : ''}`} aria-current={activeTab === key ? 'page' : undefined} data-testid={`nav-${key}`} onClick={() => navigate(key)}><Icon size={21} /><span>{PAGES[key].title}</span></button>;
       })}</nav>
-      <div className="sidebar-footer">Aqua Card · 서비스 체험</div>
-    </aside>
+    </header>
     <main className="main-content">
-      <header className="topbar"><div className="page-heading"><h1>{page === 'home' ? <span className="mobile-wordmark">aqua<span>card</span></span> : PAGES[page].title}</h1></div><div className="topbar-actions"><button className="utility-button" aria-label="체험 안내" onClick={() => setDialog({ type: 'guide' })}><Info size={20} /></button><button className={`utility-button${page === 'activity' ? ' active' : ''}`} aria-label="이용 내역" aria-current={page === 'activity' ? 'page' : undefined} data-testid="nav-activity" onClick={() => navigate('activity')}><List size={21} /></button><button className={`utility-button${page === 'settings' ? ' active' : ''}`} aria-label="설정" aria-current={page === 'settings' ? 'page' : undefined} data-testid="nav-settings" onClick={() => navigate('settings')}><Settings size={21} /></button></div></header>
-      <div className="demo-notice"><span>모의 체험 · 실제 자금 이동과 카드 발급은 없습니다.</span></div>
+      <header className="topbar"><div className="page-heading">{!MAIN_PAGES.includes(page) && <button className="icon-button" aria-label="이전 화면" data-testid="go-back" onClick={goBack}><ChevronLeft size={24} /></button>}<h1>{page === 'home' ? '내 카드' : PAGES[page].title}</h1></div><div className="topbar-actions"><button className="utility-button" aria-label="이용 내역" data-testid="nav-activity" onClick={() => navigate('activity')}><Clock3 size={21} /></button><button className="utility-button" aria-label="체험 안내" onClick={() => setDialog({ type: 'guide' })}><Info size={20} /></button></div></header>
+      <p className="demo-notice">체험 화면입니다. 실제 자금 이동과 카드 발급은 없습니다.</p>
 
       {page === 'home' && <div className="card-home">
         <section className="card-center" aria-label="내 Aqua 카드">
-          <div className="card-center-heading"><div><h2>{plan.name}</h2><span className={`card-state${state.card.stage === 'active' && !state.card.locked ? ' is-ready' : ''}`}><i />{cardStatus}</span></div><button className="text-button" data-testid="card-cta" onClick={() => navigate('card')}>{cardAction}<ChevronRight size={16} /></button></div>
+          <div className="card-center-heading"><span>{plan.name}</span><span className="card-state">{cardStatus}</span></div>
           <div className="hero-card-stage"><CardVisual card={state.card} variant="hero" /></div>
-          <div className="card-spendable"><details className="balance-disclosure"><summary className="spendable-summary" aria-label="카드 사용 가능 금액과 잔액 구성"><span>카드로 쓸 수 있는 금액 <ChevronRight size={12} /></span><strong data-testid="available-balance">{money(availableToSpend(state))}</strong></summary><dl><div><dt>결제 잔액</dt><dd>{money(state.spend)}</dd></div><div><dt>리워드 <span>{state.rewardsAuto ? '사용 중' : '사용 꺼짐'}</span></dt><dd>{money(state.rewardsAuto ? state.rewards : 0)}</dd></div><div><dt>리저브 <span>{state.reserveAuto ? '자동 사용' : '사용 꺼짐'}</span></dt><dd>{money(state.reserveAuto ? state.reserve : 0)}</dd></div></dl></details></div>
-          <div className="card-main-actions"><button className="btn secondary" data-testid="open-deposit" onClick={() => setFunding({ mode: 'deposit' })}><Plus size={18} />충전</button><button className="btn primary" data-testid="open-payment" onClick={startPayment}><CreditCard size={18} />{state.card.stage === 'active' ? '결제 체험' : '카드 신청하기'}</button></div>
-          {state.card.locked && <p className="card-lock-notice"><LockKeyhole size={14} />카드가 잠겨 있습니다. 카드 관리에서 해제해 주세요.</p>}
+          <button className="card-manage-link" data-testid="card-cta" onClick={() => navigate('card')}>카드 관리<ChevronRight size={16} /></button>
         </section>
-        <section className="overview-benefits" aria-label="리워드와 페이백">
-          <button className="rewards-overview" data-testid="open-rewards" onClick={() => setDialog({ type: 'rewards' })}><span><span className="overview-label">사용 가능 리워드</span><strong data-testid="available-rewards">{money(state.rewards)}</strong></span><span className="reward-use-state">{state.rewardsAuto ? '결제 시 우선 사용' : '우선 사용 꺼짐'}<ChevronRight size={15} /></span></button>
-          <RewardsSummary state={state} onOpen={() => setDialog({ type: 'rewards' })} />
+        <section className="home-account" aria-label="카드 잔액과 결제">
+          <details className="balance-disclosure"><summary className="spendable-summary" aria-label="카드 사용 가능 금액과 잔액 구성"><span>결제 가능 금액<ChevronRight size={14} /></span><strong data-testid="available-balance">{money(availableToSpend(state))}</strong></summary><dl className="account-breakdown"><div><dt>결제 잔액</dt><dd>{money(state.spend)}</dd></div><div><dt>리워드 <span>{state.rewardsAuto ? '사용 중' : '사용 꺼짐'}</span></dt><dd>{money(state.rewardsAuto ? state.rewards : 0)}</dd></div><div><dt>리저브 <span>{state.reserveAuto ? '자동 사용' : '사용 꺼짐'}</span></dt><dd>{money(state.reserveAuto ? state.reserve : 0)}</dd></div></dl></details>
+          <div className="card-main-actions"><button className="btn secondary" data-testid="open-deposit" onClick={() => setFunding({ mode: 'deposit' })}>충전</button><button className="btn primary" data-testid="open-payment" onClick={startPayment}>{cardAction}</button></div>
+          {state.card.locked && <p className="card-lock-notice"><LockKeyhole size={14} />카드 관리에서 잠금을 해제해 주세요.</p>}
+          <div className="home-benefit-links"><button className="account-link" data-testid="open-rewards" onClick={() => navigate('benefits')}><span>이번 달 페이백{cashback.pending > 0 && <small>{money(cashback.pending)} 확정 대기</small>}</span><strong data-testid="home-cashback-confirmed">{money(cashback.confirmed)}</strong><ChevronRight size={16} /></button><button className="account-link" onClick={() => navigate('benefits')}><span>사용 가능 리워드</span><strong data-testid="available-rewards">{money(state.rewards)}</strong><ChevronRight size={16} /></button></div>
         </section>
-        <section className="overview-reserve"><div className="section-head"><h2>리저브</h2><span>연 {percent(state.reserveRate)} <span className="muted">· 변동</span></span></div><button className="reserve-overview" onClick={() => navigate('reserve')}><span><span className="overview-label">보관 중인 금액</span><strong>{money(state.reserve)}</strong></span><ArrowUpRight size={22} /></button><div className="reserve-accrual-line"><span>받을 보상 <strong data-testid="live-accrual">{money(Math.floor(state.accrued))}</strong></span><span>미수령</span></div><p>결제 잔액과 수수료 없이 옮겨요.</p></section>
-        <section className="overview-activity"><div className="section-head"><h2>최근 이용</h2><button className="text-button" onClick={() => navigate('activity')}>전체 보기<ChevronRight size={15} /></button></div><ActivityList items={state.transactions.slice(0, 4)} payments={state.payments} onRefund={(payment) => setDialog({ type: 'refund', payment })} /></section>
+        <section className="home-transactions"><div className="section-head"><h2>최근 카드 이용</h2><button className="text-button" onClick={() => navigate('activity')}>전체 내역<ChevronRight size={16} /></button></div><ActivityList items={state.transactions.filter((item) => item.kind === 'payment' || item.kind === 'refund').slice(0, 4)} payments={state.payments} onRefund={(payment) => setDialog({ type: 'refund', payment })} /></section>
       </div>}
 
       {page === 'wallet' && <div className="page-stack wallet-page">
-        <section className="panel wallet-cash"><div className="account-heading"><span className="account-mark"><Wallet size={23} /></span><span>카드 결제 계정<span>KRW · 원화 기준</span></span></div><h2>결제 잔액</h2><strong className="display-value">{money(state.spend)}</strong><div className="actions"><button className="btn primary" data-testid="wallet-deposit" onClick={() => setFunding({ mode: 'deposit' })}><Plus size={17} />충전</button><button className="btn secondary" data-testid="wallet-withdraw" onClick={() => setFunding({ mode: 'withdraw' })}><ArrowUpRight size={17} />출금</button></div><div className="wallet-route"><span>코인 입금</span><ArrowRight size={15} /><strong>원화 잔액</strong><ArrowRight size={15} /><span>카드 결제</span></div><p className="small-note">입금한 코인은 확인한 견적에 따라 원화로 전환됩니다.</p></section>
-        <div className="wallet-connected"><button onClick={() => navigate('reserve')}><span><Waves size={19} />리저브</span><strong>{money(state.reserve)}<ChevronRight size={16} /></strong></button><button onClick={() => setDialog({ type: 'rewards' })}><span>결제 전용 리워드</span><strong>{money(state.rewards)}<ChevronRight size={16} /></strong></button></div>
-        <section className="panel wallet-coins"><div className="section-head"><div><h2>보유 코인 전환</h2><p>기존에 보유한 코인을 결제 잔액으로</p></div><span className="muted">모의 시세</span></div><div className="wallet-asset-list">{SYMBOLS.map((symbol) => <div className={`asset-card${selectedAsset === symbol ? ' selected' : ''}`} key={symbol}><button className="wallet-asset-button" data-testid={`asset-select-${symbol}`} aria-expanded={selectedAsset === symbol} aria-controls={`asset-detail-${symbol}`} onClick={() => setSelectedAsset((current) => current === symbol ? null : symbol)}><CoinIcon symbol={symbol} /><span className="asset-name"><strong>{symbol}</strong><span>{state.holdings[symbol].toLocaleString('en-US', { maximumFractionDigits: 8 })} {symbol}</span></span><strong className="asset-value">{money(state.holdings[symbol] * ASSETS[symbol].price)}</strong><ChevronRight size={18} /></button>{selectedAsset === symbol && <div className="asset-expanded" id={`asset-detail-${symbol}`}><div className="asset-quote"><span>1 {symbol} = {money(ASSETS[symbol].price)}</span><span>{ASSETS[symbol].network}</span></div><div className="asset-actions" data-testid={`asset-actions-${symbol}`}><button className="btn primary" onClick={() => setDialog({ type: 'convert', symbol })} aria-label={`${symbol} 전환`}>원화로 전환</button><button className="btn secondary" onClick={() => setDialog({ type: 'asset', symbol, mode: 'withdraw' })} aria-label={`${symbol} 출금`}>코인 출금</button></div></div>}</div>)}</div><p className="small-note">기존 코인 잔액은 그대로 유지됩니다. 새 입금은 원화 결제 잔액에 반영됩니다.</p></section>
-        <details className="rule-details"><summary>자산과 입출금 안내</summary><p>총 보유 자산 {money(portfolioValue(state))}은 결제 잔액, 리저브 원금, 모의 시세 기준 코인 평가액의 합계입니다. 결제 전용 리워드는 포함하지 않습니다.</p><p>원화 스테이블은 발행사 제휴 후 지원 예정입니다. 현재는 원화 기준 모의 잔액으로 체험합니다.</p></details>
+        <section className="account-section wallet-cash"><h2>결제 잔액</h2><strong className="display-value">{money(state.spend)}</strong><p className="section-description">카드 결제와 코인 출금에 사용할 수 있습니다.</p><div className="actions"><button className="btn primary" data-testid="wallet-deposit" onClick={() => setFunding({ mode: 'deposit' })}>충전</button><button className="btn secondary" data-testid="wallet-withdraw" onClick={() => setFunding({ mode: 'withdraw' })}>출금</button></div></section>
+        <section className="account-section wallet-reserve"><button className="account-link reserve-link" data-testid="open-reserve" onClick={() => navigate('reserve')}><span>리저브<small>연 {percent(state.reserveRate)} 보상률, 변동 가능</small></span><strong>{money(state.reserve)}</strong><ChevronRight size={17} /></button><p className="section-description">결제 잔액에서 옮겨 보관하는 금액입니다.</p></section>
+        <section className="account-section wallet-coins"><div className="section-head"><h2>보유 코인</h2><span className="muted">모의 시세</span></div><div className="wallet-asset-list">{SYMBOLS.map((symbol) => <div className={`asset-card${selectedAsset === symbol ? ' selected' : ''}`} key={symbol}><button className="wallet-asset-button" data-testid={`asset-select-${symbol}`} aria-expanded={selectedAsset === symbol} aria-controls={`asset-detail-${symbol}`} onClick={() => setSelectedAsset((current) => current === symbol ? null : symbol)}><CoinIcon symbol={symbol} /><span className="asset-name"><strong>{symbol}</strong><span>{state.holdings[symbol].toLocaleString('en-US', { maximumFractionDigits: 8 })} {symbol}</span></span><strong className="asset-value">{money(state.holdings[symbol] * ASSETS[symbol].price)}</strong><ChevronRight size={16} /></button>{selectedAsset === symbol && <div className="asset-expanded" id={`asset-detail-${symbol}`}><div className="asset-quote"><span>1 {symbol} = {money(ASSETS[symbol].price)}</span><span>{ASSETS[symbol].network}</span></div><div className="asset-actions" data-testid={`asset-actions-${symbol}`}><button className="btn primary" onClick={() => setDialog({ type: 'convert', symbol })} aria-label={`${symbol} 전환`}>원화로 전환</button><button className="btn secondary" onClick={() => setDialog({ type: 'asset', symbol, mode: 'withdraw' })} aria-label={`${symbol} 출금`}>코인 출금</button></div></div>}</div>)}</div><p className="section-description">기존에 보유한 코인입니다. 새로 입금하는 코인은 견적 확인 후 원화 결제 잔액으로 전환됩니다.</p></section>
+        <details className="rule-details"><summary>자산 계산 및 입출금 안내</summary><p>총 보유 자산 {money(portfolioValue(state))}은 결제 잔액, 리저브 원금, 코인 평가액의 합계입니다. 결제 전용 리워드는 포함하지 않습니다.</p><p>원화 스테이블은 발행사 제휴 후 지원 예정입니다. 현재 잔액과 입출금은 모두 모의 처리됩니다.</p></details>
       </div>}
 
-      {page === 'card' && <div className="card-page"><CardApplication card={state.card} onChange={(card) => { perform({ type: 'SET_CARD', card }); }} onNotify={(message) => notify(message)} /><section className="panel card-cashback"><RewardsSummary state={state} onOpen={() => setDialog({ type: 'rewards' })} /></section>{state.card.stage === 'active' && <section className="panel card-payment-panel"><div><h2>카드 결제</h2><p className="muted">사용 가능 금액 {money(availableToSpend(state))}</p></div><button className="btn primary" onClick={startPayment} data-testid="card-payment">결제 체험</button></section>}</div>}
+      {page === 'benefits' && <div className="page-stack benefits-page" data-testid="page-benefits">
+        <section className="account-section rewards-account"><h2>사용 가능 리워드</h2><strong className="display-value" data-testid="reward-balance">{money(state.rewards)}</strong><p className="section-description">카드 결제 전용입니다. 출금할 수 없습니다.</p>{rewardsToggle}</section>
+        <section className="account-section"><RewardsSummary state={state} /><details className="rule-details"><summary>페이백 적립 기준</summary><p>리워드 사용분을 제외한 결제 금액에 {percent(plan.cashbackRate)}를 적립합니다. 월 최대 {money(plan.cashbackCap)}까지 받을 수 있습니다.</p><p>확정 페이백은 이번 달 결제에서 확정된 금액에 환불 조정을 반영한 금액입니다. 현재 사용 가능한 리워드 잔액과는 다릅니다.</p><p>지난달 결제가 이번 달에 확정되어도 지난달 페이백으로 집계합니다. 이전 페이백 조정이 있으면 새 적립액에서 먼저 반영합니다.</p></details></section>
+        <section className="account-section reserve-pending"><div className="section-head"><h2>리저브에서 받을 보상</h2><button className="text-button" onClick={() => navigate('reserve')}>리저브 보기<ChevronRight size={16} /></button></div><strong className="pending-value" data-testid="reserve-pending-rewards">{money(Math.floor(state.accrued))}</strong><p className="section-description">아직 받지 않은 보상입니다. 받은 뒤 카드 결제에 사용할 수 있습니다.</p><button className="btn secondary" data-testid="claim-rewards" disabled={state.accrued < 1 - 1e-9} onClick={claimRewards}>리워드 받기</button></section>
+        {state.rewardDebt > 0 && <p className="adjustment-note">이전 페이백 조정 {money(state.rewardDebt)}은 앞으로 받을 리워드에서 반영됩니다.</p>}
+        <RewardHistory state={state} />
+      </div>}
+
+      {page === 'card' && <div className="card-page"><CardApplication card={state.card} onChange={(card) => { perform({ type: 'SET_CARD', card }); }} onNotify={(message) => notify(message)} /></div>}
 
       {page === 'reserve' && <div className="page-stack reserve-page">
-        <section className="panel reserve-main"><div className="reserve-title-art" aria-hidden="true"><Waves size={38} /><span>RESERVE</span></div><div className="section-head"><h2>리저브 잔액</h2><span className="muted">연 {percent(state.reserveRate)} · 변동</span></div><strong className="display-value" data-testid="reserve-principal">{money(state.reserve)}</strong><div className="actions"><button className="btn primary" onClick={() => setDialog({ type: 'transfer', direction: 'in' })}>넣기</button><button className="btn secondary" onClick={() => setDialog({ type: 'transfer', direction: 'out' })}>빼기</button></div><p className="small-note">넣고 뺄 때 추가 전환이나 수수료가 없습니다.</p></section>
-        <section className="panel reserve-reward"><h2>적립 중인 보상</h2><strong className="live-value" data-testid="reserve-accrual">₩{accruedDisplay}</strong><div className="summary-row"><span>현재 잔액의 예상 일 보상</span><strong>약 {money(dailyReward)}</strong></div><button className="btn primary" data-testid="claim-rewards" disabled={state.accrued < 1 - 1e-9} onClick={() => perform({ type: 'REDEEM_ACCRUAL' }, '보상을 결제용 리워드로 전환했습니다.')}>결제 리워드로 받기</button><p className="small-note">1원부터 받을 수 있습니다. 받은 리워드는 카드 결제에만 사용됩니다.</p><div className="summary-row"><span>사용 가능한 리워드</span><strong>{money(state.rewards)}</strong></div></section>
-        <section className="panel">{reserveToggle}</section>
-        <details className="rule-details"><summary>보상·이용 조건</summary><div className="details-body"><ul><li>연 보상률은 변동할 수 있으며 단리로 계산합니다.</li><li>최대 {money(POLICY.reserveEligibleCap)}까지 보상 계산에 반영합니다.</li><li>이동·출금은 최소 1,000원부터 가능합니다.</li><li>원금을 사용하면 해당 시점부터 남은 잔액을 기준으로 적립합니다.</li><li>리워드는 출금·코인 전환이 불가합니다. 1원 미만 적립은 유지됩니다.</li><li>원금 보장 예금이 아닙니다. 실제 운용·수탁·상환 조건은 제휴 후 확정됩니다.</li></ul>{state.rewardDebt > 0 && <p>이전 페이백 조정 {money(state.rewardDebt)}은 향후 리워드에서 먼저 반영됩니다.</p>}<div className="rate-history"><h3>보상률 변경 기록</h3>{state.rateHistory.slice().reverse().slice(0, 5).map((item, index) => <div key={`${item.timestamp}-${index}`}><span>{shortDate(item.timestamp)}</span><strong>연 {percent(item.rate)}</strong></div>)}</div><p>외부 입출금은 결제 잔액을 거칩니다. 리저브에서 빼낸 뒤 지갑에서 출금해 주세요.</p></div></details>
+        <section className="account-section reserve-main"><h2>리저브 잔액</h2><strong className="display-value" data-testid="reserve-principal">{money(state.reserve)}</strong><div className="actions"><button className="btn primary" onClick={() => setDialog({ type: 'transfer', direction: 'in' })}>넣기</button><button className="btn secondary" onClick={() => setDialog({ type: 'transfer', direction: 'out' })}>빼기</button></div><p className="section-description">결제 잔액과 이동할 때 추가 전환이나 수수료가 없습니다.</p></section>
+        <section className="account-section reserve-reward"><div className="section-head"><h2>적립 중인 보상</h2><span className="rate-label">연 {percent(state.reserveRate)}<span>변동</span></span></div><strong className="live-value" data-testid="reserve-accrual">{accruedDisplay}원</strong><dl className="account-breakdown"><div><dt>현재 잔액의 예상 일 보상</dt><dd>약 {money(dailyReward)}</dd></div></dl><button className="btn secondary" data-testid="claim-rewards" disabled={state.accrued < 1 - 1e-9} onClick={claimRewards}>리워드 받기</button><p className="section-description">1원부터 받을 수 있습니다. 받은 리워드는 카드 결제에 사용합니다.</p></section>
+        <section className="account-section">{reserveToggle}</section>
+        <details className="rule-details"><summary>보상 및 이용 조건</summary><div className="details-body"><ul><li>연 보상률은 변동할 수 있으며 단리로 계산합니다.</li><li>최대 {money(POLICY.reserveEligibleCap)}까지 보상을 계산합니다.</li><li>넣기와 빼기는 최소 1,000원부터 가능합니다.</li><li>원금을 사용하면 이후에는 남은 잔액을 기준으로 적립합니다.</li><li>받은 리워드는 출금하거나 코인으로 전환할 수 없습니다.</li><li>원금 보장 예금이 아닙니다. 실제 운용 및 상환 조건은 제휴 후 확정됩니다.</li></ul><div className="rate-history"><h3>보상률 변경 기록</h3>{state.rateHistory.slice().reverse().slice(0, 5).map((item, index) => <div key={`${item.timestamp}-${index}`}><span>{shortDate(item.timestamp)}</span><strong>연 {percent(item.rate)}</strong></div>)}</div><p>외부로 출금하려면 결제 잔액으로 빼낸 뒤 자산 화면에서 출금해 주세요.</p></div></details>
       </div>}
 
-      {page === 'activity' && <div className="page-stack"><section className="panel"><div className="section-head"><h2>전체 내역</h2><span className="muted">{state.transactions.length}건</span></div><ActivityList detailed items={state.transactions} payments={state.payments} onRefund={(payment) => setDialog({ type: 'refund', payment })} /></section><details className="rule-details"><summary>카드 이용 현황</summary><dl className="settings-limits"><div><dt>이번 달 승인액</dt><dd>{money(state.monthlySpent)}</dd></div><div><dt>오늘 승인액</dt><dd>{money(state.dailySpent)}</dd></div><div><dt>이번 달 페이백</dt><dd>{money(state.monthlyCashback)} / {money(plan.cashbackCap)}</dd></div></dl></details></div>}
+      {page === 'activity' && <div className="page-stack activity-page"><div className="list-tabs" role="group" aria-label="내역 종류">{([['all', '전체'], ['payment', '카드'], ['cash', '입출금']] as const).map(([key, label]) => <button key={key} className={activityFilter === key ? 'selected' : ''} aria-pressed={activityFilter === key} onClick={() => setActivityFilter(key)}>{label}</button>)}</div><ActivityList detailed items={filteredTransactions} payments={state.payments} onRefund={(payment) => setDialog({ type: 'refund', payment })} /><details className="rule-details"><summary>카드 이용 현황</summary><dl className="account-breakdown"><div><dt>이번 달 승인액</dt><dd>{money(state.monthlySpent)}</dd></div><div><dt>오늘 승인액</dt><dd>{money(state.dailySpent)}</dd></div><div><dt>이번 달 페이백 한도 사용</dt><dd>{money(state.monthlyCashback)} / {money(plan.cashbackCap)}</dd></div></dl></details></div>}
 
-      {page === 'settings' && <div className="page-stack settings-page"><section className="panel settings-section"><h2>결제 설정</h2>{rewardsToggle}{reserveToggle}<details className="rule-details"><summary>결제 한도</summary><dl className="settings-limits"><div><dt>1회</dt><dd>{money(POLICY.perPaymentLimit)}</dd></div><div><dt>1일</dt><dd>{money(POLICY.dailyPaymentLimit)}</dd></div><div><dt>1개월</dt><dd>{money(POLICY.monthlyPaymentLimit)}</dd></div></dl></details></section><section className="panel settings-section"><h2>카드 혜택</h2><dl className="settings-limits"><div><dt>플랜</dt><dd>{plan.name}</dd></div><div><dt>월 이용료</dt><dd>{plan.monthlyFee ? money(plan.monthlyFee) : '무료'}</dd></div><div><dt>페이백</dt><dd>{percent(plan.cashbackRate)} · 월 최대 {money(plan.cashbackCap)}</dd></div></dl><p className="small-note">리워드 사용분은 페이백에서 제외합니다. 체험 중에는 이용료를 청구하지 않습니다.</p><button className="text-button" onClick={() => navigate('card')}>카드 보기 <ChevronRight size={16} /></button></section><details className="panel demo-tools" data-testid="demo-tools"><summary>체험 도구</summary><div className="details-body"><p className="small-note">아래 설정은 모의 자산과 시간에만 적용됩니다.</p><div className="demo-control"><div><strong>시간 진행</strong><p>현재 잔액으로 하루 보상을 계산합니다.</p></div><button className="btn secondary" data-testid="advance-day" onClick={() => perform({ type: 'ADVANCE_DAY' }, '모의 시간을 하루 진행했습니다.')}><Clock3 size={16} />+1일</button></div><div className="demo-control"><div><strong>연 보상률 변경</strong><p>변경 이후 적립에 적용합니다.</p></div><div className="rate-buttons">{[0.03, 0.05, 0.08].map((rate) => <button key={rate} className={`btn${state.reserveRate === rate ? ' primary' : ' secondary'}`} aria-pressed={state.reserveRate === rate} data-testid={`rate-${rate * 100}`} onClick={() => perform({ type: 'CHANGE_RATE', rate }, `연 보상률을 ${percent(rate)}로 변경했습니다.`)}>{percent(rate)}</button>)}</div></div><div className="demo-control"><div><strong>데이터 초기화</strong><p>잔액, 카드, 이용 내역을 처음으로 되돌립니다.</p></div><button className="btn danger" data-testid="reset-demo" onClick={() => setDialog({ type: 'reset' })}>초기화</button></div><p className="small-note">체험 데이터는 현재 브라우저에 저장됩니다.</p></div></details></div>}
+      {page === 'settings' && <div className="page-stack settings-page"><section className="account-section"><div className="section-head"><h2>카드 및 이용 내역</h2></div><button className="menu-row" onClick={() => navigate('card')}><span>카드 관리</span><span>{plan.name}<ChevronRight size={17} /></span></button><button className="menu-row" onClick={() => navigate('activity')}><span>이용 내역</span><ChevronRight size={17} /></button></section><section className="account-section settings-section"><h2>결제 설정</h2>{rewardsToggle}{reserveToggle}<details className="rule-details"><summary>결제 한도</summary><dl className="account-breakdown"><div><dt>1회</dt><dd>{money(POLICY.perPaymentLimit)}</dd></div><div><dt>1일</dt><dd>{money(POLICY.dailyPaymentLimit)}</dd></div><div><dt>1개월</dt><dd>{money(POLICY.monthlyPaymentLimit)}</dd></div></dl></details></section><section className="account-section"><h2>카드 요금</h2><dl className="account-breakdown"><div><dt>월 이용료</dt><dd>{plan.monthlyFee ? money(plan.monthlyFee) : '무료'}</dd></div><div><dt>페이백</dt><dd>{percent(plan.cashbackRate)}</dd></div></dl><p className="section-description">체험 중에는 이용료를 청구하지 않습니다.</p></section><details className="demo-tools" data-testid="demo-tools"><summary>체험 설정</summary><div className="details-body"><div className="demo-control"><div><strong>시간 진행</strong><p>현재 잔액으로 하루 보상을 계산합니다.</p></div><button className="btn secondary" data-testid="advance-day" onClick={() => perform({ type: 'ADVANCE_DAY' }, '하루 보상을 반영했습니다.')}><Clock3 size={16} />1일 진행</button></div><div className="demo-control"><div><strong>연 보상률</strong><p>변경한 이후의 적립에 적용합니다.</p></div><div className="rate-buttons">{[0.03, 0.05, 0.08].map((rate) => <button key={rate} className={`btn${state.reserveRate === rate ? ' primary' : ' secondary'}`} aria-pressed={state.reserveRate === rate} data-testid={`rate-${rate * 100}`} onClick={() => perform({ type: 'CHANGE_RATE', rate }, `연 보상률을 ${percent(rate)}로 변경했습니다.`)}>{percent(rate)}</button>)}</div></div><div className="demo-control"><div><strong>데이터 초기화</strong><p>잔액과 이용 내역을 처음으로 되돌립니다.</p></div><button className="btn danger" data-testid="reset-demo" onClick={() => setDialog({ type: 'reset' })}>초기화</button></div><p className="section-description">체험 데이터는 현재 브라우저에 저장됩니다.</p></div></details></div>}
     </main>
     {funding && <FundingDialog key={`${funding.mode}-${funding.symbol ?? 'USDC'}`} {...funding} state={state} onClose={closeFunding} dispatch={dispatch} notify={notify} />}
     {dialog && <ActionDialog dialog={dialog} state={state} onClose={closeDialog} dispatch={dispatch} notify={notify} onPaid={confirmPayment} onReset={resetDemo} />}
@@ -300,7 +319,7 @@ function ActionDialog({ dialog, state, onClose, dispatch, notify, onPaid, onRese
   const gross = validNumber ? number * ASSETS[symbol].price : 0;
   const net = Math.floor(gross * (1 - POLICY.conversionFee));
   const formId = 'aqua-action-form';
-  const titles: Record<Dialog['type'], string> = { fund: '충전', withdraw: '출금', transfer: dialog.type === 'transfer' && dialog.direction === 'out' ? '리저브에서 빼기' : '리저브에 넣기', asset: `${symbol} ${dialog.type === 'asset' && dialog.mode === 'withdraw' ? '출금' : '입금'}`, convert: `${symbol} 전환`, payment: '결제 체험', refund: '환불', rewards: '리워드·페이백', guide: '체험 안내', reset: '데이터 초기화' };
+  const titles: Record<Dialog['type'], string> = { fund: '충전', withdraw: '출금', transfer: dialog.type === 'transfer' && dialog.direction === 'out' ? '리저브에서 빼기' : '리저브에 넣기', asset: `${symbol} ${dialog.type === 'asset' && dialog.mode === 'withdraw' ? '출금' : '입금'}`, convert: `${symbol} 전환`, payment: '결제 체험', refund: '환불', guide: '체험 안내', reset: '데이터 초기화' };
 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -353,15 +372,14 @@ function ActionDialog({ dialog, state, onClose, dispatch, notify, onPaid, onRese
   }
 
   const isAsset = dialog.type === 'asset' || dialog.type === 'convert';
-  const buttonLabels: Record<Dialog['type'], string> = { fund: '충전', withdraw: '출금', transfer: dialog.type === 'transfer' && dialog.direction === 'out' ? '빼기' : '넣기', asset: dialog.type === 'asset' && dialog.mode === 'withdraw' ? '출금' : '입금', convert: '전환', payment: `${money(validNumber ? number : 0)} 결제`, refund: '환불', rewards: '확인', guide: '확인', reset: '초기화' };
+  const buttonLabels: Record<Dialog['type'], string> = { fund: '충전', withdraw: '출금', transfer: dialog.type === 'transfer' && dialog.direction === 'out' ? '빼기' : '넣기', asset: dialog.type === 'asset' && dialog.mode === 'withdraw' ? '출금' : '입금', convert: '전환', payment: `${money(validNumber ? number : 0)} 결제`, refund: '환불', guide: '확인', reset: '초기화' };
   const bucketName = dialog.type === 'fund' || dialog.type === 'withdraw' ? dialog.bucket === 'spend' ? '결제 잔액' : '리저브' : '';
-  const infoDialog = dialog.type === 'guide' || dialog.type === 'rewards';
+  const infoDialog = dialog.type === 'guide';
 
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal" ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="dialog-title" data-testid={`dialog-${dialog.type}`}>
     <div className="modal-head"><h2 id="dialog-title">{titles[dialog.type]}</h2><button className="icon-button" onClick={onClose} aria-label="창 닫기"><X size={21} /></button></div>
     <div className="modal-body">
       {dialog.type === 'guide' ? <div className="guide-content"><p>모의 자산으로 카드와 지갑을 체험할 수 있습니다.</p><ol className="guide-steps"><li><strong>충전</strong><p>원화 잔액을 충전하거나 코인을 입금합니다.</p></li><li><strong>카드 신청</strong><p>샘플 본인확인 후 카드 발급과 활성화를 진행합니다.</p></li><li><strong>결제</strong><p>카드 결제를 체험하고 페이백을 확인합니다.</p></li></ol><p className="small-note">실제 자금 이동, 본인확인 자료 수집, 카드 발급은 없습니다. 데이터는 현재 브라우저에 저장되며 설정에서 초기화할 수 있습니다.</p></div>
-      : dialog.type === 'rewards' ? <div className="rewards-dialog"><div className="reward-balance"><span>현재 사용 가능 리워드</span><strong data-testid="reward-balance">{money(state.rewards)}</strong><p>카드 결제 전용 · 출금 불가</p></div><Toggle checked={state.rewardsAuto} label="리워드 우선 사용" detail="켜면 카드 결제에 리워드를 먼저 사용합니다." testId="rewards-auto" onChange={(enabled) => { try { dispatch({ type: 'SET_REWARDS_AUTO', enabled }); notify(`리워드 우선 사용 ${enabled ? '켜짐' : '꺼짐'}`); } catch (issue) { setError(issue instanceof Error ? issue.message : '설정을 확인해 주세요.'); } }} /><RewardsSummary state={state} /><div className="reserve-pending"><div><span>리저브 적립 중</span><strong data-testid="reserve-pending-rewards">{money(Math.floor(state.accrued))}</strong></div><p>미수령 보상 · 아직 결제에 사용할 수 없습니다.</p></div><RewardHistory state={state} /><details className="rule-details"><summary>페이백 적립 기준</summary><p>확정 페이백은 해당 월 결제에서 확정된 금액에서 환불 조정액을 뺀 금액입니다. 사용 가능 리워드 잔액과 다르며 이전 페이백 조정에 쓰일 수 있습니다.</p><p>리워드 사용분은 페이백 대상에서 제외합니다. 이전 달 결제가 이번 달에 확정되어도 이전 달 결제 기준으로 집계합니다. 지급된 내역은 최근 혜택 내역에서 확인할 수 있습니다.</p>{state.rewardDebt > 0 && <p>이전 페이백 조정 {money(state.rewardDebt)}은 앞으로 지급될 리워드에서 먼저 반영합니다.</p>}</details>{error && <div className="form-error" role="alert">{error}</div>}</div>
       : dialog.type === 'reset' ? <div><p>잔액, 카드 신청, 이용 내역을 처음 상태로 되돌립니다.</p><p className="small-note">현재 브라우저의 체험 데이터가 삭제됩니다.</p></div>
       : <form id={formId} onSubmit={submit}>
         {(dialog.type === 'fund' || dialog.type === 'withdraw') && <div className="dialog-route"><strong>{bucketName}</strong><span>현재 {money(state[dialog.bucket])}</span></div>}

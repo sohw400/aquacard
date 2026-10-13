@@ -42,7 +42,22 @@ try {
     }
     assert.fail(`State did not reach expected condition: ${JSON.stringify(state)}`);
   }
-  async function nav(name) { await page.getByTestId(`nav-${name}`).click(); }
+  async function nav(name, target = page) {
+    if (name === 'card') {
+      await target.getByTestId('nav-home').click();
+      await target.getByTestId('card-cta').click();
+    } else if (name === 'reserve') {
+      await target.getByTestId('nav-wallet').click();
+      await target.getByTestId('open-reserve').click();
+    } else {
+      await target.getByTestId(`nav-${name}`).click();
+    }
+  }
+  const ledgerSnapshot = (state) => ({
+    spend: state.spend, reserve: state.reserve, rewards: state.rewards, rewardDebt: state.rewardDebt,
+    holdings: state.holdings, card: state.card, payments: state.payments, transactions: state.transactions,
+    reserveAuto: state.reserveAuto, rewardsAuto: state.rewardsAuto, monthlyCashback: state.monthlyCashback,
+  });
   async function details(testId, open = true, target = page) {
     const element = target.getByTestId(testId);
     await element.waitFor();
@@ -93,19 +108,48 @@ try {
   let state = await stateWhen((state) => state.card.stage === 'not_applied');
   assert.equal(state.spend, 128_500);
   assert.equal(state.rewards, 4_280);
-  assert.equal(await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button').count(), 4);
+  const primaryNav = page.getByRole('navigation', { name: '주 메뉴' });
+  assert.equal(await primaryNav.getByRole('button').count(), 4);
+  assert.deepEqual(await primaryNav.getByRole('button').evaluateAll((buttons) => buttons.map((button) => ({ id: button.getAttribute('data-testid'), label: button.innerText.trim() }))), [
+    { id: 'nav-home', label: '카드' }, { id: 'nav-wallet', label: '자산' },
+    { id: 'nav-benefits', label: '혜택' }, { id: 'nav-settings', label: '전체' },
+  ]);
   assert.equal(await page.getByTestId('nav-activity').count(), 1);
   assert.equal(await page.getByTestId('nav-settings').count(), 1);
-  assert.match(await page.locator('.demo-notice').innerText(), /모의 체험.*실제 자금 이동과 카드 발급은 없습니다/);
+  assert.match(await page.locator('.demo-notice').innerText(), /체험 화면입니다.*실제 자금 이동과 카드 발급은 없습니다/);
   assert.match(await page.getByTestId('available-balance').innerText(), /132,780/);
-  const desktopCard = await page.locator('.hero-card-stage .aqua-card-visual.acv-hero').boundingBox();
+  const desktopCard = await page.locator('.card-center .aqua-card-visual.acv-hero').boundingBox();
   assert.ok(desktopCard && desktopCard.width >= 400 && desktopCard.width <= 500, `데스크톱 홈 카드 폭: ${desktopCard?.width}`);
   await page.getByTestId('open-payment').click();
   await flow().waitFor();
+  state = await stateWhen((state) => state.card.stage === 'identity');
+  await flow().getByTestId('card-identity-consent').waitFor({ state: 'visible' });
+  assert.equal(await flow().getByTestId('card-apply').count(), 0, '카드 신청을 누르면 소개 화면을 거치지 않고 본인확인을 시작한다');
   assert.equal((await read()).payments.length, 0);
-  pass('네 개 주 메뉴·모의 안내·큰 홈 카드·초기 잔액·미발급 결제 차단');
+  pass('네 개 주 메뉴·큰 홈 카드·초기 잔액·카드 신청에서 본인확인 바로 시작');
 
-  await flow().getByTestId('card-apply').click();
+  const beforeNavigation = ledgerSnapshot(await read());
+  assert.equal(await page.getByTestId('nav-home').getAttribute('aria-current'), 'page');
+  await page.getByTestId('go-back').click();
+  await page.getByTestId('card-cta').waitFor({ state: 'visible' });
+  await nav('reserve');
+  assert.equal(await page.getByTestId('nav-wallet').getAttribute('aria-current'), 'page');
+  await nav('activity');
+  await page.getByTestId('go-back').click();
+  await page.getByTestId('reserve-principal').waitFor({ state: 'visible' });
+  await page.getByTestId('go-back').click();
+  await page.getByTestId('open-reserve').waitFor({ state: 'visible' });
+  assert.equal(await page.getByTestId('nav-wallet').getAttribute('aria-current'), 'page');
+  await nav('benefits');
+  await page.getByTestId('page-benefits').getByRole('button', { name: '리저브 보기', exact: true }).click();
+  assert.equal(await page.getByTestId('nav-benefits').getAttribute('aria-current'), 'page');
+  await page.getByTestId('go-back').click();
+  await page.getByTestId('page-benefits').waitFor({ state: 'visible' });
+  assert.equal(await page.getByTestId('nav-benefits').getAttribute('aria-current'), 'page');
+  assert.deepEqual(ledgerSnapshot(await read()), beforeNavigation);
+  await nav('card');
+  pass('카드·리저브·내역의 상세 뒤로 가기가 진입 탭과 원장을 보존');
+
   assert.equal(await flow().getByTestId('card-identity-next').isDisabled(), true);
   const initialSubmit = await finishApplication();
   assert.equal(await page.getByTestId('card-demo-tools').evaluate((item) => item.open), false);
@@ -171,15 +215,25 @@ try {
   assert.equal(state.rewards, 1_957);
   assert.equal(state.monthlyCashback, 1_957);
   await paymentReceipt({ before: 4_280, used: 4_280, cashback: 1_957, after: 1_957 });
+  assert.equal(await displayedAmount(page.getByTestId('home-cashback-confirmed')), 1_957);
   await page.getByTestId('open-rewards').click();
-  const benefits = page.getByTestId('dialog-rewards');
+  const benefits = page.getByTestId('page-benefits');
   await benefits.waitFor({ state: 'visible' });
+  assert.equal(await page.getByTestId('nav-benefits').getAttribute('aria-current'), 'page');
+  assert.equal(await displayedAmount(benefits.getByTestId('reward-balance')), 1_957);
   assert.equal(await displayedAmount(benefits.getByTestId('cashback-confirmed')), 1_957);
   assert.equal(await displayedAmount(benefits.getByTestId('cashback-pending')), 0);
   assert.equal(await displayedAmount(benefits.getByTestId('cashback-remaining')), 8_043);
-  await page.keyboard.press('Escape');
-  await benefits.waitFor({ state: 'hidden' });
   pass('잔액 부족·Reserve 자동 사용·결제 영수증 회계·확정 페이백·남은 혜택 한도');
+  assert.match(await benefits.innerText(), /카드 결제 전용.*출금할 수 없습니다/s);
+  assert.match(await benefits.locator('.reserve-pending').innerText(), /아직 받지 않은 보상/);
+  assert.equal(await page.getByTestId('dialog-rewards').count(), 0, '혜택은 기본 탭의 페이지로 제공');
+  await benefits.getByRole('button', { name: '리저브 보기', exact: true }).click();
+  assert.equal(await page.getByTestId('nav-benefits').getAttribute('aria-current'), 'page');
+  await page.getByTestId('go-back').click();
+  await benefits.waitFor({ state: 'visible' });
+  assert.equal(await displayedAmount(benefits.getByTestId('reward-balance')), 1_957);
+  pass('혜택 페이지는 리워드·월 페이백·미수령 보상을 구분하고 상세 복귀를 유지');
 
   await nav('activity');
   await page.getByRole('button', { name: '한강커피 환불', exact: true }).click();
@@ -281,14 +335,19 @@ try {
   await page.getByTestId('advance-day').click();
   state = await stateWhen((state) => state.clockOffsetMs === 172_800_000);
   assert.ok(Math.abs(state.accrued - oldAccrued - 1_182_780 * 0.08 / 365) < 0.1);
-  await nav('reserve');
+  await nav('benefits');
   const rewardsBefore = state.rewards;
   const claimed = Math.floor(state.accrued);
+  assert.equal(await displayedAmount(benefits.getByTestId('reserve-pending-rewards')), claimed);
   await page.getByTestId('claim-rewards').click();
   state = await stateWhen((state) => state.rewards === rewardsBefore + claimed);
   assert.ok(state.accrued < 1);
+  assert.equal(await displayedAmount(benefits.getByTestId('reward-balance')), state.rewards);
+  assert.equal(await displayedAmount(benefits.getByTestId('reserve-pending-rewards')), 0);
+  await page.screenshot({ path: new URL('aqua-benefits.png', artifacts).pathname, fullPage: true });
+  await nav('reserve');
   await page.screenshot({ path: new URL('aqua-reserve.png', artifacts).pathname, fullPage: true });
-  pass('접힌 체험 설정·하루 적립·보상률 변경 구간·리워드 수령');
+  pass('접힌 체험 설정·하루 적립·보상률 변경 구간·혜택 탭의 리워드 수령');
 
   const beforeReload = await read();
   await page.reload({ waitUntil: 'networkidle' });
@@ -307,7 +366,7 @@ try {
   const primary = await primaryContext.newPage();
   observe(primary);
   await primary.goto(base, { waitUntil: 'networkidle' });
-  await primary.getByTestId('nav-card').click();
+  await nav('card', primary);
   await primary.getByTestId('card-apply').click();
   await finishApplication({ plan: 'plus', physical: false }, primary);
   assert.equal(await primary.getByTestId('card-demo-tools').evaluate((item) => item.open), false);
@@ -325,7 +384,7 @@ try {
   const rewardPage = await rewardContext.newPage();
   observe(rewardPage);
   await rewardPage.goto(base, { waitUntil: 'networkidle' });
-  await rewardPage.getByTestId('nav-card').click();
+  await nav('card', rewardPage);
   await rewardPage.getByTestId('card-apply').click();
   await finishApplication({ plan: 'basic', physical: false }, rewardPage);
   await stateWhen((current) => current.card.stage === 'active', rewardPage);
@@ -343,7 +402,7 @@ try {
     assert.equal(completed.payments[0].cashback, expected.cashback);
     assert.equal(completed.rewards, expected.after);
     await paymentReceipt(expected, rewardPage, screenshot);
-    assert.match(await rewardPage.getByTestId('available-rewards').innerText(), new RegExp(expected.after.toLocaleString('en-US')));
+    assert.equal(await displayedAmount(rewardPage.getByTestId('available-rewards')), expected.after);
     return completed;
   }
   await rewardPayment(5_800, { before: 4_280, used: 4_280, cashback: 15, after: 15 });
@@ -365,7 +424,7 @@ try {
   await stateWhen((current) => current.rewardsAuto, rewardPage);
   await rewardPayment(5_800, { before: 85, used: 85, cashback: 57, after: 57 });
   await rewardPage.getByTestId('open-rewards').click();
-  const rewardBenefits = rewardPage.getByTestId('dialog-rewards');
+  const rewardBenefits = rewardPage.getByTestId('page-benefits');
   await rewardBenefits.waitFor({ state: 'visible' });
   assert.equal(await displayedAmount(rewardBenefits.getByTestId('cashback-confirmed')), 244);
   assert.equal(await displayedAmount(rewardBenefits.getByTestId('cashback-pending')), 0);
@@ -373,17 +432,15 @@ try {
   assert.equal(await rewardBenefits.getByTestId('rewards-auto').getAttribute('aria-checked'), 'true');
   await rewardBenefits.getByTestId('rewards-auto').click();
   await stateWhen((current) => !current.rewardsAuto, rewardPage);
-  await rewardPage.keyboard.press('Escape');
-  await rewardBenefits.waitFor({ state: 'hidden' });
   await rewardPage.getByTestId('nav-settings').click();
   assert.equal(await rewardPage.getByTestId('rewards-auto').getAttribute('aria-checked'), 'false', '혜택 화면의 설정을 전체 설정에서도 공유');
   await rewardPage.getByTestId('rewards-auto').click();
   await stateWhen((current) => current.rewardsAuto, rewardPage);
   await rewardPage.getByTestId('nav-home').click();
   await rewardPage.getByTestId('open-rewards').click();
+  await rewardBenefits.waitFor({ state: 'visible' });
   assert.equal(await rewardBenefits.getByTestId('rewards-auto').getAttribute('aria-checked'), 'true', '전체 설정의 변경을 혜택 화면에서도 공유');
-  await rewardPage.keyboard.press('Escape');
-  await rewardBenefits.waitFor({ state: 'hidden' });
+  await nav('home', rewardPage);
   pass('리워드 우선 사용 OFF·ON 설정을 결제와 혜택 현황에서 공유');
   await rewardContext.close();
 
@@ -424,12 +481,20 @@ try {
   const mobile = await mobileContext.newPage();
   observe(mobile);
   await mobile.goto(base, { waitUntil: 'networkidle' });
-  for (const name of ['home', 'wallet', 'card', 'reserve', 'activity', 'settings']) {
-    await mobile.getByTestId(`nav-${name}`).click();
+  for (const name of ['home', 'wallet', 'benefits', 'settings']) {
+    await nav(name, mobile);
     assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `모바일 ${name} 가로 넘침`);
   }
+  for (const [name, parent] of [['card', 'home'], ['reserve', 'wallet'], ['activity', 'wallet']]) {
+    await nav(name, mobile);
+    assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `모바일 상세 ${name} 가로 넘침`);
+    assert.equal(await mobile.getByTestId(`nav-${parent}`).getAttribute('aria-current'), 'page');
+    await mobile.getByTestId('go-back').click();
+    assert.equal(await mobile.getByTestId('go-back').count(), 0, `모바일 상세 ${name}에서 진입 탭으로 복귀`);
+    assert.equal(await mobile.getByTestId(`nav-${parent}`).getAttribute('aria-current'), 'page');
+  }
   await mobile.getByTestId('nav-home').click();
-  const mobileCard = await mobile.locator('.hero-card-stage .aqua-card-visual.acv-hero').boundingBox();
+  const mobileCard = await mobile.locator('.card-center .aqua-card-visual.acv-hero').boundingBox();
   assert.ok(mobileCard && mobileCard.width >= 330 && mobileCard.width <= 365, `390px 모바일 홈 카드 폭: ${mobileCard?.width}`);
   await mobile.screenshot({ path: new URL('aqua-mobile.png', artifacts).pathname, fullPage: true });
   await mobile.getByTestId('open-deposit').click();

@@ -50,7 +50,7 @@ try {
     await assertFits(page, `${name} primary card`);
     const captureReview = name === 'iPhone SE (3rd gen)';
     if (captureReview) await page.screenshot({ path: new URL('review-card-home-375.png', artifacts).pathname, fullPage: true });
-    for (const menu of ['home', 'wallet', 'card', 'reserve', 'activity', 'settings']) {
+    for (const menu of ['home', 'wallet', 'benefits', 'settings']) {
       const nav = page.getByTestId(`nav-${menu}`);
       const bounds = await nav.boundingBox();
       assert.ok(bounds && bounds.width >= 44 && bounds.height >= 44, `${name} ${menu}: touch target smaller than 44px`);
@@ -58,6 +58,25 @@ try {
       await assertFits(page, `${name} ${menu}`);
     }
 
+    await page.getByTestId('nav-home').tap();
+    await page.getByTestId('card-cta').tap();
+    await assertFits(page, `${name} card management detail`);
+    const backTarget = await page.getByTestId('go-back').boundingBox();
+    assert.ok(backTarget && backTarget.width >= 44 && backTarget.height >= 44, `${name}: detail back button is smaller than 44px`);
+    await page.getByTestId('go-back').tap();
+    assert.equal(await page.getByTestId('nav-home').getAttribute('aria-current'), 'page');
+
+    await page.getByTestId('nav-wallet').tap();
+    await page.getByTestId('open-reserve').tap();
+    await assertFits(page, `${name} Reserve detail`);
+    await page.getByTestId('go-back').tap();
+    assert.equal(await page.getByTestId('nav-wallet').getAttribute('aria-current'), 'page');
+    await page.getByTestId('nav-activity').tap();
+    await assertFits(page, `${name} activity detail`);
+    await page.getByTestId('go-back').tap();
+    assert.equal(await page.getByTestId('nav-wallet').getAttribute('aria-current'), 'page');
+
+    await page.getByTestId('nav-settings').tap();
     await page.getByTestId('reserve-auto').tap();
     assert.equal(await page.getByTestId('reserve-auto').getAttribute('aria-checked'), 'true');
     const toggle = await page.getByTestId('reserve-auto').boundingBox();
@@ -111,7 +130,7 @@ try {
     await funding.waitFor({ state: 'hidden' });
     assert.equal((await readState()).spend, initial.spend + 10_000);
 
-    await page.getByTestId('nav-card').tap();
+    await page.getByTestId('card-cta').tap();
     const flow = page.locator('.card-flow');
     await flow.getByTestId('card-apply').tap();
     assert.equal(await flow.getByTestId('card-identity-next').isDisabled(), true);
@@ -132,7 +151,8 @@ try {
     assert.equal(issued.spend, initial.spend + 10_000);
     await assertFits(page, `${name} issued card`);
 
-    await page.getByTestId('nav-home').tap();
+    await page.getByTestId('go-back').tap();
+    assert.equal(await page.getByTestId('nav-home').getAttribute('aria-current'), 'page');
     await page.getByTestId('open-payment').tap();
     assert.ok(await page.getByLabel('결제처').evaluate((element) => parseFloat(getComputedStyle(element).fontSize) >= 16));
     await page.getByTestId('action-amount').fill('200000');
@@ -165,13 +185,17 @@ try {
     await receipt.waitFor({ state: 'hidden' });
 
     await page.getByTestId('open-rewards').tap();
-    const benefits = page.getByTestId('dialog-rewards');
+    const benefits = page.getByTestId('page-benefits');
     await assertAmount(benefits.getByTestId('cashback-confirmed'), 1_957, `${name} confirmed monthly cashback`);
     await assertAmount(benefits.getByTestId('cashback-pending'), 0, `${name} pending monthly cashback`);
     await assertAmount(benefits.getByTestId('cashback-remaining'), 8_043, `${name} remaining monthly cashback`);
     await assertAmount(benefits.getByTestId('reward-balance'), 1_957, `${name} spendable reward balance`);
     assert.equal(await benefits.getByTestId('reserve-pending-rewards').isVisible(), true);
-    assert.match(await benefits.locator('.reserve-pending').innerText(), /미수령 보상.*아직 결제에 사용할 수 없습니다/s);
+    assert.match(await benefits.locator('.reserve-pending').innerText(), /아직 받지 않은 보상.*받은 뒤 카드 결제에 사용할 수 있습니다/s);
+    const claimRewards = benefits.getByTestId('claim-rewards');
+    const claimTarget = await claimRewards.boundingBox();
+    assert.ok(claimTarget && claimTarget.width >= 44 && claimTarget.height >= 44, `${name}: benefit claim button is smaller than 44px`);
+    assert.equal(await claimRewards.isDisabled(), true, `${name}: sub-won unclaimed rewards must remain unavailable`);
     const rewardsAuto = benefits.getByTestId('rewards-auto');
     const rewardsToggle = await rewardsAuto.boundingBox();
     assert.ok(rewardsToggle && rewardsToggle.width >= 44 && rewardsToggle.height >= 44, `${name} rewards setting: touch target smaller than 44px`);
@@ -183,7 +207,9 @@ try {
     assert.equal(await rewardsAuto.getAttribute('aria-checked'), 'true');
     assert.equal((await readState()).rewardsAuto, true);
     await assertFits(page, `${name} rewards and cashback overview`);
-    await benefits.getByRole('button', { name: '창 닫기', exact: true }).tap();
+    await page.getByTestId('nav-settings').tap();
+    assert.equal(await page.getByTestId('rewards-auto').getAttribute('aria-checked'), 'true');
+    await page.getByTestId('nav-home').tap();
     await benefits.waitFor({ state: 'hidden' });
 
     await page.reload({ waitUntil: 'networkidle' });
@@ -199,7 +225,8 @@ try {
     const safeName = name.replace(/[^A-Za-z0-9]+/g, '-').toLowerCase();
     await page.screenshot({ path: new URL(`${safeName}.png`, artifacts).pathname, fullPage: true });
     assert.deepEqual(errors, []);
-    results.push({ profile: name, engine: 'Chromium', emulationOnly: true, viewport: profile.viewport, hasTouch: profile.hasTouch, passed: true, checks: 'primary hero card, 6 menus, touch targets, coin funding preview and pinned sheet controls, funding focus trap and Escape, demo funding input focus and balance, 3-step card application and automatic issue/activation, Reserve payment, receipt reward debit and cashback credit, unobstructed funding and receipt overlays, monthly cashback and unclaimed rewards overview, shared rewards setting, restored state' });
+    const fontFamily = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
+    results.push({ profile: name, engine: 'Chromium', emulationOnly: true, viewport: profile.viewport, hasTouch: profile.hasTouch, fontFamily, passed: true, checks: 'primary hero card, 4 primary tabs and 3 details with return navigation, touch targets, coin funding preview and pinned sheet controls, funding focus trap and Escape, demo funding input focus and balance, 3-step card application and automatic issue/activation, Reserve payment, receipt reward debit and cashback credit, unobstructed funding and receipt overlays, benefits page with monthly cashback and unclaimed rewards, shared rewards setting, restored state' });
     console.log(`PASS ${name}: ${profile.viewport.width}px · hero card · coin funding sheet · touch · application · Reserve payment · reward receipt · cashback overview · reload (Chromium emulation)`);
     await context.close();
   }
