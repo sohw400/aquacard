@@ -160,7 +160,7 @@ export const CANVAS_BOX = {
 };
 
 interface Placement { plan: Plan; position: [number, number, number]; rotation: [number, number, number]; /** Share of the touch tilt. */ depth: number }
-/** The back card is the gold Private, the front one the navy Standard. */
+/** Listed back to front, which is the order they are drawn in: the gold Private behind the navy Standard. */
 const HERO: Placement[] = [
   { plan: 'private', position: [0.95, 0.7, -1.3], rotation: [-0.5, 0.35, 0.22], depth: 0.8 },
   { plan: 'standard', position: [-0.5, -0.42, 0.3], rotation: [-0.55, 0.15, 0.08], depth: 1 },
@@ -173,7 +173,22 @@ function newRenderer(canvas: HTMLCanvasElement, keepFrame = false) {
   const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: keepFrame });
   renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = NeutralToneMapping;
+  renderer.autoClear = false;
   return renderer;
+}
+
+/**
+ * Draws the cards back to front, clearing depth between them, so the front card always covers the back one. Both lean
+ * back and overlap, so a strong tilt would otherwise push a corner of one through the other.
+ */
+function drawInOrder(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera, groups: Group[]) {
+  renderer.clear();
+  groups.forEach((group, index) => {
+    for (const other of groups) other.visible = other === group;
+    if (index) renderer.clearDepth();
+    renderer.render(scene, camera);
+  });
+  for (const group of groups) group.visible = true;
 }
 
 /** Studio reflections, lights and the cards in their resting places. */
@@ -239,7 +254,7 @@ export async function renderStill(kind: 'hero' | Plan, scale = 2): Promise<strin
     camera.setViewOffset(FRAME.width, FRAME.height, CROP.x, CROP.y, CROP.width, CROP.height);
     renderer.setSize(Math.round(960 * scale), Math.round(630 * scale), false);
   } else renderer.setSize(900 * scale, 620 * scale, false);
-  renderer.render(stage.scene, camera);
+  drawInOrder(renderer, stage.scene, camera, stage.cards.map(({ group }) => group));
   const url = canvas.toDataURL('image/png');
   stage.dispose();
   renderer.dispose();
@@ -283,7 +298,8 @@ export async function mountCardScene(host: HTMLElement, onReady: () => void, onL
     scene.environmentRotation.copy(turn);
     sun.position.copy(sunHome).applyEuler(turn);
   }
-  const render = () => { apply(); renderer.render(scene, camera); };
+  const groups = cards.map(({ group }) => group);
+  const render = () => { apply(); drawInOrder(renderer, scene, camera, groups); };
 
   let frame = 0, last = 0, pressed = false;
   const tick = (now: number) => {
