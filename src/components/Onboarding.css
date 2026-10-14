@@ -52,7 +52,7 @@
 /* A small picture of a bank app's history: the 1원 deposit on top with the four digits to type outlined. */
 .bank-guide { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 14px 16px; border-radius: var(--radius-md); background: var(--sunken); }
 .bank-guide-screen { display: flex; flex-direction: column; gap: 2px; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
-.bank-guide-head { display: flex; justify-content: space-between; margin: 0; padding: 2px 8px 6px; color: var(--muted); font-size: 12px; font-weight: 600; line-height: 18px; }
+.bank-guide-head { display: flex; justify-content: space-between; margin: 0; padding: 9px 8px 6px; color: var(--muted); font-size: 12px; font-weight: 600; line-height: 18px; }
 .bank-guide-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; margin: 0; padding: 8px; border-radius: 10px; color: var(--muted); font-size: 14px; line-height: 22px; }
 .bank-guide-row > span:first-child { font-size: 12px; font-variant-numeric: tabular-nums; }
 .bank-guide-row > strong { font-weight: 600; font-variant-numeric: tabular-nums; }
