@@ -409,7 +409,10 @@ function validKyc(value: unknown): boolean {
       ? (EVIDENCE as readonly string[]).includes(value.evidence as string) : value.evidence === null);
 }
 
-const addYears = (timestamp: number, years: number) => Array.from({ length: years }).reduce<number>((time) => addYear(time), timestamp);
+export const addYears = (timestamp: number, years: number) => Array.from({ length: years }).reduce<number>((time) => addYear(time), timestamp);
+/** Customer check and transaction records stay for five years after the relationship ends (특정금융정보법 제5조의4), then go. */
+export const RECORD_YEARS = 5;
+export const recordsKeptUntil = (closedAt: number) => addYears(closedAt, RECORD_YEARS);
 
 /** Validates sign-up input after the email, phone, ID, face and 1원 account checks have passed in the UI. */
 function signupAccount(action: Extract<Action, { type: 'COMPLETE_SIGNUP' }>, wallNow: number): Account {

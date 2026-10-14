@@ -5,15 +5,15 @@ import CardHero from './CardHero';
 import Logo from './Logo';
 import { addressLine } from '../lib/address';
 import { EMAIL_PATTERN } from '../lib/engine';
-import { josa } from '../lib/format';
+import { dateLabel, josa } from '../lib/format';
 import {
-  BANK_SENDS, BANK_TRIES, BANKS, CARRIERS, demoCode, EVIDENCE, FUND_SOURCES, hashPassword, ID_TYPES, needsEvidence, OCCUPATIONS,
+  BANK_SENDS, BANK_TRIES, BANKS, CARRIERS, demoCode, EVIDENCE, FUND_SOURCES, hashPassword, ID_TYPES, maskEmail, needsEvidence, OCCUPATIONS,
   passwordIssue, PURPOSES, RECHECK_YEARS,
 } from '../lib/auth';
 import type { Action, AppState, KycAnswers, ShippingAddress } from '../lib/types';
 import './Onboarding.css';
 
-type Screen = 'welcome' | 'terms' | 'account' | 'phone' | 'identity' | 'bank' | 'questions' | 'evidence' | 'review' | 'login' | 'reset';
+type Screen = 'welcome' | 'terms' | 'account' | 'phone' | 'identity' | 'bank' | 'questions' | 'evidence' | 'review' | 'login' | 'reset' | 'closed';
 type Scan = 'none' | 'checking' | 'done';
 const SIGNUP_STEPS: [Screen, string][] = [['terms', '약관'], ['account', '계정'], ['phone', '휴대폰'], ['identity', '신분증'], ['bank', '계좌'], ['questions', '고객확인']];
 const SAMPLE = { email: 'demo@aqua.example', name: '아쿠아 사용자', birth: '19950412', phone: '01012345678', bank: '신한은행', account: '123456789012' };
@@ -82,9 +82,17 @@ function BankGuide({ code, now }: { code: string | null; now: number }) {
   </figure>;
 }
 
-/** Sign-up with KYC, sign-in and password reset. Codes are shown on screen because the demo sends no mail, SMS or 1원 transfer. */
-export default function Onboarding({ state, dispatch }: { state: AppState; dispatch: (action: Action) => AppState }) {
-  const [screen, setScreen] = useState<Screen>(state.account ? 'login' : 'welcome');
+/**
+ * Sign-up with KYC, sign-in and password reset. Codes are shown on screen because the demo sends no mail, SMS or 1원 transfer.
+ * Right after an account is deleted it opens on a confirmation of what happened.
+ */
+export default function Onboarding({ state, dispatch, farewell = null, onFarewellSeen }: {
+  state: AppState;
+  dispatch: (action: Action) => AppState;
+  farewell?: { email: string; keptUntil: number } | null;
+  onFarewellSeen?: () => void;
+}) {
+  const [screen, setScreen] = useState<Screen>(farewell ? 'closed' : state.account ? 'login' : 'welcome');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -412,6 +420,18 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
       {errorBox}
       {review === 'done' && <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="signup-finish" disabled={busy} onClick={finishSignup}>시작하기</button></div>}
       {rejected && <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="kyc-appeal" onClick={appeal}>다시 검토 요청</button><button type="button" className="btn neutral block" data-testid="kyc-review-back" onClick={() => go('questions')}>답변 고치기</button></div>}
+    </div>;
+  } else if (screen === 'closed' && farewell) {
+    body = <div className="onboarding-form review" data-testid="closure-done">
+      <span className="onboarding-review-icon" aria-hidden="true"><Check size={28} strokeWidth={2.4} /></span>
+      <h1 ref={heading} tabIndex={-1}>탈퇴를 마쳤어요</h1>
+      <p className="onboarding-lead">그동안 Aqua를 써 주셔서 고마워요.</p>
+      <dl className="onboarding-facts">
+        <div><dt>완료 안내 메일</dt><dd>{maskEmail(farewell.email)}</dd></div>
+        <div><dt>기록 보관</dt><dd data-testid="closure-done-kept">{dateLabel(farewell.keptUntil)}까지</dd></div>
+      </dl>
+      <p className="onboarding-hint">고객확인과 거래 기록은 법에 따라 보관하다가 그날 지워요. 체험판이라 메일은 실제로 보내지 않아요.</p>
+      <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="closure-home" onClick={() => { onFarewellSeen?.(); go('welcome'); }}>처음으로</button></div>
     </div>;
   } else if (screen === 'login') {
     body = <form className="onboarding-form" noValidate onSubmit={signIn}>

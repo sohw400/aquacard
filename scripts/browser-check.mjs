@@ -2055,6 +2055,55 @@ try {
   await prefillContext.close();
   pass('카드 배송지는 가입한 집 주소를 먼저 골라 둔다');
 
+  // Closing an account once everything is settled: what goes now, what the law keeps until when, and the screen after.
+  const closeContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
+  const closePage = await closeContext.newPage();
+  observe(closePage);
+  closePage.setDefaultTimeout(10_000);
+  await closePage.goto(base, { waitUntil: 'networkidle' });
+  await signUp(closePage);
+  const reserveBefore = (await read(closePage)).reserve;
+  await nav('reserve', closePage);
+  await closePage.getByRole('button', { name: '빼기', exact: true }).click();
+  const moveOut = closePage.getByTestId('dialog-transfer');
+  await moveOut.getByTestId('action-amount').fill(String(reserveBefore));
+  await moveOut.getByTestId('transfer-next').click();
+  await moveOut.getByTestId('confirm-action').click();
+  await moveOut.getByTestId('transfer-done').click();
+  await stateWhen((current) => current.reserve === 0, closePage);
+  await openFunding('withdraw', closePage);
+  await fundingRoute({ mode: 'withdraw', symbol: 'KRWS', network: 'polygon', target: closePage, open: false });
+  const everything = (await read(closePage)).spend;
+  const lastWithdrawal = await requestWithdrawal(everything, closePage);
+  await settleFunding(lastWithdrawal, closePage);
+  await closeFunding(closePage);
+  await nav('settings', closePage);
+  await closePage.getByTestId('open-closure').click();
+  const closing = closePage.getByTestId('account-closure');
+  assert.match(await closing.locator('.itd-header').innerText(), /신청하면 바로 처리되고, 끝나면 가입한 이메일로 알려 드려요/);
+  assert.match(await closing.getByTestId('closure-deleted').innerText(), /바로 지우는 정보[\s\S]*비밀번호[\s\S]*내 태그와 QR[\s\S]*알림 설정과 광고성 정보 수신 동의[\s\S]*남은 리워드/);
+  assert.match(await closing.getByTestId('closure-kept').innerText(), /법에 따라 따로 보관하는 정보[\s\S]*고객확인 기록[\s\S]*거래 기록[\s\S]*트래블룰/);
+  const keptUntil = await closePage.evaluate(() => {
+    const now = new Date();
+    const kst = new Date(now.getTime() + 9 * 3_600_000);
+    return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Seoul' }).format(Date.UTC(kst.getUTCFullYear() + 5, kst.getUTCMonth(), kst.getUTCDate(), 3));
+  });
+  assert.match(await closing.getByTestId('closure-kept-until').innerText(), new RegExp(`특정금융정보법에 따라 ${keptUntil}까지 보관한 뒤 지워요`), '보관 기간은 탈퇴한 날부터 5년이다');
+  assert.equal(await closing.getByTestId('closure-confirm').isDisabled(), true);
+  await closing.getByTestId('closure-password').fill(PASSWORD);
+  await closing.getByTestId('closure-consent').check();
+  await closing.getByTestId('closure-confirm').click();
+  const done = closePage.getByTestId('closure-done');
+  await done.waitFor();
+  assert.match(await done.innerText(), /탈퇴를 마쳤어요[\s\S]*완료 안내 메일\s+de\*\*@aqua\.example[\s\S]*기록 보관[\s\S]*고객확인과 거래 기록은 법에 따라 보관하다가 그날 지워요/);
+  assert.equal(await closePage.getByTestId('closure-done-kept').innerText(), `${keptUntil}까지`);
+  const afterClosing = await read(closePage);
+  assert.deepEqual([afterClosing.account, afterClosing.signedIn], [null, false], '탈퇴하면 계정이 지워진다');
+  await closePage.getByTestId('closure-home').click();
+  await closePage.getByTestId('auth-signup').waitFor();
+  await closeContext.close();
+  pass('회원 탈퇴: 리저브와 잔액을 정리한 뒤 지우는 정보와 법정 보관 정보(5년 뒤 날짜), 비밀번호 확인, 탈퇴 완료 화면');
+
   assert.deepEqual(errors, [], '브라우저 실행 오류');
   assert.deepEqual([...new Set(external)], [], 'PoC는 외부 금융·폰트 요청을 하지 않는다');
   pass('브라우저 실행 오류 없음·외부 요청 없음');

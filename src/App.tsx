@@ -83,6 +83,8 @@ export default function App() {
   const [trail, setTrail] = useState<Page[]>([]);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
   const [closingAccount, setClosingAccount] = useState(false);
+  /** After deletion, what the sign-up screen confirms: where the notice went and how long the law keeps the records. */
+  const [farewell, setFarewell] = useState<{ email: string; keptUntil: number } | null>(null);
   const [passwordSheet, setPasswordSheet] = useState(false);
   const [detailItem, setDetailItem] = useState<Transaction | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -222,7 +224,7 @@ export default function App() {
   }
 
   const account = state.account;
-  if (!account || !state.signedIn) return <><Onboarding state={state} dispatch={dispatch} />{toastView}</>;
+  if (!account || !state.signedIn) return <><Onboarding state={state} dispatch={dispatch} farewell={farewell} onFarewellSeen={() => setFarewell(null)} />{toastView}</>;
 
   const locked = state.card.locked && state.card.stage === 'active';
   const cardStatus = locked ? '잠금' : STAGE_NAMES[state.card.stage];
@@ -269,7 +271,11 @@ export default function App() {
     </main>
     {passwordSheet && <PasswordSheet email={account.email} onClose={() => setPasswordSheet(false)} onSubmit={(currentHash, nextHash) => perform({ type: 'CHANGE_PASSWORD', currentHash, nextHash }, '비밀번호를 바꿨어요.') !== null} />}
     {detailItem && <TransactionSheet item={detailItem} payment={detailItem.kind === 'payment' && detailItem.paymentId ? state.payments.find((item) => item.id === detailItem.paymentId) : undefined} card={state.card} status={statusOf(detailItem)?.[0] ?? null} onRefund={openRefund} onFunding={openFundingOperation} onClose={() => setDetailItem(null)} />}
-    {closingAccount && <AccountClosureSheet state={state} onClose={() => setClosingAccount(false)} onDelete={(passwordHash) => perform({ type: 'DELETE_ACCOUNT', passwordHash }, '탈퇴했어요. 그동안 이용해 주셔서 고마워요.') !== null} />}
+    {closingAccount && <AccountClosureSheet state={state} onClose={() => setClosingAccount(false)} onDelete={(passwordHash, keptUntil) => {
+      const done = perform({ type: 'DELETE_ACCOUNT', passwordHash }) !== null;
+      if (done) setFarewell({ email: account.email, keptUntil });
+      return done;
+    }} />}
     {funding && <FundingDialog key={`${funding.mode}-${funding.symbol ?? 'default'}-${funding.operationId ?? 'new'}`} {...funding} account={account} state={state} onClose={closeFunding} dispatch={dispatch} />}
     {sending && <SendSheet state={state} onClose={() => setSending(false)} onWallet={() => { setSending(false); setFunding({ mode: 'withdraw' }); }} onReceive={() => { setSending(false); setReceiving(true); }} dispatch={dispatch} />}
     {receiving && <ReceiveSheet account={account} onClose={() => setReceiving(false)} dispatch={dispatch} notify={notify} />}
