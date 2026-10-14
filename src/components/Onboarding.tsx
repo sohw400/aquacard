@@ -30,6 +30,28 @@ function CheckText({ steps, current, done }: { steps: string[]; current: number;
   return <p className="onboarding-check-text">{steps.map((text, index) => <span key={index} className={index === current ? undefined : 'reserve'} aria-hidden={index === current ? undefined : true}>{text}</span>)}</p>;
 }
 
+const bankDate = (timestamp: number) => {
+  const parts = new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', timeZone: 'Asia/Seoul' }).formatToParts(timestamp);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('month')}.${part('day')}`;
+};
+
+/**
+ * A bank app's history with the 1원 deposit on top and the four digits to type marked. Before sending it is an example;
+ * after, the demo shows its own code here because it sends nothing. The real app keeps the example and never shows the code.
+ */
+function BankGuide({ code, now }: { code: string | null; now: number }) {
+  const digits = code ?? '1234';
+  return <figure className="bank-guide" data-testid="kyc-bank-guide">
+    <div className="bank-guide-screen" role="img" aria-label={`은행 앱 입출금 내역${code ? '' : ' 예시'}: 입금자명 아쿠아 ${digits}, 1원 입금`}>
+      <p className="bank-guide-head"><span>입출금 내역</span>{!code && <span>예시</span>}</p>
+      <p className="bank-guide-row current"><span>{bankDate(now)}</span><span>아쿠아 <mark data-testid={code ? 'kyc-bank-demo-code' : undefined}>{digits}</mark></span><strong>+1원</strong></p>
+      <p className="bank-guide-row"><span>{bankDate(now - 86_400_000)}</span><span>편의점</span><strong>−3,200원</strong></p>
+    </div>
+    <figcaption>{code ? '체험판이라 1원은 보내지 않고 은행 앱에 찍힐 내역을 여기 보여 드려요.' : '1원이 들어오면 입금자명 뒤 숫자 4자리를 넣으면 돼요.'}</figcaption>
+  </figure>;
+}
+
 /** Sign-up with KYC, sign-in and password reset. Codes are shown on screen because the demo sends no mail, SMS or 1원 transfer. */
 export default function Onboarding({ state, dispatch }: { state: AppState; dispatch: (action: Action) => AppState }) {
   const [screen, setScreen] = useState<Screen>(state.account ? 'login' : 'welcome');
@@ -222,8 +244,8 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
         bankVerified ? <span className="onboarding-done" data-testid="kyc-bank-verified"><Check size={15} strokeWidth={2.6} />인증 완료</span>
           : <button type="button" className="onboarding-text-button" data-testid="kyc-bank-sample" onClick={() => { setBank(SAMPLE.bank); setBankAccount(SAMPLE.account); setBankCode(null); setError(''); }}>샘플 계좌 채우기</button>)}
       <p className="onboarding-hint" data-testid="kyc-bank-hint">예금주가 {name.trim()}님인 계좌만 확인할 수 있어요.<br />실제 계좌는 넣지 말고 샘플 계좌를 써&nbsp;주세요.</p>
+      {!bankVerified && <BankGuide code={bankCode} now={Date.now() + state.clockOffsetMs} />}
       {!bankVerified && (bankCode ? <>
-        <p className="onboarding-code-note" data-testid="kyc-bank-demo-code">체험판이라 1원은 보내지 않아요. 은행 앱에 찍힐 입금자명 <strong>아쿠아 {bankCode}</strong></p>
         {field('bank-code', '입금자명 숫자 4자리', <input id={id('bank-code')} data-testid="kyc-bank-code" inputMode="numeric" autoComplete="off" maxLength={4} value={bankInput} onChange={(event) => setBankInput(event.target.value.replace(/\D/g, ''))} />, <button type="button" className="onboarding-text-button" onClick={sendBankCode}>다시 보내기</button>)}
       </> : <button type="button" className="btn neutral block" data-testid="kyc-bank-send" onClick={sendBankCode}>1원 보내기</button>)}
       {errorBox}

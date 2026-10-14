@@ -67,6 +67,8 @@ async function checkBankStep(target) {
   assert.match(await target.getByTestId('kyc-bank-hint').innerText(), /예금주가 아쿠아 사용자님인 계좌만[\s\S]*실제 계좌는 넣지 말고 샘플 계좌를/);
   assert.match(await target.locator('.onboarding-note').innerText(), /계좌\s정보는 넣지 마세요/);
   assert.equal(await target.getByTestId('kyc-bank-next').isDisabled(), true, '1원 인증 전에는 다음으로 갈 수 없다');
+  const guide = target.getByTestId('kyc-bank-guide');
+  assert.match(await guide.innerText(), /입출금 내역\s+예시[\s\S]*아쿠아 1234\s+\+1원[\s\S]*1원이 들어오면 입금자명 뒤 숫자 4자리를 넣으면 돼요\./, '보내기 전에는 은행 앱 예시로 어디의 숫자를 넣는지 보여 준다');
   await target.getByTestId('kyc-bank-send').click();
   assert.equal(await target.getByRole('alert').innerText(), '은행을 골라 주세요.');
   await target.getByTestId('kyc-bank').selectOption('카카오뱅크');
@@ -78,7 +80,9 @@ async function checkBankStep(target) {
   assert.equal(await target.getByTestId('kyc-bank').inputValue(), '신한은행');
   await target.getByTestId('kyc-bank-send').click();
   const code = await fourDigits(target.getByTestId('kyc-bank-demo-code'));
-  assert.match(await target.getByTestId('kyc-bank-demo-code').innerText(), new RegExp(`체험판이라 1원은 보내지 않아요\\. 은행 앱에 찍힐 입금자명 아쿠아 ${code}`));
+  assert.doesNotMatch(await guide.innerText(), /예시/);
+  assert.match(await guide.innerText(), /체험판이라 1원은 보내지 않고 은행 앱에 찍힐 내역을 여기 보여 드려요\./);
+  assert.equal(await guide.locator('[role="img"]').getAttribute('aria-label'), `은행 앱 입출금 내역: 입금자명 아쿠아 ${code}, 1원 입금`, '보낸 뒤에는 체험판 숫자를 그림에 넣는다');
   await target.getByTestId('kyc-bank-code').fill(code === '1000' ? '1001' : '1000');
   assert.equal(await target.getByTestId('kyc-bank-next').isDisabled(), true, '틀린 입금자명 숫자로는 인증되지 않는다');
   await target.getByTestId('kyc-account').fill('123456789013');
@@ -90,6 +94,7 @@ async function checkBankStep(target) {
   assert.equal(await target.getByTestId('kyc-account').isDisabled(), true, '인증한 계좌는 바꿀 수 없다');
   assert.equal(await target.getByTestId('kyc-bank').isDisabled(), true);
   assert.equal(await target.getByTestId('kyc-bank-sample').count(), 0);
+  assert.equal(await guide.count(), 0, '인증을 마치면 안내 그림을 닫는다');
 }
 /** Completes sign-up with sample data: email code, password, phone code, ID and face checks, 1원 account check, customer questions. */
 async function signUp(target, { checks = false } = {}) {
