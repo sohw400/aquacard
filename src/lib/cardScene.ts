@@ -198,12 +198,17 @@ export function mountCardScene(host: HTMLElement, onReady: () => void, onLost: (
 
   let frame = 0, last = 0, pressed = false;
   const tick = (now: number) => {
-    const dt = Math.min(1 / 30, Math.max(0, (now - last) / 1000) || 1 / 60);
+    // Follow real time in small steps, so a slow device drops frames instead of slowing the motion down.
+    let remaining = Math.min(0.25, Math.max(0, (now - last) / 1000));
     last = now;
-    for (const axis of ['x', 'y'] as const) {
-      const speed = axis === 'x' ? 'vx' : 'vy';
-      pose[speed] += ((target[axis] - pose[axis]) * SPRING.stiffness - pose[speed] * SPRING.damping) * dt;
-      pose[axis] += pose[speed] * dt;
+    while (remaining > 0) {
+      const dt = Math.min(1 / 120, remaining);
+      remaining -= dt;
+      for (const axis of ['x', 'y'] as const) {
+        const speed = axis === 'x' ? 'vx' : 'vy';
+        pose[speed] += ((target[axis] - pose[axis]) * SPRING.stiffness - pose[speed] * SPRING.damping) * dt;
+        pose[axis] += pose[speed] * dt;
+      }
     }
     render();
     const settled = Math.abs(target.x - pose.x) < 1e-4 && Math.abs(target.y - pose.y) < 1e-4 && Math.abs(pose.vx) < 1e-3 && Math.abs(pose.vy) < 1e-3;
