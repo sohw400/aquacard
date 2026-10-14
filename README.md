@@ -31,7 +31,7 @@ npm run test:devices
 
 Chromium 경로는 `CHROMIUM_PATH`, 서버 주소는 `AQUA_BASE_URL`로 바꿀 수 있습니다(기본 `/usr/bin/chromium`, `http://127.0.0.1:5173`).
 
-2026-10-13 기준 로직 테스트 115개, 데스크톱·모바일 브라우저 검사 49개, 320~430px 기기 프로필 5개가 통과했습니다. 기기 프로필은 Chromium에서 화면 크기와 터치를 **모사**한 것이며 실제 iOS Safari·Android 실기기 검증과 다릅니다. 자세한 절차는 [테스트 안내](docs/testing.md)에 있습니다.
+2026-10-14 기준 로직 테스트 117개, 데스크톱·모바일 브라우저 검사 53개, 320~430px 기기 프로필 5개가 통과했습니다. 기기 프로필은 Chromium에서 화면 크기와 터치를 **모사**한 것이며 실제 iOS Safari·Android 실기기 검증과 다릅니다. 자세한 절차는 [테스트 안내](docs/testing.md)에 있습니다.
 
 ## 둘러보기
 
@@ -90,5 +90,6 @@ KAST는 지원 자산마다 청산 주소를 두고 받은 코인을 거래 확�
 - [모바일 앱 준비 (iOS·Android)](docs/mobile-app-plan.md)
 - [KYC·AML 규제와 법률 검토](docs/kyc-aml-review.md)
 - [앱스토어·구글 플레이 심사 준비](docs/store-review.md)
+- [출시 준비 목록](docs/launch-readiness.md): 먼저 정할 사업 결정, 체험판 변경, 코드 밖 준비
 
 실제 서비스를 위해서는 본인확인, 보관·전환 파트너, 카드 발급·정산, 원화 스테이블 발행·상환, 리저브 보상 재원과 한국 제공 가능 범위를 확정해야 합니다. 브라우저 장부는 실제 금융 장부나 인증 시스템으로 쓸 수 없습니다.
