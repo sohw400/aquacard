@@ -15,14 +15,16 @@
 @media (prefers-color-scheme: dark) { .onboarding-hero { filter: drop-shadow(0 18px 24px rgba(0, 0, 0, .55)); } }
 .onboarding-lead { margin: -8px 0 4px; color: var(--muted); font-size: 16px; line-height: 1.65; }
 .onboarding-label-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 24px; }
-.onboarding-label-row > label { color: var(--muted); font-size: 14px; font-weight: 500; }
+.onboarding-label-row > label, .onboarding-label-row > .onboarding-label { color: var(--muted); font-size: 14px; font-weight: 500; }
 .onboarding-form .form-field :is(input, select):disabled { color: var(--muted); }
 .onboarding-form .form-field select { width: 100%; min-height: 52px; padding: 12px 40px 12px 16px; border: 1.5px solid transparent; border-radius: 14px; outline: none; background: var(--fill) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23697077' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 16px center; color: var(--ink); font-size: 17px; font-weight: 500; appearance: none; }
 .onboarding-form .form-field select:focus { border-color: var(--ink); }
 /* Until something is chosen the select shows its prompt in placeholder grey. */
 .onboarding-form .form-field select:has(option[value='']:checked) { color: var(--faint); }
 .onboarding-text-button { align-self: flex-start; min-height: 32px; color: var(--accent); font-size: 14px; font-weight: 600; }
-.onboarding-label-row .onboarding-text-button { min-height: 44px; margin: -10px 0; }
+.onboarding-form > .onboarding-text-button { min-height: 44px; margin: -12px 0 -8px; }
+.onboarding-text-button:disabled { color: var(--faint); }
+.onboarding-label-row .onboarding-text-button { min-width: 44px; min-height: 44px; margin: -10px 0; text-align: right; }
 .onboarding-label-row .onboarding-done { font-size: 13px; }
 .onboarding-code-note { margin: 0; padding: 12px 16px; border-radius: var(--radius-sm); background: var(--accent-weak); color: var(--accent-strong); font-size: 14px; line-height: 1.6; }
 .onboarding-code-note strong { font-variant-numeric: tabular-nums; letter-spacing: .08em; }
@@ -46,6 +48,7 @@
 .onboarding-check-text { display: grid; }
 .onboarding-check-text > span { grid-area: 1 / 1; }
 .onboarding-check-text > .reserve { visibility: hidden; }
+.onboarding-check-text.bad { color: var(--danger); }
 .onboarding-check .btn { flex-shrink: 0; min-width: 84px; min-height: 44px; }
 .onboarding-check .btn.neutral:not(:disabled) { background: var(--surface); }
 .onboarding-done { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; color: var(--accent); font-size: 14px; font-weight: 700; }
@@ -62,6 +65,30 @@
 .bank-guide figcaption { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .onboarding-consent { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; color: var(--ink-soft); font-size: 14px; line-height: 1.6; cursor: pointer; }
 .onboarding-consent input { flex-shrink: 0; width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--primary); }
+.onboarding-required { margin-right: 6px; color: var(--accent-strong); font-size: 13px; font-style: normal; font-weight: 700; }
+/* Terms: everything at once in a box, then each item with its summary behind 보기. */
+.onboarding-consent.terms-all { align-items: center; padding: 12px 16px; border-radius: var(--radius-md); background: var(--sunken); color: var(--ink); font-size: 16px; font-weight: 700; }
+.onboarding-consent.terms-all input { margin-top: 0; }
+.terms-list { display: grid; gap: 0; margin: -6px 0 0; padding: 0 0 0 16px; list-style: none; }
+.terms-list > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 8px; }
+.terms-list .onboarding-consent { padding-top: 10px; }
+.terms-toggle { min-width: 44px; min-height: 44px; padding: 0 10px; border-radius: 10px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.terms-detail { grid-column: 1 / -1; margin: 0 0 8px 30px; padding: 10px 12px; border-radius: 12px; background: var(--sunken); color: var(--muted); font-size: 13px; line-height: 1.6; }
+.terms-notice { padding: 14px 16px; border-radius: var(--radius-md); background: var(--accent-weak); color: var(--accent-strong); }
+.terms-notice strong { display: block; font-size: 14px; font-weight: 700; line-height: 1.5; }
+.terms-notice p { margin: 4px 0 0; font-size: 13px; line-height: 1.6; }
+.onboarding-block { margin: -6px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--danger-weak); color: var(--danger); font-size: 14px; line-height: 1.6; }
+.onboarding-address { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; margin: 0; padding: 14px 16px; border-radius: 14px; background: var(--fill); color: var(--ink); font-size: 16px; font-weight: 500; line-height: 1.5; }
+.onboarding-address small { color: var(--subtle); font-size: 13px; font-variant-numeric: tabular-nums; }
+/* Demo-only outcome switches, folded away like the other 체험 settings. */
+.onboarding-simulation { border-top: 1px solid var(--line); }
+.onboarding-simulation summary { display: flex; align-items: center; justify-content: space-between; min-height: 48px; color: var(--muted); font-size: 14px; font-weight: 600; line-height: 1.5; list-style: none; cursor: pointer; }
+.onboarding-simulation summary::-webkit-details-marker { display: none; }
+.onboarding-simulation summary::after { content: ''; width: 7px; height: 7px; margin: 0 3px 4px 0; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint); transform: rotate(45deg); transition: transform .2s var(--ease); }
+.onboarding-simulation[open] summary::after { margin-bottom: -4px; transform: rotate(225deg); }
+.onboarding-simulation > div { display: flex; flex-wrap: wrap; gap: 0 18px; padding-bottom: 4px; }
+.onboarding-simulation label { display: flex; align-items: center; gap: 8px; min-height: 44px; color: var(--ink-soft); font-size: 14px; line-height: 1.5; cursor: pointer; }
+.onboarding-simulation input { flex-shrink: 0; width: 20px; height: 20px; margin: 0; accent-color: var(--primary); }
 .onboarding-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .onboarding-links { display: flex; justify-content: center; }
 .onboarding-links button { position: relative; min-height: 44px; padding: 0 14px; color: var(--muted); font-size: 14px; font-weight: 600; }
@@ -72,6 +99,8 @@
 .onboarding-form.review .onboarding-lead { text-wrap: balance; }
 .onboarding-spinner { width: 56px; height: 56px; border: 4px solid var(--fill-strong); border-top-color: var(--ink); border-radius: 50%; animation: onboarding-spin .9s linear infinite; }
 .onboarding-review-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--primary); color: var(--on-primary); }
+.onboarding-review-icon.muted { background: var(--fill-strong); color: var(--ink-soft); }
+.onboarding-form.review .onboarding-hint { margin-top: -10px; }
 .onboarding-note { margin: 28px 0 0; padding-top: 16px; border-top: 1px solid var(--line); color: var(--subtle); font-size: 13px; line-height: 1.6; }
 @keyframes onboarding-spin { to { transform: rotate(360deg); } }
 @media (min-width: 640px) {
@@ -79,5 +108,6 @@
 }
 @media (hover: hover) {
   .onboarding-choice button:not(.selected):not(:disabled):hover { border-color: var(--control); }
+  .terms-toggle:hover { background: var(--fill); color: var(--ink); }
   .onboarding-links button:hover { color: var(--ink); }
 }

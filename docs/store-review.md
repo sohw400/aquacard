@@ -2,7 +2,7 @@
 
 작성일: 2026-10-14 · 상태: 공식 문서와 보도로 한 1차 조사. 스토어 정책은 자주 바뀌므로 제출 직전에 원문으로 다시 확인한다.
 
-이 문서는 Aqua 앱이 App Store와 Google Play 심사를 한 번에 통과하고 한국에 등재되도록 미리 준비할 것을 정리한다. 앱 스택과 빌드 요건은 [모바일 앱 준비](mobile-app-plan.md)에, 국내 규제는 [KYC·AML 규제와 법률 검토](kyc-aml-review.md)에 있다.
+이 문서는 Aqua 앱이 App Store와 Google Play 심사를 한 번에 통과하고 한국에 등재되도록 미리 준비할 것을 정리한다. 앱 스택과 빌드 요건은 [모바일 앱 준비](mobile-app-plan.md)에, 국내 규제는 [KYC·AML 규제와 법률 검토](kyc-aml-review.md)에 있다. 두 문서에서 뽑은 할 일과 진행 상황은 [출시 준비 목록](launch-readiness.md)에 모았다.
 
 support.google.com, apps.apple.com, play.google.com은 이 환경에서 열리지 않았다. 그래서 그 항목은 공식 페이지의 검색 발췌로 확인했고, 확인 수준을 이렇게 적는다.
 
@@ -279,6 +279,7 @@ support.google.com, apps.apple.com, play.google.com은 이 환경에서 열리�
 | 연령 | 만 19세 이상만 가입 | 스토어 연령 질문 응답 |
 | 초대 보상 | 없음 | 계속 코인 보상 없이 |
 | 지갑 추가 | 삼성페이·Apple Pay 추가 체험 흐름 | 승인 전에는 숨김 |
+| 개인정보 동의 | 필수 약관과 얼굴 정보 동의를 나눔, 영상통화 대안 | App Privacy 라벨·Data safety에 얼굴 정보와 신분증 사진을 같은 목록으로 신고 |
 | 멤버십 연회비 | 잔액에서 바로 빠짐 | 애플 확인 결과에 따라 iOS 결제 방식 결정 |
 | 리저브 보상률 | 앱 안에 연율 표시와 변경 가능 안내 | 스토어 제목·아이콘에는 쓰지 않음 |
 

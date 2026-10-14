@@ -7,7 +7,8 @@ import type { Action, AppState } from './types';
 const NOW = Date.UTC(2026, 9, 13, 3);
 const signup: Action = {
   type: 'COMPLETE_SIGNUP', email: 'tester@aqua.example', passwordHash: 'a'.repeat(64), name: '아쿠아 사용자', birthDate: '1995-04-12',
-  phone: '01012345678', kyc: { idType: 'resident', occupation: '회사원', purpose: '카드 결제', source: '근로소득' },
+  phone: '01012345678', kyc: { idType: 'resident', occupation: '회사원', purpose: '카드 결제', source: '근로소득', match: 'face',
+    address: { zip: '04500', road: '서울특별시 중구 아쿠아로 1', detail: '' }, pep: false, evidence: null },
 };
 
 function deposit(state: AppState, requestId: string, symbol: 'USDC' | 'KRWS', units: number): AppState {
@@ -22,7 +23,7 @@ function busyYear(): AppState {
   state = deposit(state, 'usdc-in', 'USDC', 10);
   state = deposit(state, 'krws-in', 'KRWS', 20_000);
   state = applyAction(state, { type: 'START_FUNDING', requestId: 'usdt-out', kind: 'withdrawal', source: 'spend', symbol: 'USDT', network: 'ethereum',
-    amount: 14_000, address: 'aqua-preview:ethereum:usdt', recipient: '내\t지갑', quotedAt: NOW }, NOW);
+    amount: 14_000, address: 'aqua-preview:ethereum:usdt', destination: { kind: 'own_wallet', proof: 'signature' }, quotedAt: NOW }, NOW);
   state = applyAction(state, { type: 'TICK' }, NOW + 6_000);
   state.card = { ...state.card, stage: 'active', identityVerified: true, submittedAt: NOW, issuedAt: NOW };
   state = applyAction(state, { type: 'SET_REWARDS_AUTO', enabled: false }, NOW);

@@ -1,11 +1,12 @@
-import { FUND_SOURCES, ID_TYPES, OCCUPATIONS, PURPOSES } from './auth';
+import { EVIDENCE, FUND_SOURCES, ID_TYPES, needsEvidence, OCCUPATIONS, PURPOSES, RECHECK_YEARS } from './auth';
 import { ASSETS, FUNDING_ASSETS, fundingLabel, physicalCardName, PLAN_ORDER, PLANS, POLICY } from './policy';
 import { findMember, initialTag, maskName, normalizeTag, TAG_PATTERN, tagIssue } from './directory';
 import { josa, ro } from './format';
 import { assertFundingQuoteFresh, getFundingQuote, unitsToWon } from './funding';
 import { createFundingQuote, fundingStatusLabel, getFundingNetworks, validateFundingAddress } from './movements';
-import { addressLine, validAddress } from './address';
-import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, DeliveryStage, FundingOperation, FundingSymbol, NotificationSettings, Payment, PaymentControls, Plan, Transaction } from './types';
+import { addressLine, SAMPLE_ADDRESSES, validAddress } from './address';
+import { normalizeName, UNLISTED_VENUE, validRecipientName, venueOf } from './travel';
+import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, DeliveryStage, FundingOperation, FundingSymbol, NotificationSettings, Payment, PaymentControls, Plan, Transaction, WithdrawalDestination } from './types';
 
 export const STORAGE_KEY = 'aqua-card:poc:v1';
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -149,6 +150,25 @@ function progressFunding(state: AppState, wallNow: number): void {
   }
 }
 
+/**
+ * The travel rule check for a withdrawal: an exchange must be in the directory, which holds only reporting businesses the
+ * travel rule network reaches, and a personal wallet must be the holder's own, proven by a signature.
+ */
+function checkDestination(value: unknown): WithdrawalDestination {
+  if (!record(value) || (value.kind !== 'exchange' && value.kind !== 'own_wallet')) throw new Error('받는 곳을 골라 주세요.');
+  if (value.kind === 'own_wallet') {
+    if (value.proof !== 'signature') throw new Error('내 지갑인지 서명으로 확인해 주세요. 다른 사람의 개인 지갑으로는 보낼 수 없어요.');
+    return { kind: 'own_wallet', proof: 'signature' };
+  }
+  if (typeof value.venue !== 'string' || !venueOf(value.venue)) throw new Error(UNLISTED_VENUE);
+  if (value.relation !== 'self' && value.relation !== 'other') throw new Error('받는 사람이 본인인지 골라 주세요.');
+  return { kind: 'exchange', venue: value.venue, relation: value.relation };
+}
+
+function validDestination(value: unknown): boolean {
+  try { return JSON.stringify(checkDestination(value)) === JSON.stringify(value); } catch { return false; }
+}
+
 function startFunding(state: AppState, action: Extract<Action, { type: 'START_FUNDING' }>, wallNow: number): void {
   if (typeof action.requestId !== 'string' || !REQUEST_ID.test(action.requestId)) throw new Error('입출금 요청 번호가 올바르지 않아요. 다시 시도해 주세요.');
   if (!Number.isFinite(action.quotedAt) || action.quotedAt < 0 || action.quotedAt > wallNow) throw new Error('입출금 견적 시각이 올바르지 않아요. 새 견적을 확인해 주세요.');
@@ -161,16 +181,22 @@ function startFunding(state: AppState, action: Extract<Action, { type: 'START_FU
   const normalizedAddress = address.trim();
   const addressError = validateFundingAddress(action.symbol, action.network, normalizedAddress);
   if (addressError) throw new Error(addressError);
+  if (action.kind === 'deposit' && action.destination !== undefined) throw new Error('입금에는 받는 곳을 고르지 않아요.');
+  const destination = action.kind === 'withdrawal' ? checkDestination(action.destination) : undefined;
   if (action.recipient !== undefined && typeof action.recipient !== 'string') throw new Error('받는 사람 정보를 확인해 주세요.');
-  const recipient = (action.recipient ?? '').trim();
-  if (recipient.length > 100 || (action.kind === 'withdrawal' && recipient.length === 0)) throw new Error('받는 사람 이름이나 지갑 별명을 입력해 주세요.');
+  // To the holder's own wallet or own exchange account the travel rule name is the verified one, whatever was typed.
+  const own = destination?.kind === 'own_wallet' || (destination?.kind === 'exchange' && destination.relation === 'self');
+  const recipient = own && state.account ? state.account.name : destination ? normalizeName(action.recipient ?? '') : (action.recipient ?? '').trim();
+  if (recipient.length > 100 || (action.kind === 'withdrawal' && recipient.length === 0)) throw new Error('받는 사람 이름을 입력해 주세요.');
+  if (destination?.kind === 'exchange' && destination.relation === 'other' && !validRecipientName(recipient)) throw new Error('받는 사람 이름을 확인해 주세요. 거래소 계정의 이름과 같아야 해요.');
   if (action.retryOf !== undefined && (typeof action.retryOf !== 'string' || !action.retryOf)) throw new Error('다시 시도할 요청을 확인해 주세요.');
   const simulation = action.simulation ?? 'success';
   const existing = state.fundingOperations.find((item) => item.requestId === action.requestId);
   if (existing) {
     const matches = existing.kind === action.kind && existing.source === action.source && existing.symbol === action.symbol && existing.network === action.network
       && existing.amountWon === quote.amountWon && existing.units === quote.units && existing.address === normalizedAddress
-      && existing.recipient === recipient && existing.simulation === simulation && existing.retryOf === action.retryOf;
+      && existing.recipient === recipient && JSON.stringify(existing.destination) === JSON.stringify(destination)
+      && existing.simulation === simulation && existing.retryOf === action.retryOf;
     if (!matches) throw new Error('같은 요청 번호에 다른 입출금 내용이 있어요. 새 요청 번호로 진행해 주세요.');
     return;
   }
@@ -185,7 +211,7 @@ function startFunding(state: AppState, action: Extract<Action, { type: 'START_FU
   }
   const operation: FundingOperation = {
     id: `funding-${nextSequence(state)}`, requestId: action.requestId, kind: action.kind, source: action.source,
-    symbol: action.symbol, network: action.network, ...quote, address: normalizedAddress, recipient,
+    symbol: action.symbol, network: action.network, ...quote, address: normalizedAddress, recipient, ...(destination ? { destination } : {}),
     status: action.kind === 'deposit' ? 'awaiting_deposit' : 'reviewing', createdAt: wallNow, updatedAt: wallNow,
     stageDueAt: action.kind === 'deposit' ? null : wallNow + FUNDING_STAGE_MS, simulation,
     ...(action.retryOf ? { retryOf: action.retryOf } : {}),
@@ -376,8 +402,14 @@ function validKyc(value: unknown): boolean {
   return record(value) && Object.hasOwn(ID_TYPES, value.idType as string)
     && (OCCUPATIONS as readonly string[]).includes(value.occupation as string)
     && (PURPOSES as readonly string[]).includes(value.purpose as string)
-    && (FUND_SOURCES as readonly string[]).includes(value.source as string);
+    && (FUND_SOURCES as readonly string[]).includes(value.source as string)
+    && (value.match === 'face' || value.match === 'video') && validAddress(value.address) && typeof value.pep === 'boolean'
+    // Enhanced due diligence needs its proof, and only then is there one.
+    && (needsEvidence({ pep: value.pep, source: value.source as string })
+      ? (EVIDENCE as readonly string[]).includes(value.evidence as string) : value.evidence === null);
 }
+
+const addYears = (timestamp: number, years: number) => Array.from({ length: years }).reduce<number>((time) => addYear(time), timestamp);
 
 /** Validates sign-up input after the email, phone, ID, face and 1원 account checks have passed in the UI. */
 function signupAccount(action: Extract<Action, { type: 'COMPLETE_SIGNUP' }>, wallNow: number): Account {
@@ -385,7 +417,8 @@ function signupAccount(action: Extract<Action, { type: 'COMPLETE_SIGNUP' }>, wal
   if (!EMAIL_PATTERN.test(email) || email.length > 120) throw new Error('이메일 주소를 확인해 주세요.');
   if (typeof action.passwordHash !== 'string' || !HASH_PATTERN.test(action.passwordHash)) throw new Error('비밀번호를 다시 정해 주세요.');
   if (typeof action.phone !== 'string' || !PHONE_PATTERN.test(action.phone)) throw new Error('휴대폰 번호를 확인해 주세요.');
-  if (!validKyc(action.kyc)) throw new Error('고객확인 질문에 모두 답해 주세요.');
+  if (!validKyc(action.kyc)) throw new Error(record(action.kyc) && needsEvidence({ pep: action.kyc.pep === true, source: String(action.kyc.source) }) && !action.kyc.evidence
+    ? '추가 확인 서류를 올려 주세요.' : '고객확인 질문에 모두 답해 주세요.');
   const name = typeof action.name === 'string' ? action.name.trim() : '';
   if (name.length < 2 || name.length > 30) throw new Error('이름은 2자 이상 30자 이하로 입력해 주세요.');
   const birthDate = typeof action.birthDate === 'string' ? action.birthDate : '';
@@ -397,9 +430,11 @@ function signupAccount(action: Extract<Action, { type: 'COMPLETE_SIGNUP' }>, wal
     || (today.getUTCMonth() === birth.getUTCMonth() && today.getUTCDate() < birth.getUTCDate()) ? 1 : 0);
   if (age < ADULT_AGE) throw new Error(`만 ${ADULT_AGE}세 이상만 가입할 수 있어요.`);
   if (age > 120) throw new Error('생년월일을 확인해 주세요.');
-  const { idType, occupation, purpose, source } = action.kyc;
-  return { email, passwordHash: action.passwordHash, name, birthDate, phone: action.phone, kyc: { idType, occupation, purpose, source }, verifiedAt: wallNow,
-    tag: initialTag(email), findByPhone: false, findByEmail: false };
+  const { idType, occupation, purpose, source, match: faceMatch, address, pep, evidence } = action.kyc;
+  const risk = needsEvidence(action.kyc) ? 'high' : 'standard';
+  return { email, passwordHash: action.passwordHash, name, birthDate, phone: action.phone,
+    kyc: { idType, occupation, purpose, source, match: faceMatch, address: { zip: address.zip, road: address.road.trim(), detail: address.detail.trim() }, pep, evidence },
+    verifiedAt: wallNow, risk, kycDueAt: addYears(wallNow, RECHECK_YEARS[risk]), tag: initialTag(email), findByPhone: false, findByEmail: false };
 }
 
 function validateCardChange(previous: CardState, next: CardState): void {
@@ -834,6 +869,7 @@ function validFundingOperation(value: unknown): value is FundingOperation {
     || !timestamp(value.createdAt) || !timestamp(value.updatedAt) || value.updatedAt < value.createdAt
     || !(value.stageDueAt === null || timestamp(value.stageDueAt))
     || typeof value.address !== 'string' || typeof value.recipient !== 'string' || value.recipient.length > 100
+    || (value.destination !== undefined && (value.kind !== 'withdrawal' || !validDestination(value.destination)))
     || (value.failureReason !== undefined && typeof value.failureReason !== 'string')
     || (value.retryOf !== undefined && (typeof value.retryOf !== 'string' || !value.retryOf))) return false;
   const operation = value as unknown as FundingOperation;
@@ -877,6 +913,7 @@ function validAccount(value: unknown): value is Account {
     && typeof value.name === 'string' && value.name.trim().length >= 2 && value.name.length <= 30
     && typeof value.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.birthDate)
     && typeof value.phone === 'string' && PHONE_PATTERN.test(value.phone) && validKyc(value.kyc) && timestamp(value.verifiedAt)
+    && (value.risk === 'standard' || value.risk === 'high') && timestamp(value.kycDueAt) && value.kycDueAt > value.verifiedAt
     && typeof value.tag === 'string' && TAG_PATTERN.test(value.tag) && typeof value.findByPhone === 'boolean' && typeof value.findByEmail === 'boolean');
 }
 
@@ -965,9 +1002,15 @@ function migrateCard(card: Record<string, unknown>): Record<string, unknown> {
   return filled;
 }
 
-/** Older saves: accounts from before tags were stored get one made from the email, the way new accounts do; finding by phone or email stays off. */
+/**
+ * Older saves: accounts from before tags were stored get one made from the email, the way new accounts do; finding by phone
+ * or email stays off. Those from before the fuller customer check get a made-up home address, the face check, and the
+ * standard three years until it is repeated.
+ */
 function migrateAccount(account: Record<string, unknown>): Record<string, unknown> {
-  return { findByPhone: false, findByEmail: false, ...(typeof account.email === 'string' ? { tag: initialTag(account.email) } : {}), ...account };
+  const kyc = record(account.kyc) ? { match: 'face', address: { ...SAMPLE_ADDRESSES[0], detail: '' }, pep: false, evidence: null, ...account.kyc } : account.kyc;
+  return { findByPhone: false, findByEmail: false, ...(typeof account.email === 'string' ? { tag: initialTag(account.email) } : {}),
+    risk: 'standard', ...(timestamp(account.verifiedAt) ? { kycDueAt: addYears(account.verifiedAt, RECHECK_YEARS.standard) } : {}), ...account, kyc };
 }
 
 export function loadState(): AppState {

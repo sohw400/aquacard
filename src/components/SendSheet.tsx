@@ -103,7 +103,7 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
         {step === 'choose' && <div className="send-options">
           <button type="button" className="send-option" data-testid="send-member" onClick={() => setStep('tag')}><span className="send-option-icon" aria-hidden="true"><AtSign size={20} /></span><span><strong>Aqua 회원에게</strong><small>태그, 휴대폰 번호, 이메일로 찾아 바로 보내요. 수수료가 없어요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
           <button type="button" className="send-option" data-testid="send-scan" onClick={() => setStep('scan')}><span className="send-option-icon" aria-hidden="true"><QrIcon size={20} /></span><span><strong>QR 코드 찍기</strong><small>상대의 Aqua QR을 찍어 보내요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
-          <button type="button" className="send-option" data-testid="send-wallet" onClick={onWallet}><span className="send-option-icon" aria-hidden="true"><Wallet size={20} /></span><span><strong>지갑 주소로</strong><small>코인으로 바꿔 보내요. 네트워크 비용이 들어요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
+          <button type="button" className="send-option" data-testid="send-wallet" onClick={onWallet}><span className="send-option-icon" aria-hidden="true"><Wallet size={20} /></span><span><strong>지갑 주소로</strong><small>신고한 거래소나 내 지갑으로 보내요. 네트워크 비용이 들어요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
           {state.account && <div className="send-own-tag" data-testid="send-own-tag"><span>내 태그 <strong>@{state.account.tag}</strong></span><button type="button" className="send-own-qr" data-testid="send-own-qr" onClick={onReceive}>내 QR 보기</button></div>}
         </div>}
 

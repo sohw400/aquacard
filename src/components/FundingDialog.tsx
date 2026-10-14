@@ -4,13 +4,14 @@ import CoinIcon from './CoinIcon';
 import { AmountInput } from './ui';
 import { demoCode, maskEmail } from '../lib/auth';
 import { assertFundingQuoteFresh } from '../lib/funding';
-import { money, percent, shortDate, won } from '../lib/format';
+import { josa, money, percent, shortDate, won } from '../lib/format';
 import {
   createFundingQuote, fundingStatusLabel, getFundingNetworks, isFundingPending,
   validateFundingAddress, type FundingMovementQuote,
 } from '../lib/movements';
 import { FUNDING_ASSETS, fundingLabel, POLICY } from '../lib/policy';
-import type { Account, Action, AppState, FundingNetwork, FundingOperation, FundingSymbol } from '../lib/types';
+import { destinationName, normalizeName, regionName, UNLISTED_VENUE, validRecipientName, venueOf, VENUES } from '../lib/travel';
+import type { Account, Action, AppState, FundingNetwork, FundingOperation, FundingSymbol, WithdrawalDestination } from '../lib/types';
 import './FundingDialog.css';
 
 export interface FundingDialogProps {
@@ -26,7 +27,9 @@ export interface FundingDialogProps {
 
 type Step = 'asset' | 'details' | 'review';
 type Origin = 'domestic' | 'global' | 'wallet' | 'address';
-type FieldErrors = { amount?: string; recipient?: string; address?: string; general?: string };
+/** Where a withdrawal goes. The travel rule allows exchanges it can reach, and personal wallets only when they are the holder's own. */
+type Destination = 'domestic' | 'global' | 'wallet';
+type FieldErrors = { amount?: string; recipient?: string; address?: string; venue?: string; proof?: string; general?: string };
 const DEPOSIT_SYMBOLS: FundingSymbol[] = ['KRWS', 'USDC', 'USDT', 'BTC', 'ETH'];
 const ORIGINS: [Origin, string, string][] = [
   ['domestic', '국내 거래소', '업비트·빗썸 등'],
@@ -34,6 +37,13 @@ const ORIGINS: [Origin, string, string][] = [
   ['wallet', '내 지갑', '메타마스크·팬텀 등'],
   ['address', '주소로 받기', '주소를 복사해 직접 보내기'],
 ];
+const DESTINATIONS: [Destination, string, string][] = [
+  ['domestic', '국내 거래소', '업비트·빗썸 등 신고한 거래소'],
+  ['global', '해외 거래소', '트래블룰로 확인되는 거래소만'],
+  ['wallet', '내 지갑', '본인 지갑만 · 서명으로 확인'],
+];
+const SAMPLE_RECIPIENT = '정하늘';
+const PROOF_MS = 700;
 const unitsText = (value: number) => value.toLocaleString('en-US', { maximumFractionDigits: 8 });
 const amountOf = (symbol: FundingSymbol, units: number) => symbol === 'KRWS' ? money(units) : `${unitsText(units)} ${symbol}`;
 const requestIdentifier = () => globalThis.crypto?.randomUUID?.() ?? `aqua-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -52,6 +62,11 @@ export default function FundingDialog({ mode, symbol: initialSymbol, account, op
   const [symbol, setSymbol] = useState<FundingSymbol>(initialOperation?.symbol ?? firstSymbol);
   const [network, setNetwork] = useState<FundingNetwork>(initialOperation?.network ?? getFundingNetworks(firstSymbol)[0].id);
   const [origin, setOrigin] = useState<Origin>('domestic');
+  const [destination, setDestination] = useState<Destination>('domestic');
+  /** An exchange id from the directory, or 'unlisted' when the one wanted is not there. */
+  const [venue, setVenue] = useState<string | null>(null);
+  const [relation, setRelation] = useState<'self' | 'other'>('self');
+  const [proof, setProof] = useState<'none' | 'checking' | 'done'>('none');
   const [emailCode, setEmailCode] = useState<string | null>(null);
   const [emailInput, setEmailInput] = useState('');
   const [step, setStep] = useState<Step>('asset');
@@ -96,6 +111,11 @@ export default function FundingDialog({ mode, symbol: initialSymbol, account, op
   const seconds = quotedAt === null ? null : Math.max(0, POLICY.quoteTtlSeconds - Math.floor((now - quotedAt) / 1_000));
   const expired = seconds === 0;
   const sampleAddress = previewAddress(symbol, network);
+  const exchange = destination !== 'wallet';
+  const chosenVenue = venue ? venueOf(venue) : undefined;
+  const venueName = chosenVenue?.name ?? '거래소';
+  const holder = account?.name ?? '';
+  const recipientName = exchange && relation === 'other' ? normalizeName(recipient) : holder;
   const draftQuote = useMemo<{ value: FundingMovementQuote | null; error: string }>(() => {
     if (!amountInput.trim()) return { value: null, error: '' };
     try {
@@ -133,6 +153,12 @@ export default function FundingDialog({ mode, symbol: initialSymbol, account, op
   }, []);
 
   useEffect(() => {
+    if (proof !== 'checking') return;
+    const timer = setTimeout(() => setProof('done'), PROOF_MS);
+    return () => clearTimeout(timer);
+  }, [proof]);
+
+  useEffect(() => {
     if (quotedAt === null || !showForm) return;
     const timer = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(timer);
@@ -157,7 +183,25 @@ export default function FundingDialog({ mode, symbol: initialSymbol, account, op
     setSymbol(next); setNetwork(getFundingNetworks(next)[0].id);
     setAmountInput(''); setAddress(''); setConsent(false); clearQuote();
   }
-  function chooseNetwork(next: FundingNetwork) { setNetwork(next); setAddress(''); setConsent(false); clearQuote(); }
+  function chooseNetwork(next: FundingNetwork) { setNetwork(next); setAddress(''); setProof('none'); setConsent(false); clearQuote(); }
+  function chooseDestination(next: Destination) {
+    setDestination(next); setVenue(null); setRelation('self'); setRecipient('');
+    setAddress(''); setProof('none'); setConsent(false); clearQuote();
+  }
+  function chooseVenue(next: string) { setVenue(next); setErrors((current) => ({ ...current, venue: undefined })); setConsent(false); clearQuote(); }
+  function chooseRelation(next: 'self' | 'other') { setRelation(next); setErrors((current) => ({ ...current, recipient: undefined })); setConsent(false); clearQuote(); }
+  /** A new address needs a new signature. */
+  function editAddress(next: string) { setAddress(next); setProof('none'); setErrors((current) => ({ ...current, address: undefined, proof: undefined })); setConsent(false); clearQuote(); }
+  function signWallet() {
+    const issue = validateFundingAddress(symbol, network, address);
+    if (issue) {
+      setErrors((current) => ({ ...current, address: issue }));
+      requestAnimationFrame(() => document.getElementById(addressId)?.focus());
+      return;
+    }
+    setErrors((current) => ({ ...current, proof: undefined }));
+    setProof('checking');
+  }
   function editAmount(value: string) { setAmountInput(value); clearQuote(); }
   function maxAmount() { editAmount(String(available)); }
   async function copy(value: string, message: string) {
@@ -171,13 +215,21 @@ export default function FundingDialog({ mode, symbol: initialSymbol, account, op
     else if (draftQuote.error) next.amount = draftQuote.error;
     else if (insufficient) next.amount = '잔액이 부족해요. 금액을 줄여 주세요.';
     if (!depositing) {
-      if (!recipient.trim()) next.recipient = '받는 사람을 입력해 주세요.';
-      const addressIssue = validateFundingAddress(symbol, network, address);
-      if (addressIssue) next.address = addressIssue;
+      if (exchange && !venue) next.venue = '받는 거래소를 골라 주세요.';
+      else if (exchange && !chosenVenue) next.venue = UNLISTED_VENUE;
+      if (exchange && chosenVenue && relation === 'other') {
+        if (!recipientName) next.recipient = '받는 사람 이름을 넣어 주세요.';
+        else if (!validRecipientName(recipientName)) next.recipient = '이름은 글자로만 2~30자로 넣어 주세요. 거래소 계정의 이름과 같아야 해요.';
+      }
+      if (!exchange || chosenVenue) {
+        const addressIssue = validateFundingAddress(symbol, network, address);
+        if (addressIssue) next.address = addressIssue;
+        else if (!exchange && proof !== 'done') next.proof = '서명으로 내 지갑인지 확인해 주세요.';
+      }
     }
     setErrors(next);
     if (Object.keys(next).length) {
-      const field = next.recipient ? recipientId : next.address ? addressId : amountId;
+      const field = next.venue ? `${uid}-venues` : next.recipient ? recipientId : next.address ? addressId : next.proof ? `${uid}-proof` : amountId;
       requestAnimationFrame(() => document.getElementById(field)?.focus());
       return false;
     }
@@ -205,7 +257,9 @@ export default function FundingDialog({ mode, symbol: initialSymbol, account, op
     try {
       assertFundingQuoteFresh(quotedAt);
       submittingRef.current = true; setSubmitting(true);
-      const result = dispatch({ type: 'START_FUNDING', requestId, kind: depositing ? 'deposit' : 'withdrawal', symbol, network, source: 'spend', ...(usingUnits ? { units: amount } : { amount }), address: depositing ? sampleAddress : address.trim(), recipient: depositing ? '내 잔액' : recipient.trim(), quotedAt, simulation, ...(retryOf ? { retryOf } : {}) });
+      const sendTo: WithdrawalDestination | undefined = depositing ? undefined
+        : exchange ? { kind: 'exchange', venue: venue ?? '', relation } : { kind: 'own_wallet', proof: 'signature' };
+      const result = dispatch({ type: 'START_FUNDING', requestId, kind: depositing ? 'deposit' : 'withdrawal', symbol, network, source: 'spend', ...(usingUnits ? { units: amount } : { amount }), address: depositing ? sampleAddress : address.trim(), recipient: depositing ? '내 잔액' : recipientName, ...(sendTo ? { destination: sendTo } : {}), quotedAt, simulation, ...(retryOf ? { retryOf } : {}) });
       const created = result.fundingOperations.find((item) => item.requestId === requestId);
       if (!created) throw new Error('요청 내역을 찾지 못했어요. 거래 내역에서 확인해 주세요.');
       setCurrentOperationId(created.id); setShowForm(false);
@@ -225,12 +279,16 @@ export default function FundingDialog({ mode, symbol: initialSymbol, account, op
     setFormMode(previous.kind === 'deposit' ? 'deposit' : 'withdraw');
     setSymbol(previous.symbol); setNetwork(previous.network);
     setRetryOf(previous.id); setRequestId(requestIdentifier());
-    setAmountInput(''); setAddress(''); setRecipient(''); setConsent(false); setSimulation('success'); setEmailCode(null); setEmailInput('');
+    // The same place again, without the address or the signature, which belong to that one request.
+    const sentTo = previous.destination;
+    setDestination(sentTo?.kind === 'own_wallet' ? 'wallet' : sentTo ? venueOf(sentTo.venue)?.region ?? 'domestic' : 'domestic');
+    setVenue(sentTo?.kind === 'exchange' ? sentTo.venue : null); setRelation(sentTo?.kind === 'exchange' ? sentTo.relation : 'self'); setProof('none');
+    setAmountInput(''); setAddress(''); setRecipient(sentTo?.kind === 'exchange' && sentTo.relation === 'other' ? previous.recipient : ''); setConsent(false); setSimulation('success'); setEmailCode(null); setEmailInput('');
     setCurrentOperationId(undefined); setShowForm(true); clearQuote(); moveTo('asset');
   }
 
   const title = operation ? operation.status === 'completed' ? operation.kind === 'deposit' ? '입금 완료' : '보내기 완료' : operation.status === 'failed' ? '처리 실패' : operation.status === 'cancelled' ? '취소된 요청' : operation.kind === 'deposit' ? '입금 진행 상황' : '보내기 진행 상황'
-    : missingOperation ? '입출금 내역' : step === 'asset' ? depositing ? '어디서 보내나요?' : '어떤 코인으로 보낼까요?' : step === 'review' ? '보낼 정보 확인' : depositing ? '입금 주소' : '보낼 정보 입력';
+    : missingOperation ? '입출금 내역' : step === 'asset' ? depositing ? '어디서 보내나요?' : '어디로 보낼까요?' : step === 'review' ? '보낼 정보 확인' : depositing ? '입금 주소' : '보낼 정보 입력';
   const cancellable = operation?.status === 'awaiting_deposit' || operation?.status === 'reviewing';
   const readyToStart = showForm && (step === 'review' || depositing && step === 'details' && quote !== null);
 
@@ -243,6 +301,30 @@ export default function FundingDialog({ mode, symbol: initialSymbol, account, op
       {!depositing && <div className="funding-quote-row"><dt>수수료를 뺀 금액</dt><dd data-testid="quote-net">{value ? money(value.netWon) : '입력 전'}</dd></div>}
       <div className="funding-quote-total"><dt>{depositing ? '잔액에 더할 금액' : '받는 금액'}</dt><dd className={value ? undefined : 'empty'}>{depositing ? <span data-testid="quote-net">{value ? money(value.netWon) : '입력 전'}</span> : symbol === 'KRWS' ? <span data-testid="quote-units">{value ? money(value.outputUnits) : '입력 전'}</span> : <><span data-testid="quote-units">{value ? unitsText(value.outputUnits) : '입력 전'}</span>{value && <small>{symbol}</small>}</>}</dd></div>
     </dl>{depositing && <p className="funding-help">보내는 곳에서 수수료가 따로 들 수 있어요.</p>}</div>;
+  }
+
+  /** Step 2 of a withdrawal: the exchange and who holds the account there, or the holder's own wallet and its signature. */
+  function withdrawalFields() {
+    const addressField = <div className="funding-form-field"><div className="funding-label-row"><label htmlFor={addressId}>{exchange ? `${venueName} 입금 주소` : '내 지갑 주소'}</label><button type="button" className="funding-text-button" data-testid="funding-preview-address" onClick={() => editAddress(sampleAddress)}>예시 주소</button></div><textarea id={addressId} data-testid="funding-address" rows={2} value={address} placeholder={network === 'bitcoin' ? 'bc1으로 시작하는 주소' : '0x로 시작하는 주소'} onChange={(event) => editAddress(event.target.value)} autoComplete="off" spellCheck={false} aria-invalid={Boolean(errors.address)} />{errors.address ? <p className="funding-field-error" role="alert">{errors.address}</p> : <p className="funding-help">{address === sampleAddress ? '체험용\u00a0주소라 실제로 보내지 않아요.' : exchange ? `${venueName} 앱의 입금 화면에서 ${label} ${selectedNetwork.label} 주소를 복사해 넣어 주세요.` : network === 'bitcoin' ? '주소 형식만 확인해요. 내 지갑 주소가 맞는지 확인해 주세요.' : '0x 주소는 여러 네트워크에서 같이 쓰여요. 지갑의 네트워크를 확인해 주세요.'}</p>}</div>;
+    if (!exchange) return <>{addressField}
+      <section className="email-check wallet-proof" id={`${uid}-proof`} tabIndex={-1} data-testid="wallet-proof"><div className="email-check-head"><strong>내 지갑 확인</strong>{proof === 'done' ? <span className="email-check-done" data-testid="wallet-proof-done"><Check size={16} strokeWidth={2.6} />확인 완료</span> : <button type="button" className="funding-text-button" data-testid="wallet-proof-sign" disabled={proof === 'checking'} onClick={signWallet}>{proof === 'checking' ? '확인 중' : '서명하기'}</button>}</div>
+        {proof === 'done' ? <p>이 주소는 {holder ? `${holder}님` : '내'} 지갑이에요.</p> : <><p>지갑 앱에서 Aqua가 보낸 문구에 서명하면 이 주소가 내 지갑인지 확인돼요. 서명만 하고 돈은 나가지 않아요.</p><p className="wallet-proof-demo">체험판이라 지갑을 연결하지 않고 과정만 보여 드려요.</p></>}</section>
+      {errors.proof && <p className="funding-field-error" role="alert">{errors.proof}</p>}</>;
+    return <>
+      <fieldset className="funding-fieldset funding-venue-field" id={`${uid}-venues`} tabIndex={-1} data-testid="funding-venues"><legend>받는 거래소</legend>
+        <div className="funding-venues">{VENUES.filter((item) => item.region === destination).map((item) => <button type="button" key={item.id} className={`funding-venue${venue === item.id ? ' selected' : ''}`} data-testid={`funding-venue-${item.id}`} aria-pressed={venue === item.id} onClick={() => chooseVenue(item.id)}>{item.name}</button>)}</div>
+        <button type="button" className={`funding-unlisted${venue === 'unlisted' ? ' selected' : ''}`} data-testid="funding-venue-unlisted" aria-pressed={venue === 'unlisted'} onClick={() => chooseVenue('unlisted')}>찾는 거래소가 없어요</button>
+        {venue === 'unlisted' ? <p className="funding-block" role="alert" data-testid="funding-venue-blocked">{UNLISTED_VENUE} 신고하지 않은 거래소로 보내는 것은 법으로 막혀 있어요.</p>
+          : errors.venue ? <p className="funding-field-error" role="alert">{errors.venue}</p>
+          : destination === 'global' && <p className="funding-help">체험판의 해외 거래소는 예시예요. 실제로 보낼 수 있는 곳은 트래블룰 연동 뒤에 정해져요.</p>}
+      </fieldset>
+      {venue !== 'unlisted' && <><fieldset className="funding-fieldset funding-relation-field"><legend>받는 사람</legend>
+        <div className="funding-relations">{(['self', 'other'] as const).map((key) => <button type="button" key={key} className={`funding-relation${relation === key ? ' selected' : ''}`} data-testid={`funding-relation-${key}`} aria-pressed={relation === key} onClick={() => chooseRelation(key)}>{key === 'self' ? '본인' : '다른 사람'}</button>)}</div>
+        {relation === 'self' ? <p className="funding-help">내 {venueName} 계정으로 보내요. 계정 이름이 {holder ? `${holder}님과` : '내 이름과'} 같아야 해요.</p>
+          : <div className="funding-form-field"><div className="funding-label-row"><label htmlFor={recipientId}>받는 사람 이름</label><button type="button" className="funding-text-button" data-testid="funding-recipient-sample" onClick={() => { setRecipient(SAMPLE_RECIPIENT); setErrors((current) => ({ ...current, recipient: undefined })); setConsent(false); clearQuote(); }}>샘플 이름</button></div><input id={recipientId} data-testid="funding-recipient" type="text" maxLength={40} value={recipient} placeholder="거래소 계정의 이름" onChange={(event) => { setRecipient(event.target.value); setErrors((current) => ({ ...current, recipient: undefined })); setConsent(false); clearQuote(); }} autoComplete="off" aria-invalid={Boolean(errors.recipient)} />{errors.recipient ? <p className="funding-field-error" role="alert">{errors.recipient}</p> : <p className="funding-help">거래소 계정의 이름과 같아야 해요. 체험판이에요. 실제 이름은 넣지 마세요.</p>}</div>}
+      </fieldset>
+      {addressField}</>}
+    </>;
   }
 
   function simulationControl() {
@@ -258,6 +340,7 @@ export default function FundingDialog({ mode, symbol: initialSymbol, account, op
       : operation ? <FundingStatus operation={operation} onCopy={copy} />
       : step === 'asset' ? <div className="funding-route-step">
         {depositing && <fieldset className="funding-fieldset"><legend>보내는 곳</legend><div className="funding-origins">{ORIGINS.map(([key, name, note]) => <button type="button" key={key} className={`funding-origin${origin === key ? ' selected' : ''}`} data-testid={`funding-origin-${key}`} aria-pressed={origin === key} onClick={() => setOrigin(key)}><strong>{name}</strong><span>{note}</span></button>)}</div></fieldset>}
+        {!depositing && <fieldset className="funding-fieldset" data-testid="funding-destinations"><legend>받는 곳</legend><div className="funding-network-options">{DESTINATIONS.map(([key, name, note]) => <button type="button" key={key} className={`funding-network-option${destination === key ? ' selected' : ''}`} data-testid={`funding-destination-${key}`} aria-pressed={destination === key} onClick={() => { if (destination !== key) chooseDestination(key); }}><span><strong>{name}</strong><small>{note}</small></span><span className="funding-selection-mark">{destination === key && <Check size={15} />}</span></button>)}</div><p className="funding-help">다른 사람의 개인 지갑이나 신고하지 않은 거래소로는 보낼 수 없어요.</p></fieldset>}
         <fieldset className="funding-fieldset"><legend>코인</legend><div className="funding-coins">{symbols.map((asset) => <button type="button" className={`funding-coin${symbol === asset ? ' selected' : ''}`} key={asset} data-testid={`funding-asset-${asset}`} aria-pressed={symbol === asset} onClick={() => chooseAsset(asset)}><CoinIcon symbol={asset} size={34} /><span className="funding-coin-main"><strong>{FUNDING_ASSETS[asset].name}</strong><span>{depositing ? asset === 'KRWS' ? '잔액과 1:1' : '받으면 원화 스테이블로 바뀌어요' : asset === 'KRWS' ? '전환 수수료 없음' : `전환 수수료 ${percent(POLICY.conversionFee)}`}</span></span><span className="funding-selection-mark">{symbol === asset && <Check size={15} />}</span></button>)}</div>{!depositing && <p className="funding-help">{symbol === 'KRWS' ? '원화 스테이블을 그대로 보내요. 네트워크 비용만 들어요.' : `원화 스테이블을 ${symbol}로 바꿔서 보내요.`}</p>}</fieldset>
         <fieldset className="funding-fieldset" data-testid="funding-network"><legend>네트워크</legend><div className="funding-network-options">{networks.map((option, index) => <button type="button" className={`funding-network-option${network === option.id ? ' selected' : ''}`} key={option.id} data-testid={`funding-network-${option.id}`} aria-pressed={network === option.id} onClick={() => chooseNetwork(option.id)}><span><strong>{option.label}{networks.length > 1 && index === 0 && <em className="funding-recommend">추천</em>}</strong><small>{depositing ? `${option.confirmationLabel} · ${option.estimatedTime}` : `네트워크 비용 ${money(option.feeWon)}`}</small></span><span className="funding-selection-mark">{network === option.id && <Check size={15} />}</span></button>)}</div><p className="funding-help">{depositing ? '보내는 곳에서도 같은 코인과 네트워크를 골라 주세요.' : '받는 곳이 같은 네트워크를 지원하는지 확인해 주세요.'}</p></fieldset>
         {!depositing && <div className="funding-route-note"><span>예상 처리 시간</span><strong>{selectedNetwork.estimatedTime}</strong></div>}
@@ -274,11 +357,11 @@ export default function FundingDialog({ mode, symbol: initialSymbol, account, op
           <p className="funding-receive-warning">{label}만 {selectedNetwork.label} 네트워크로 보내 주세요. 체험용&nbsp;주소라 실제로 입금되지 않아요.</p>
         </div>
         <div className="funding-trial-head"><h3>입금 체험</h3><p>보낸 수량을 넣으면 입금 과정을 미리 볼&nbsp;수 있어요.</p></div></>
-        : <><div className="funding-form-field"><label htmlFor={recipientId}>받는 사람</label><input id={recipientId} data-testid="funding-recipient" type="text" maxLength={60} value={recipient} placeholder="이름 또는 메모" onChange={(event) => { setRecipient(event.target.value); setErrors((current) => ({ ...current, recipient: undefined })); setConsent(false); clearQuote(); }} autoComplete="off" aria-invalid={Boolean(errors.recipient)} />{errors.recipient && <p className="funding-field-error" role="alert">{errors.recipient}</p>}</div><div className="funding-form-field"><div className="funding-label-row"><label htmlFor={addressId}>받는 지갑 주소</label><button type="button" className="funding-text-button" data-testid="funding-preview-address" onClick={() => { setAddress(sampleAddress); setErrors((current) => ({ ...current, address: undefined })); clearQuote(); }}>예시 주소</button></div><textarea id={addressId} data-testid="funding-address" rows={2} value={address} placeholder={network === 'bitcoin' ? 'bc1으로 시작하는 주소' : '0x로 시작하는 주소'} onChange={(event) => { setAddress(event.target.value); setErrors((current) => ({ ...current, address: undefined })); setConsent(false); clearQuote(); }} autoComplete="off" spellCheck={false} aria-invalid={Boolean(errors.address)} />{errors.address ? <p className="funding-field-error" role="alert">{errors.address}</p> : <p className="funding-help">{address === sampleAddress ? '체험용\u00a0주소라 실제로 보내지 않아요.' : network === 'bitcoin' ? '주소 형식만 확인해요. 받는 사람이 맞는지 직접 확인해 주세요.' : '0x 주소는 여러 네트워크에서 같이 쓰여요. 받는\u00a0곳의 네트워크를 확인해 주세요.'}</p>}</div></>}
+        : withdrawalFields()}
         <div className="funding-amount"><div className="funding-label-row"><label htmlFor={amountId}>{depositing ? '보낸 수량' : '보낼 금액'}</label>{!depositing && <button type="button" className="funding-text-button" data-testid="funding-max" disabled={available <= 0} onClick={maxAmount}>최대</button>}</div><div className="funding-amount-input"><AmountInput id={amountId} unit={usingUnits && symbol !== 'KRWS' ? symbol : '원'} data-testid="action-amount" decimals={usingUnits && symbol !== 'KRWS'} value={amountInput} onValueChange={editAmount} autoComplete="off" aria-invalid={Boolean(amountIssue)} /></div>{amountIssue ? <p className="funding-field-error" role="alert">{amountIssue}</p> : <p className="funding-help">{depositing ? '원화로 1,000원 이상이어야 해요.' : `보낼 수 있는 금액 ${money(available)} · 수수료 포함`}</p>}</div>
         {depositing && <>{quoteSummary(displayedQuote)}<label className="funding-consent"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} data-testid="funding-consent" /><span>{symbol === 'KRWS' ? '입금이 확인되면 잔액에 더해지는\u00a0것을 확인했어요.' : '입금이 확인되면 원화 스테이블로 바뀌는\u00a0것을 확인했어요.'}</span></label>{simulationControl()}</>}
       </div>
-      : <div className="funding-review-step"><dl className="funding-review-recipient"><div><dt>받는 사람</dt><dd>{recipient.trim()}</dd></div><div><dt>코인·네트워크</dt><dd>{label} · {selectedNetwork.label}</dd></div><div className="funding-review-address"><dt>받는 지갑 주소</dt><dd>{address.trim()}</dd></div></dl>{quoteSummary(quote)}<div className="funding-resulting-balance"><span>보낸 뒤 잔액</span><strong>{money(Math.max(0, available - (quote?.amountWon ?? 0)))}</strong></div><label className="funding-consent"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} data-testid="funding-consent" /><span>보낼 정보와 수수료를 확인했어요.</span></label><section className="email-check" data-testid="email-check"><div className="email-check-head"><strong>이메일 인증</strong>{emailVerified ? <span className="email-check-done" data-testid="email-verified"><Check size={16} strokeWidth={2.6} />인증 완료</span> : <button type="button" className="funding-text-button" data-testid="email-send" onClick={() => { setEmailCode(demoCode()); setEmailInput(''); }}>{emailCode ? '다시 받기' : '인증 코드 받기'}</button>}</div>{!emailVerified && <p>보내려면 {maskEmail(email)} 메일로 받은 6자리&nbsp;코드가 필요해요.</p>}{!emailVerified && emailCode && <><p className="email-check-demo" data-testid="email-demo-code">체험판이라 메일은 보내지 않아요. 인증 코드 <strong>{emailCode}</strong></p><input className="email-check-input" data-testid="email-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} aria-label="이메일 인증 코드" placeholder="6자리 코드" value={emailInput} onChange={(event) => setEmailInput(event.target.value.replace(/\D/g, ''))} /></>}</section><p className="funding-help">주소는 형식만 확인했어요. 받는 사람과 네트워크는 직접 확인해 주세요.</p>{simulationControl()}</div>}
+      : <div className="funding-review-step"><dl className="funding-review-recipient" data-testid="funding-review-recipient"><div><dt>받는 곳</dt><dd>{exchange ? `${venueName} · ${regionName(chosenVenue?.region ?? 'domestic')}` : '내 지갑 · 서명 확인'}</dd></div><div><dt>받는 사람</dt><dd>{exchange && relation === 'other' ? recipientName : `${holder} (본인)`}</dd></div><div><dt>코인·네트워크</dt><dd>{label} · {selectedNetwork.label}</dd></div><div className="funding-review-address"><dt>받는 주소</dt><dd>{address.trim()}</dd></div></dl><p className="funding-travel-note" data-testid="funding-travel-note">{exchange ? `트래블룰에 따라 금액과 관계없이 내 이름과 받는 사람 이름을 ${venueName}에 함께 보내요. 이름이 계정과 다르면 ${josa(venueName, '이', '가')} 받지 않고 돌려보낼 수 있어요.` : '서명으로 확인한 내 지갑이에요. 확인한 기록을 이 출금과 함께 남겨요.'}</p>{quoteSummary(quote)}<div className="funding-resulting-balance"><span>보낸 뒤 잔액</span><strong>{money(Math.max(0, available - (quote?.amountWon ?? 0)))}</strong></div><label className="funding-consent"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} data-testid="funding-consent" /><span>보낼 정보와 수수료를 확인했어요.</span></label><section className="email-check" data-testid="email-check"><div className="email-check-head"><strong>이메일 인증</strong>{emailVerified ? <span className="email-check-done" data-testid="email-verified"><Check size={16} strokeWidth={2.6} />인증 완료</span> : <button type="button" className="funding-text-button" data-testid="email-send" onClick={() => { setEmailCode(demoCode()); setEmailInput(''); }}>{emailCode ? '다시 받기' : '인증 코드 받기'}</button>}</div>{!emailVerified && <p>보내려면 {maskEmail(email)} 메일로 받은 6자리&nbsp;코드가 필요해요.</p>}{!emailVerified && emailCode && <><p className="email-check-demo" data-testid="email-demo-code">체험판이라 메일은 보내지 않아요. 인증 코드 <strong>{emailCode}</strong></p><input className="email-check-input" data-testid="email-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} aria-label="이메일 인증 코드" placeholder="6자리 코드" value={emailInput} onChange={(event) => setEmailInput(event.target.value.replace(/\D/g, ''))} /></>}</section><p className="funding-help">주소는 형식만 확인했어요. 네트워크는 직접 확인해 주세요.</p>{simulationControl()}</div>}
       {errors.general && <div className="funding-error" role="alert">{errors.general}</div>}
       {readyToStart && expired && <p className="funding-field-error" role="alert">견적이 만료됐어요. 갱신한 뒤 다시 확인해 주세요.</p>}
     </form>
@@ -301,6 +384,6 @@ function FundingStatus({ operation, onCopy }: { operation: FundingOperation; onC
     <ol className="funding-timeline">{stages.map((status, position) => <li key={status} className={position < index || operation.status === 'completed' ? 'done' : position === index ? 'current' : ''} aria-current={position === index ? 'step' : undefined}><span className="funding-timeline-marker">{position + 1}</span><div><strong>{terminalError && position === 0 ? '요청 접수' : fundingStatusLabel(status)}</strong>{position === index && <span>{shortDate(operation.updatedAt)}</span>}</div></li>)}</ol>
     <div className="funding-status-message">{operation.status === 'awaiting_deposit' ? <><p>아직 입금이 확인되지 않아 잔액은 그대로예요.</p><p>입금 확인 체험을 누르면 다음 단계로 넘어가요.</p></> : operation.status === 'completed' ? <p>{incoming ? `${money(operation.netWon)}이 잔액에 들어왔어요.` : `잔액에서 ${money(operation.amountWon)}이 나갔어요.`}</p> : terminalError ? <><p>{operation.failureReason ?? (operation.status === 'cancelled' ? '요청을 취소했어요.' : '처리하지 못했어요.')}</p><p>{incoming ? '잔액은 바뀌지 않았어요.' : `보류했던 ${restoration}을 모두 돌려드렸어요. 수수료는 빼지 않았어요.`}</p></> : <><p>{incoming ? operation.symbol === 'KRWS' ? '입금을 확인하고 있어요.' : '입금을 확인하고 원화 스테이블로 바꾸고 있어요.' : `보내는 동안 ${restoration}은 쓸 수 없어요.`}</p><p>홈 화면이나 거래 내역에서 이어서 확인할 수 있어요.</p></>}</div>
     {incoming && operation.status === 'awaiting_deposit' && <div className="funding-destination"><div className="funding-destination-heading"><h3>입금 주소</h3><button type="button" aria-label="입금 주소 복사" onClick={() => onCopy(operation.address, '주소를 복사했어요.')}><Copy size={15} />복사</button></div><code>{operation.address}</code><p>체험용&nbsp;주소라 실제로 입금되지 않아요.</p></div>}
-    <details className="funding-operation-details" open={!pending}><summary>요청 상세</summary><dl><div><dt>코인·네트워크</dt><dd>{fundingLabel(operation.symbol)} · {getFundingNetworks(operation.symbol).find((option) => option.id === operation.network)?.label}</dd></div>{!incoming && <><div><dt>받는 사람</dt><dd>{operation.recipient}</dd></div><div className="address"><dt>받는 주소</dt><dd>{operation.address}</dd></div></>}<div><dt>접수 일시</dt><dd>{shortDate(operation.createdAt)}</dd></div><div><dt>{terminalError ? '견적 전환 수수료' : '전환 수수료'}</dt><dd>{money(operation.feeWon)}</dd></div><div><dt>{terminalError ? '견적 네트워크 비용' : '네트워크 비용'}</dt><dd>{money(operation.networkFeeWon)}</dd></div>{terminalError && <div><dt>실제로 낸 수수료</dt><dd>{money(0)}</dd></div>}{!incoming && <div><dt>{terminalError ? '받을 예정이던 금액' : '받는 금액'}</dt><dd>{amountOf(operation.symbol, operation.outputUnits)}</dd></div>}</dl><div className="funding-operation-reference"><span>요청 번호</span><code>{operation.requestId}</code><button type="button" aria-label="요청 번호 복사" data-testid="funding-copy-request" onClick={() => onCopy(operation.requestId, '요청 번호를 복사했어요.')}><Copy size={15} />복사</button></div></details>
+    <details className="funding-operation-details" open={!pending}><summary>요청 상세</summary><dl><div><dt>코인·네트워크</dt><dd>{fundingLabel(operation.symbol)} · {getFundingNetworks(operation.symbol).find((option) => option.id === operation.network)?.label}</dd></div>{!incoming && <>{operation.destination && <div><dt>받는 곳</dt><dd>{operation.destination.kind === 'own_wallet' ? '내 지갑 · 서명 확인' : `${destinationName(operation.destination)} · ${regionName(venueOf(operation.destination.venue)?.region ?? 'domestic')}`}</dd></div>}<div><dt>받는 사람</dt><dd>{operation.recipient}</dd></div><div className="address"><dt>받는 주소</dt><dd>{operation.address}</dd></div></>}<div><dt>접수 일시</dt><dd>{shortDate(operation.createdAt)}</dd></div><div><dt>{terminalError ? '견적 전환 수수료' : '전환 수수료'}</dt><dd>{money(operation.feeWon)}</dd></div><div><dt>{terminalError ? '견적 네트워크 비용' : '네트워크 비용'}</dt><dd>{money(operation.networkFeeWon)}</dd></div>{terminalError && <div><dt>실제로 낸 수수료</dt><dd>{money(0)}</dd></div>}{!incoming && <div><dt>{terminalError ? '받을 예정이던 금액' : '받는 금액'}</dt><dd>{amountOf(operation.symbol, operation.outputUnits)}</dd></div>}</dl><div className="funding-operation-reference"><span>요청 번호</span><code>{operation.requestId}</code><button type="button" aria-label="요청 번호 복사" data-testid="funding-copy-request" onClick={() => onCopy(operation.requestId, '요청 번호를 복사했어요.')}><Copy size={15} />복사</button></div></details>
   </div>;
 }

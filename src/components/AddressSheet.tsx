@@ -6,10 +6,16 @@ import type { ShippingAddress } from '../lib/types';
 import './InternalTransferDialog.css';
 import './WalletSheet.css';
 
-/** Road-name search, then the unit, then who receives it: the shape Korean card apps use for delivery. */
-export default function AddressSheet({ initial, holder, confirmLabel = '이 주소로 받기', onSave, onClose }: {
+/**
+ * Road-name search, then the unit, then who receives it: the shape Korean card apps use for delivery. Sign-up uses the
+ * same search for the home address, without a recipient.
+ */
+export default function AddressSheet({ initial, holder, title = '배송지 입력', lead = '실물카드는 본인만 받을 수 있어요.', confirmLabel = '이 주소로 받기', onSave, onClose }: {
   initial: ShippingAddress | null;
-  holder: string;
+  /** Who receives a delivery; null for an address that is not a delivery. */
+  holder: string | null;
+  title?: string;
+  lead?: string;
   confirmLabel?: string;
   onSave: (address: ShippingAddress) => void;
   onClose: () => void;
@@ -25,7 +31,7 @@ export default function AddressSheet({ initial, holder, confirmLabel = '이 주�
 
   return <div className="itd-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="internal-transfer-dialog wallet-sheet address-sheet" ref={panel} role="dialog" aria-modal="true" aria-labelledby={`${id}-heading`} tabIndex={-1} data-testid="address-sheet">
-      <header className="itd-header"><div><h2 id={`${id}-heading`} ref={heading} tabIndex={-1}>배송지 입력</h2><p>실물카드는 본인만 받을 수 있어요.</p></div><button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button></header>
+      <header className="itd-header"><div><h2 id={`${id}-heading`} ref={heading} tabIndex={-1}>{title}</h2><p>{lead}</p></div><button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button></header>
       <div className="itd-body">
         <div className="form-field"><label htmlFor={`${id}-query`}>주소 찾기</label>
           <div className="address-search"><Search size={18} aria-hidden="true" /><input id={`${id}-query`} data-testid="address-query" type="search" placeholder="도로명이나 지역 이름" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
@@ -35,7 +41,7 @@ export default function AddressSheet({ initial, holder, confirmLabel = '이 주�
           return <li key={item.zip}><button type="button" className={selected ? 'selected' : ''} aria-pressed={selected} data-testid={`address-result-${item.zip}`} onClick={() => setPicked(item)}><span><strong>{item.road}</strong><small>우편번호 {item.zip}</small></span>{selected && <Check size={18} strokeWidth={2.6} aria-hidden="true" />}</button></li>;
         }) : <li className="address-empty">찾는 주소가 없어요. 다른 이름으로 찾아 주세요.</li>}</ul>
         {picked && <div className="form-field"><label htmlFor={`${id}-detail`}>상세 주소</label><input id={`${id}-detail`} data-testid="address-detail" placeholder="동·호수 (없으면 비워 두세요)" maxLength={60} autoComplete="off" value={detail} onChange={(event) => setDetail(event.target.value)} /></div>}
-        <dl className="card-sheet-cost"><div><dt>받는 분</dt><dd>{holder} (본인)</dd></div></dl>
+        {holder !== null && <dl className="card-sheet-cost"><div><dt>받는 분</dt><dd>{holder} (본인)</dd></div></dl>}
         <p className="itd-demo-note">체험판이라 예시 주소만 찾을&nbsp;수 있어요. 실제 집 주소는 넣지 마세요.</p>
       </div>
       <footer className="itd-footer"><button type="button" className="itd-button itd-primary" data-testid="address-save" disabled={!picked} onClick={() => { if (picked) onSave({ ...picked, detail: detail.trim() }); }}>{confirmLabel}</button></footer>

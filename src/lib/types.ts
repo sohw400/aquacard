@@ -8,6 +8,14 @@ export type DeliveryStage = 'none' | 'preparing' | 'shipped' | 'delivered';
 export type MobileWallet = 'samsung' | 'apple';
 export type FundingNetwork = 'polygon' | 'ethereum' | 'bitcoin';
 
+/**
+ * Where a withdrawal goes, as the travel rule needs it: an exchange the travel rule network reaches, with the recipient
+ * being the holder or someone named, or the holder's own wallet, proven by signing a message from it.
+ */
+export type WithdrawalDestination =
+  | { kind: 'exchange'; venue: string; relation: 'self' | 'other' }
+  | { kind: 'own_wallet'; proof: 'signature' };
+
 export interface FundingOperation {
   id: string;
   requestId: string;
@@ -24,6 +32,8 @@ export interface FundingOperation {
   outputUnits: number;
   address: string;
   recipient: string;
+  /** Withdrawals only. Those saved before the travel rule step have none. */
+  destination?: WithdrawalDestination;
   status: 'awaiting_deposit' | 'confirming' | 'converting' | 'reviewing' | 'broadcasting' | 'completed' | 'failed' | 'cancelled';
   createdAt: number;
   updatedAt: number;
@@ -38,6 +48,14 @@ export interface KycAnswers {
   occupation: string;
   purpose: string;
   source: string;
+  /** How the face was matched to the ID: the biometric check, or a video call for those who decline biometric processing. */
+  match: 'face' | 'video';
+  /** Home address, which the customer check needs. The demo only offers made-up ones. */
+  address: ShippingAddress;
+  /** A foreign politically exposed person, or family or a close associate of one. */
+  pep: boolean;
+  /** The proof sent for enhanced due diligence when the answers call for it, otherwise null. */
+  evidence: string | null;
 }
 
 /** Created once the email code, phone check, ID and face checks, 1원 account check and the customer questions (KYC) all pass. */
@@ -49,6 +67,10 @@ export interface Account {
   phone: string;
   kyc: KycAnswers;
   verifiedAt: number;
+  /** Set from the answers. Higher risk is checked again sooner. */
+  risk: 'standard' | 'high';
+  /** When the customer check is due again. */
+  kycDueAt: number;
   /** What other members send to; starts from the email's local part and can be changed. */
   tag: string;
   /** Other members can find this account by typing its whole phone number. Off until the holder turns it on. */
@@ -189,7 +211,7 @@ export type Action =
   | { type: 'RESET_PASSWORD'; email: string; passwordHash: string }
   | { type: 'ADVANCE_DAY' }
   | { type: 'CHANGE_RATE'; rate: number }
-  | { type: 'START_FUNDING'; requestId: string; kind: 'deposit' | 'withdrawal'; symbol: FundingSymbol; network: FundingNetwork; source: 'spend'; amount?: number; units?: number; address?: string; recipient?: string; quotedAt: number; simulation?: 'success' | 'failure'; retryOf?: string }
+  | { type: 'START_FUNDING'; requestId: string; kind: 'deposit' | 'withdrawal'; symbol: FundingSymbol; network: FundingNetwork; source: 'spend'; amount?: number; units?: number; address?: string; recipient?: string; destination?: WithdrawalDestination; quotedAt: number; simulation?: 'success' | 'failure'; retryOf?: string }
   | { type: 'SIMULATE_FUNDING_DEPOSIT'; id: string }
   | { type: 'CANCEL_FUNDING'; id: string }
   | { type: 'TRANSFER_RESERVE'; direction: 'in' | 'out'; amount: number }

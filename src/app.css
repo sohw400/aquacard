@@ -553,9 +553,9 @@ a { color: var(--accent); }
 
 /* Pressed states: every control answers the moment it is touched.
    Text links dim, rows and tiles take a soft fill, pills darken, icon buttons get a backing. */
-:is(.link-button, .live-link, .onboarding-text-button, .onboarding-back, .onboarding-links button, .text-danger-button, .send-sheet .send-own-qr, .card-flow .cf-inline-link, .card-flow .cf-text-button, .funding-text-button, .funding-quote-clock button, .funding-destination-heading button, .funding-operation-reference button):active:not(:disabled) { opacity: .55; }
-:is(.nav-row, .home-card-main, .rule-details > summary, .demo-tools > summary, .faq-item > summary, .card-flow .cf-demo-tools summary, .funding-simulation summary, .funding-operation-details summary, .send-sheet .send-members button):active { position: relative; z-index: 1; border-top-color: transparent; border-radius: 12px; background: var(--sunken); box-shadow: 0 0 0 8px var(--sunken); }
-:is(.send-sheet .send-option, .send-sheet .send-qr-list button, .funding-origin, .funding-coin, .funding-network-option, .card-flow .cf-option, .preset-amounts button, .onboarding-choice button):active:not(:disabled) { background: var(--sunken); }
+:is(.link-button, .live-link, .onboarding-text-button, .onboarding-back, .onboarding-links button, .text-danger-button, .send-sheet .send-own-qr, .card-flow .cf-inline-link, .card-flow .cf-text-button, .funding-text-button, .funding-quote-clock button, .funding-destination-heading button, .funding-operation-reference button, .terms-toggle, .funding-unlisted):active:not(:disabled) { opacity: .55; }
+:is(.nav-row, .home-card-main, .rule-details > summary, .demo-tools > summary, .faq-item > summary, .card-flow .cf-demo-tools summary, .funding-simulation summary, .onboarding-simulation summary, .funding-operation-details summary, .send-sheet .send-members button):active { position: relative; z-index: 1; border-top-color: transparent; border-radius: 12px; background: var(--sunken); box-shadow: 0 0 0 8px var(--sunken); }
+:is(.send-sheet .send-option, .send-sheet .send-qr-list button, .funding-origin, .funding-coin, .funding-network-option, .card-flow .cf-option, .preset-amounts button, .onboarding-choice button, .funding-venue, .funding-relation):active:not(:disabled) { background: var(--sunken); }
 :is(.address-results button, .home-status):active { background: var(--fill); }
 .live-card-foot:active { background: linear-gradient(var(--live-fill), var(--live-fill)), var(--live-bg); }
 :is(.pill-button, .card-flow .cf-plan-action, .internal-transfer-dialog .itd-presets > button):active:not(:disabled) { background: var(--fill-strong); }
@@ -575,8 +575,8 @@ summary, label { -webkit-tap-highlight-color: transparent; }
   .app-header > .brand:hover { opacity: .75; }
   :is(.onboarding-text-button, .send-sheet .send-own-qr, .card-flow .cf-inline-link, .funding-text-button, .funding-quote-clock button, .funding-destination-heading button, .funding-operation-reference button):hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
   .onboarding-back:hover { color: var(--ink); }
-  :is(.rule-details > summary, .demo-tools > summary, .faq-item > summary, .card-flow .cf-demo-tools summary, .funding-simulation summary, .funding-operation-details summary):hover { color: var(--ink); }
-  :is(.rule-details > summary, .demo-tools > summary, .faq-item > summary, .card-flow .cf-demo-tools summary, .funding-simulation summary, .funding-operation-details summary):hover::after { border-color: var(--muted); }
+  :is(.rule-details > summary, .demo-tools > summary, .faq-item > summary, .card-flow .cf-demo-tools summary, .funding-simulation summary, .onboarding-simulation summary, .funding-operation-details summary):hover { color: var(--ink); }
+  :is(.rule-details > summary, .demo-tools > summary, .faq-item > summary, .card-flow .cf-demo-tools summary, .funding-simulation summary, .onboarding-simulation summary, .funding-operation-details summary):hover::after { border-color: var(--muted); }
   :is(.address-results button, .home-status):hover { background: var(--fill); }
   .segmented button:not(.selected):hover { color: var(--ink); }
   .switch:hover::before { background: var(--control); }
