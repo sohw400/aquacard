@@ -14,10 +14,10 @@ export default function CardHero({ className, alt = '' }: { className?: string; 
     if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     let cleanup: (() => void) | undefined;
     let cancelled = false;
-    import('../lib/cardScene').then(({ mountCardScene }) => {
-      if (cancelled || !host.current) return;
-      cleanup = mountCardScene(host.current, () => setLive(true), () => setLive(false));
-    }).catch(() => { /* No WebGL: keep the still image. */ });
+    import('../lib/cardScene')
+      .then(({ mountCardScene }) => cancelled || !host.current ? undefined : mountCardScene(host.current, () => { if (!cancelled) setLive(true); }, () => setLive(false)))
+      .then((stop) => { if (cancelled) stop?.(); else cleanup = stop; })
+      .catch(() => { /* No WebGL: keep the still image. */ });
     return () => { cancelled = true; cleanup?.(); setLive(false); };
   }, []);
 
