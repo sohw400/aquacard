@@ -24,7 +24,7 @@
 .onboarding-text-button { align-self: flex-start; min-height: 32px; color: var(--accent); font-size: 14px; font-weight: 600; }
 .onboarding-form > .onboarding-text-button { min-height: 44px; margin: -12px 0 -8px; }
 .onboarding-text-button:disabled { color: var(--faint); }
-.onboarding-label-row .onboarding-text-button { min-height: 44px; margin: -10px 0; }
+.onboarding-label-row .onboarding-text-button { min-width: 44px; min-height: 44px; margin: -10px 0; text-align: right; }
 .onboarding-label-row .onboarding-done { font-size: 13px; }
 .onboarding-code-note { margin: 0; padding: 12px 16px; border-radius: var(--radius-sm); background: var(--accent-weak); color: var(--accent-strong); font-size: 14px; line-height: 1.6; }
 .onboarding-code-note strong { font-variant-numeric: tabular-nums; letter-spacing: .08em; }
