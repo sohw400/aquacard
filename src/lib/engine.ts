@@ -379,7 +379,7 @@ function validKyc(value: unknown): boolean {
     && (FUND_SOURCES as readonly string[]).includes(value.source as string);
 }
 
-/** Validates sign-up input after the email, phone, ID and face checks have passed in the UI. */
+/** Validates sign-up input after the email, phone, ID, face and 1원 account checks have passed in the UI. */
 function signupAccount(action: Extract<Action, { type: 'COMPLETE_SIGNUP' }>, wallNow: number): Account {
   const email = normalizeEmail(action.email);
   if (!EMAIL_PATTERN.test(email) || email.length > 120) throw new Error('이메일 주소를 확인해 주세요.');

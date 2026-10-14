@@ -4,6 +4,8 @@ export const PURPOSES = ['카드 결제', '자산 보관', '코인 송금', '투
 export const FUND_SOURCES = ['근로소득', '사업소득', '금융소득', '자산 매각', '기타'] as const;
 export const CARRIERS = ['SKT', 'KT', 'LG U+', '알뜰폰'] as const;
 export const ID_TYPES = { resident: '주민등록증', driver: '운전면허증' } as const;
+/** Banks for the 1원 account check. The account only proves identity; no money moves through it. */
+export const BANKS = ['KB국민은행', '신한은행', '우리은행', '하나은행', 'NH농협은행', 'IBK기업은행', '카카오뱅크', '토스뱅크', '케이뱅크', 'iM뱅크', '부산은행', '우체국', '새마을금고'] as const;
 
 export function passwordIssue(password: string): string {
   if (password.length < 8) return '비밀번호는 8자 이상이어야 해요.';
@@ -26,4 +28,4 @@ export const maskEmail = (email: string) => {
 
 export const maskPhone = (phone: string) => `${phone.slice(0, 3)}-****-${phone.slice(-4)}`;
 
-export const demoCode = () => String(Math.floor(100_000 + Math.random() * 900_000));
+export const demoCode = (digits = 6) => String(Math.floor(10 ** (digits - 1) * (1 + 9 * Math.random())));

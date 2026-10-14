@@ -58,9 +58,41 @@ const applicationFee = (plan, physical) => PLANS[plan].annualFee + (physical ? P
 const withdrawalFee = (amount) => Math.ceil(amount * POLICY.conversionFee - 1e-9);
 
 const sixDigits = async (locator) => (await locator.innerText()).match(/\d{6}/)[0];
+const fourDigits = async (locator) => (await locator.innerText()).match(/\d{4}/)[0];
 const PASSWORD = 'aqua2026pass';
-/** Completes sign-up with sample data: email code, password, phone code, ID and face checks, customer questions. */
-async function signUp(target) {
+/** The 1원 account check: holder rule and real-account warning, input errors, a wrong code, then the sample account. */
+async function checkBankStep(target) {
+  assert.equal(await target.locator('.onboarding-progress p').innerText(), '가입 4/5 · 계좌');
+  assert.match(await target.locator('.onboarding-lead').innerText(), /본인 확인용으로 1원을 보내요\. 이 계좌로 돈을 주고받지는 않아요\./);
+  assert.match(await target.getByTestId('kyc-bank-hint').innerText(), /예금주가 아쿠아 사용자님인 계좌만[\s\S]*실제 계좌는 넣지 말고 샘플 계좌를/);
+  assert.match(await target.locator('.onboarding-note').innerText(), /계좌\s정보는 넣지 마세요/);
+  assert.equal(await target.getByTestId('kyc-bank-next').isDisabled(), true, '1원 인증 전에는 다음으로 갈 수 없다');
+  await target.getByTestId('kyc-bank-send').click();
+  assert.equal(await target.getByRole('alert').innerText(), '은행을 골라 주세요.');
+  await target.getByTestId('kyc-bank').selectOption('카카오뱅크');
+  await target.getByTestId('kyc-account').fill('12-34');
+  assert.equal(await target.getByTestId('kyc-account').inputValue(), '1234', '계좌번호는 숫자만 받는다');
+  await target.getByTestId('kyc-bank-send').click();
+  assert.equal(await target.getByRole('alert').innerText(), '계좌번호 10~14자리를 확인해 주세요.');
+  await target.getByTestId('kyc-bank-sample').click();
+  assert.equal(await target.getByTestId('kyc-bank').inputValue(), '신한은행');
+  await target.getByTestId('kyc-bank-send').click();
+  const code = await fourDigits(target.getByTestId('kyc-bank-demo-code'));
+  assert.match(await target.getByTestId('kyc-bank-demo-code').innerText(), new RegExp(`체험판이라 1원은 보내지 않아요\\. 은행 앱에 찍힐 입금자명 아쿠아 ${code}`));
+  await target.getByTestId('kyc-bank-code').fill(code === '1000' ? '1001' : '1000');
+  assert.equal(await target.getByTestId('kyc-bank-next').isDisabled(), true, '틀린 입금자명 숫자로는 인증되지 않는다');
+  await target.getByTestId('kyc-account').fill('123456789013');
+  assert.equal(await target.getByTestId('kyc-bank-demo-code').count(), 0, '계좌번호를 바꾸면 1원을 다시 보내야 한다');
+  await target.getByTestId('kyc-bank-sample').click();
+  await target.getByTestId('kyc-bank-send').click();
+  await target.getByTestId('kyc-bank-code').fill(await fourDigits(target.getByTestId('kyc-bank-demo-code')));
+  await target.getByTestId('kyc-bank-verified').waitFor();
+  assert.equal(await target.getByTestId('kyc-account').isDisabled(), true, '인증한 계좌는 바꿀 수 없다');
+  assert.equal(await target.getByTestId('kyc-bank').isDisabled(), true);
+  assert.equal(await target.getByTestId('kyc-bank-sample').count(), 0);
+}
+/** Completes sign-up with sample data: email code, password, phone code, ID and face checks, 1원 account check, customer questions. */
+async function signUp(target, { checks = false } = {}) {
   await target.getByTestId('auth-signup').click();
   await target.getByTestId('signup-email-sample').click();
   await target.getByTestId('signup-send-code').click();
@@ -75,6 +107,13 @@ async function signUp(target) {
   await target.getByTestId('kyc-id-scan').click();
   await target.getByTestId('kyc-face-scan').click();
   await target.getByTestId('kyc-id-next').click();
+  if (checks) await checkBankStep(target);
+  else {
+    await target.getByTestId('kyc-bank-sample').click();
+    await target.getByTestId('kyc-bank-send').click();
+    await target.getByTestId('kyc-bank-code').fill(await fourDigits(target.getByTestId('kyc-bank-demo-code')));
+  }
+  await target.getByTestId('kyc-bank-next').click();
   await target.getByTestId('kyc-occupation').selectOption('회사원');
   await target.getByTestId('kyc-purpose').selectOption('카드 결제');
   await target.getByTestId('kyc-source').selectOption('근로소득');
@@ -120,7 +159,7 @@ try {
   observe(page);
   page.setDefaultTimeout(10_000);
   await page.goto(base, { waitUntil: 'networkidle' });
-  await signUp(page);
+  await signUp(page, { checks: true });
   const read = (target = page) => target.evaluate(() => JSON.parse(localStorage.getItem('aqua-card:poc:v1')));
   async function stateWhen(predicate, target = page) {
     const deadline = Date.now() + 10_000;
