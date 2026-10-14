@@ -690,11 +690,18 @@ try {
   const liveNumber = async (testId) => Number((await benefits.getByTestId(testId).locator('..').innerText()).replace(/[^\d.]/g, ''));
   const reserveCredits = (await read()).transactions.filter((item) => item.title === '리저브 보상').reduce((sum, item) => sum + item.amount, 0);
   assert.ok(Math.abs(await liveNumber('reserve-total') - reserveCredits) < 1, '지금까지 쌓인 보상은 리워드에 더한 리저브 보상과 같다');
+  assert.match(await page.locator('[aria-labelledby="reward-history-title"]').innerText(), /리저브 보상/, '리저브 보상은 리워드 내역에 날짜별로 남는다');
   await page.screenshot({ path: new URL('aqua-benefits.png', artifacts).pathname, fullPage: true });
+  // Nothing is claimed, so the accrual is not a transaction; demo-setting notes are not either.
+  const notListed = /리저브 보상|하루 지나기 체험|보상률 변경/;
+  await nav('home');
+  assert.doesNotMatch(await page.locator('.home-activity').innerText(), notListed, '저절로 쌓이는 보상과 체험 설정 기록은 최근 거래에 없다');
+  await nav('activity');
+  assert.doesNotMatch(await page.locator('.activity-page').innerText(), notListed, '거래 내역에도 없다');
   await nav('reserve');
   assert.equal(await page.locator('.reserve-live .live-rate').innerText(), `연 ${percentText(reserveTermsOf(await read()).rate)}`);
   await page.screenshot({ path: new URL('aqua-reserve.png', artifacts).pathname, fullPage: true });
-  pass('접힌 체험 설정·하루 적립·보상률 변경 구간·받기 없이 리워드에 더해지는 리저브 보상');
+  pass('접힌 체험 설정·하루 적립·보상률 변경 구간·받기 없이 리워드에 더해지고 리워드 내역에만 남는 리저브 보상');
 
   const beforeReload = await read();
   await page.reload({ waitUntil: 'networkidle' });
