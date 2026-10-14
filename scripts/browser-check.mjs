@@ -62,7 +62,7 @@ const fourDigits = async (locator) => (await locator.innerText()).match(/\d{4}/)
 const PASSWORD = 'aqua2026pass';
 /** The 1원 account check: holder rule and real-account warning, input errors, a wrong code, then the sample account. */
 async function checkBankStep(target) {
-  assert.equal(await target.locator('.onboarding-progress p').innerText(), '가입 4/5 · 계좌');
+  assert.equal(await target.locator('.onboarding-progress p').innerText(), '가입 5/6 · 계좌');
   assert.match(await target.locator('.onboarding-lead').innerText(), /본인 확인용으로 1원을 보내요\. 이 계좌로 돈을 주고받지는 않아요\./);
   assert.match(await target.getByTestId('kyc-bank-hint').innerText(), /예금주가 아쿠아 사용자님인 계좌만[\s\S]*실제 계좌는 넣지 말고 샘플 계좌를/);
   assert.match(await target.locator('.onboarding-note').innerText(), /계좌\s정보는 넣지 마세요/);
@@ -83,8 +83,14 @@ async function checkBankStep(target) {
   assert.doesNotMatch(await guide.innerText(), /예시/);
   assert.match(await guide.innerText(), /체험판이라 1원은 보내지 않고 은행 앱에 찍힐 내역을 여기 보여 드려요\./);
   assert.equal(await guide.locator('[role="img"]').getAttribute('aria-label'), `은행 앱 입출금 내역: 입금자명 아쿠아 ${code}, 1원 입금`, '보낸 뒤에는 체험판 숫자를 그림에 넣는다');
-  await target.getByTestId('kyc-bank-code').fill(code === '1000' ? '1001' : '1000');
+  const wrong = code === '1000' ? '1001' : '1000';
+  await target.getByTestId('kyc-bank-code').fill(wrong);
   assert.equal(await target.getByTestId('kyc-bank-next').isDisabled(), true, '틀린 입금자명 숫자로는 인증되지 않는다');
+  assert.equal(await target.getByRole('alert').innerText(), '숫자가 달라요. 4번 더 틀리면 1원을 다시 보내야 해요.');
+  assert.equal(await target.getByTestId('kyc-bank-code').inputValue(), '', '틀린 숫자는 지우고 다시 받는다');
+  for (let tries = 2; tries <= 5; tries += 1) await target.getByTestId('kyc-bank-code').fill(wrong);
+  assert.equal(await target.getByRole('alert').innerText(), '5번 틀려서 이 1원으로는 확인할 수 없어요. 1원을 다시 보내 주세요.');
+  assert.equal(await target.getByTestId('kyc-bank-demo-code').count(), 0, '다섯 번 틀린 1원은 더 쓰지 않는다');
   await target.getByTestId('kyc-account').fill('123456789013');
   assert.equal(await target.getByTestId('kyc-bank-demo-code').count(), 0, '계좌번호를 바꾸면 1원을 다시 보내야 한다');
   await target.getByTestId('kyc-bank-sample').click();
@@ -96,9 +102,11 @@ async function checkBankStep(target) {
   assert.equal(await target.getByTestId('kyc-bank-sample').count(), 0);
   assert.equal(await guide.count(), 0, '인증을 마치면 안내 그림을 닫는다');
 }
-/** Completes sign-up with sample data: email code, password, phone code, ID and face checks, 1원 account check, customer questions. */
-async function signUp(target, { checks = false } = {}) {
+/** Terms, email code and password, phone code, ID and face check with its consent: leaves sign-up on the 1원 account step. */
+async function startSignup(target) {
   await target.getByTestId('auth-signup').click();
+  await target.getByTestId('terms-all').check();
+  await target.getByTestId('terms-next').click();
   await target.getByTestId('signup-email-sample').click();
   await target.getByTestId('signup-send-code').click();
   await target.getByTestId('signup-code').fill(await sixDigits(target.getByTestId('signup-demo-code')));
@@ -110,8 +118,23 @@ async function signUp(target, { checks = false } = {}) {
   await target.getByTestId('kyc-code').fill(await sixDigits(target.getByTestId('kyc-demo-code')));
   await target.getByTestId('kyc-next').click();
   await target.getByTestId('kyc-id-scan').click();
+  await target.getByTestId('kyc-face-consent').check();
   await target.getByTestId('kyc-face-scan').click();
   await target.getByTestId('kyc-id-next').click();
+}
+/** The plain answers: a salaried card user at a sample address, acting for themselves, not a foreign PEP. */
+async function answerQuestions(target, { source = '근로소득' } = {}) {
+  await target.getByTestId('kyc-occupation').selectOption('회사원');
+  await target.getByTestId('kyc-purpose').selectOption('카드 결제');
+  await target.getByTestId('kyc-source').selectOption(source);
+  await target.getByTestId('kyc-address-open').click();
+  await chooseAddress(target, '04500');
+  await target.getByTestId('kyc-owner-self').click();
+  await target.getByTestId('kyc-pep-no').click();
+}
+/** Completes sign-up with sample data: terms, email, phone, ID and face, 1원 account check, customer questions. */
+async function signUp(target, { checks = false } = {}) {
+  await startSignup(target);
   if (checks) await checkBankStep(target);
   else {
     await target.getByTestId('kyc-bank-sample').click();
@@ -119,10 +142,7 @@ async function signUp(target, { checks = false } = {}) {
     await target.getByTestId('kyc-bank-code').fill(await fourDigits(target.getByTestId('kyc-bank-demo-code')));
   }
   await target.getByTestId('kyc-bank-next').click();
-  await target.getByTestId('kyc-occupation').selectOption('회사원');
-  await target.getByTestId('kyc-purpose').selectOption('카드 결제');
-  await target.getByTestId('kyc-source').selectOption('근로소득');
-  await target.getByTestId('kyc-consent').check();
+  await answerQuestions(target);
   await target.getByTestId('kyc-submit').click();
   await target.getByTestId('signup-finish').click();
   await target.getByTestId('spend-balance').waitFor();
@@ -1914,6 +1934,126 @@ try {
   assert.equal(await stillPage.locator('.card-hero.live, .card-hero-canvas').count(), 0, '모션 줄이기에서는 정지 이미지만 보여 준다');
   await stillContext.close();
   pass('3D 카드 히어로: 실시간 렌더링, 누른 쪽으로 기울었다 놓으면 돌아옴, 모션 줄이기에서는 정지 이미지');
+
+  // Sign-up paths that are not the plain one: terms, a turned-away ID, the video call, the 1원 limit, the questions that stop or add a step, an appeal.
+  const kycContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
+  const kycPage = await kycContext.newPage();
+  observe(kycPage);
+  kycPage.setDefaultTimeout(10_000);
+  await kycPage.goto(base, { waitUntil: 'networkidle' });
+  await kycPage.getByTestId('auth-signup').click();
+  assert.equal(await kycPage.locator('.onboarding-progress p').innerText(), '가입 1/6 · 약관');
+  assert.equal(await kycPage.getByTestId('terms-next').isDisabled(), true, '약관에 동의하기 전에는 다음으로 가지 않는다');
+  await kycPage.getByTestId('terms-service').check();
+  assert.equal(await kycPage.getByTestId('terms-next').isDisabled(), true, '필수 약관을 모두 골라야 한다');
+  await kycPage.getByTestId('terms-toggle-unique').click();
+  assert.match(await kycPage.getByTestId('terms-detail-unique').innerText(), /운전면허번호 같은 신분증 번호를 처리해요/);
+  assert.match(await kycPage.getByTestId('terms-notice').innerText(), /실명, 주민등록번호, 주소, 연락처는 특정금융정보법에 따라 꼭 확인해야 해서 동의를 따로 받지 않아요/,
+    '법에 따른 확인은 동의 항목이 아니라 안내로 둔다');
+  await kycPage.getByTestId('terms-all').check();
+  assert.deepEqual(await Promise.all(['service', 'privacy', 'unique'].map((key) => kycPage.getByTestId(`terms-${key}`).isChecked())), [true, true, true]);
+  await kycPage.getByTestId('terms-privacy').uncheck();
+  assert.equal(await kycPage.getByTestId('terms-all').isChecked(), false, '하나를 빼면 모두 동의도 풀린다');
+  await kycPage.getByTestId('terms-all').check();
+  await kycPage.getByTestId('terms-next').click();
+  await kycPage.getByTestId('signup-email-sample').click();
+  await kycPage.getByTestId('signup-send-code').click();
+  await kycPage.getByTestId('signup-code').fill(await sixDigits(kycPage.getByTestId('signup-demo-code')));
+  await kycPage.getByTestId('signup-password').fill(PASSWORD);
+  await kycPage.getByTestId('signup-password-confirm').fill(PASSWORD);
+  await kycPage.getByTestId('signup-next').click();
+  await kycPage.getByTestId('kyc-sample').click();
+  await kycPage.getByTestId('kyc-send-code').click();
+  await kycPage.getByTestId('kyc-code').fill(await sixDigits(kycPage.getByTestId('kyc-demo-code')));
+  await kycPage.getByTestId('kyc-next').click();
+  await kycPage.locator('[data-testid="kyc-id-outcome"] summary').click();
+  await kycPage.getByTestId('kyc-id-outcome-copy').check();
+  await kycPage.getByTestId('kyc-id-scan').click();
+  assert.equal(await kycPage.getByTestId('kyc-id-rejected').innerText(), '복사본이나 화면을 찍은 사진은 받을 수 없어요. 신분증 원본을 찍어 주세요.');
+  assert.equal(await kycPage.getByTestId('kyc-id-scan').innerText(), '다시 찍기');
+  assert.equal(await kycPage.getByTestId('kyc-id-outcome-original').isChecked(), true, '다시 찍으면 원본으로 찍은 것으로 본다');
+  await kycPage.getByTestId('kyc-id-outcome-masked').check();
+  await kycPage.getByTestId('kyc-id-scan').click();
+  await kycPage.getByTestId('kyc-id-rejected').filter({ hasText: '가린 곳이 있어요. 신분증 전체가 보이게 다시 찍어 주세요.' }).waitFor();
+  await kycPage.getByTestId('kyc-id-scan').click();
+  await kycPage.getByTestId('kyc-id-done').waitFor();
+  assert.equal(await kycPage.getByTestId('kyc-face-scan').isDisabled(), true, '얼굴 정보 처리에 동의하기 전에는 얼굴을 찍지 않는다');
+  await kycPage.getByTestId('kyc-video-switch').click();
+  assert.equal(await kycPage.getByTestId('kyc-face-consent').count(), 0, '영상통화로 하면 얼굴 정보 동의를 묻지 않는다');
+  assert.equal(await kycPage.getByTestId('kyc-id-next').isDisabled(), true);
+  await kycPage.getByTestId('kyc-video-call').click();
+  await kycPage.getByTestId('kyc-video-done').waitFor();
+  await kycPage.getByTestId('kyc-id-next').click();
+  await kycPage.getByTestId('kyc-bank-sample').click();
+  for (let sent = 1; sent <= 5; sent += 1) await kycPage.getByTestId(sent === 1 ? 'kyc-bank-send' : 'kyc-bank-resend').click();
+  await kycPage.getByTestId('kyc-bank-resend').click();
+  assert.equal(await kycPage.getByRole('alert').innerText(), '1원은 하루 5번까지 보낼 수 있어요. 내일 다시 해 주세요.');
+  await kycPage.getByTestId('kyc-bank-code').fill(await fourDigits(kycPage.getByTestId('kyc-bank-demo-code')));
+  await kycPage.getByTestId('kyc-bank-verified').waitFor();
+  await kycPage.getByTestId('kyc-bank-next').click();
+  await kycPage.getByTestId('kyc-occupation').selectOption('자영업');
+  await kycPage.getByTestId('kyc-purpose').selectOption('코인 송금');
+  await kycPage.getByTestId('kyc-source').selectOption('사업소득');
+  assert.equal(await kycPage.getByTestId('kyc-submit').isDisabled(), true, '주소와 두 질문에 답해야 낼 수 있다');
+  await kycPage.getByTestId('kyc-address-open').click();
+  assert.equal(await kycPage.getByTestId('address-sheet').getByRole('heading', { level: 2 }).innerText(), '집 주소');
+  assert.equal(await kycPage.getByTestId('address-sheet').locator('.card-sheet-cost').count(), 0, '집 주소에는 받는 분 줄이 없다');
+  await chooseAddress(kycPage, '06100', { detail: '101동 1001호' });
+  assert.match(await kycPage.getByTestId('kyc-address-line').innerText(), /서울특별시 강남구 아쿠아로 25, 101동 1001호/);
+  await kycPage.getByTestId('kyc-owner-other').click();
+  assert.match(await kycPage.getByTestId('kyc-owner-blocked').innerText(), /다른 사람을 위해 거래하는 계정은 만들 수 없어요/);
+  await kycPage.getByTestId('kyc-pep-yes').click();
+  assert.equal(await kycPage.getByTestId('kyc-submit').isDisabled(), true, '다른 사람을 위한 거래라고 하면 가입할 수 없다');
+  await kycPage.getByTestId('kyc-owner-self').click();
+  assert.equal(await kycPage.getByTestId('kyc-submit').innerText(), '다음', '외국 정치적 주요인물은 서류 확인 단계로 간다');
+  await kycPage.locator('[data-testid="kyc-review-outcome"] summary').click();
+  await kycPage.getByTestId('kyc-review-outcome-rejected').check();
+  await kycPage.getByTestId('kyc-submit').click();
+  assert.equal(await kycPage.getByRole('heading', { level: 1 }).innerText(), '추가 확인이 필요해요');
+  assert.equal(await kycPage.locator('.onboarding-progress p').innerText(), '가입 6/6 · 고객확인');
+  assert.equal(await kycPage.getByTestId('kyc-evidence-upload').isDisabled(), true);
+  await kycPage.getByTestId('kyc-evidence').selectOption('사업자등록증과 부가세 신고서');
+  await kycPage.getByTestId('kyc-evidence-upload').click();
+  await kycPage.getByTestId('kyc-evidence-done').waitFor();
+  assert.match(await kycPage.locator('.onboarding-check').innerText(), /사업자등록증과 부가세 신고서를 받았어요/);
+  await kycPage.getByTestId('kyc-evidence-submit').click();
+  await kycPage.locator('[data-testid="kyc-review"][data-status="rejected"]').waitFor();
+  assert.equal(await kycPage.getByRole('heading', { level: 1 }).innerText(), '가입을 승인하지 못했어요');
+  assert.match(await kycPage.getByTestId('kyc-review').innerText(), /사람이 다시 보도록 요청할 수 있어요/);
+  assert.equal(await kycPage.evaluate(() => JSON.parse(localStorage.getItem('aqua-card:poc:v1') ?? 'null')?.account ?? null), null, '승인되지 않으면 계정을 만들지 않는다');
+  await kycPage.getByTestId('kyc-appeal').click();
+  await kycPage.locator('[data-testid="kyc-review"][data-status="done"]').waitFor();
+  assert.equal(await kycPage.getByTestId('kyc-recheck').innerText(), '담당자가 다시 보고 승인했어요. 고객확인은 1년마다 다시 해요.');
+  await kycPage.getByTestId('signup-finish').click();
+  await kycPage.getByTestId('spend-balance').waitFor();
+  const kycAccount = (await kycPage.evaluate(() => JSON.parse(localStorage.getItem('aqua-card:poc:v1')))).account;
+  assert.deepEqual([kycAccount.kyc.match, kycAccount.kyc.pep, kycAccount.kyc.evidence, kycAccount.kyc.address.road, kycAccount.risk],
+    ['video', true, '사업자등록증과 부가세 신고서', '서울특별시 강남구 아쿠아로 25', 'high']);
+  await kycPage.getByTestId('nav-settings').click();
+  const dueText = await kycPage.getByTestId('kyc-due').innerText();
+  assert.equal(dueText, await kycPage.evaluate((due) => new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Seoul' }).format(due), kycAccount.kycDueAt),
+    '설정에 다음 고객확인 날짜를 보여 준다');
+  await kycContext.close();
+  pass('가입: 필수 약관·법정 확인 안내, 신분증 사본·가림 거절, 얼굴 동의 또는 영상통화, 1원 5회 오류와 하루 5번, 집 주소·실제 소유자·외국 PEP, 추가 서류, 자동 거절 재심과 다음 고객확인일');
+
+  // Card delivery starts from the home address given at sign-up.
+  const prefillContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
+  const prefillPage = await prefillContext.newPage();
+  observe(prefillPage);
+  prefillPage.setDefaultTimeout(10_000);
+  await prefillPage.goto(base, { waitUntil: 'networkidle' });
+  await signUp(prefillPage);
+  await prefillPage.getByTestId('nav-card').click();
+  await prefillPage.getByTestId('card-apply').click();
+  const prefillFlow = prefillPage.locator('.card-flow');
+  await prefillFlow.getByTestId('card-identity-consent').check();
+  await prefillFlow.getByTestId('card-identity-next').click();
+  await prefillFlow.getByRole('radio', { name: PLANS.premium.short }).check();
+  await prefillFlow.getByTestId('card-address-open').click();
+  assert.equal(await prefillPage.getByTestId('address-result-04500').getAttribute('aria-pressed'), 'true', '배송지는 가입할 때 넣은 집 주소에서 시작한다');
+  assert.equal(await prefillPage.getByTestId('address-save').isDisabled(), false);
+  await prefillContext.close();
+  pass('카드 배송지는 가입한 집 주소를 먼저 골라 둔다');
 
   assert.deepEqual(errors, [], '브라우저 실행 오류');
   assert.deepEqual([...new Set(external)], [], 'PoC는 외부 금융·폰트 요청을 하지 않는다');

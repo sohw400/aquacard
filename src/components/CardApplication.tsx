@@ -302,7 +302,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
       {pinSheet && <PinSheet mode={pinSheet === 'change' ? 'change' : 'activate'} onClose={() => setPinSheet(null)} onSubmit={(pin) => pinSheet === 'replacement'
         ? onAction({ type: 'ACTIVATE_REPLACEMENT', pin }, card.replacement ? `새 ${ro(physicalName(card.replacement.plan))} 결제할 수 있어요.` : '새 카드로 결제할 수 있어요.')
         : onAction(pinSheet === 'activate' ? { type: 'ACTIVATE_PHYSICAL', pin } : { type: 'SET_CARD_PIN', pin }, pinSheet === 'activate' ? '실물카드를 쓸 수 있어요.' : '카드 비밀번호를 바꿨어요.')} />}
-      {addressSheet && <AddressSheet initial={addressSheet === 'physical' ? pendingAddress : card.address} holder={account.name} confirmLabel={addressSheet === 'physical' ? '다음' : '이 주소로 받기'} onClose={() => setAddressSheet(null)}
+      {addressSheet && <AddressSheet initial={(addressSheet === 'physical' ? pendingAddress : card.address) ?? account.kyc.address} holder={account.name} confirmLabel={addressSheet === 'physical' ? '다음' : '이 주소로 받기'} onClose={() => setAddressSheet(null)}
         onSave={(address) => {
           setAddressSheet(null);
           if (addressSheet === 'physical') { setPendingAddress(address); setSheet({ kind: 'physical' }); return; }

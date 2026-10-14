@@ -1,10 +1,10 @@
-import { FUND_SOURCES, ID_TYPES, OCCUPATIONS, PURPOSES } from './auth';
+import { EVIDENCE, FUND_SOURCES, ID_TYPES, needsEvidence, OCCUPATIONS, PURPOSES, RECHECK_YEARS } from './auth';
 import { ASSETS, FUNDING_ASSETS, fundingLabel, physicalCardName, PLAN_ORDER, PLANS, POLICY } from './policy';
 import { findMember, initialTag, maskName, normalizeTag, TAG_PATTERN, tagIssue } from './directory';
 import { josa, ro } from './format';
 import { assertFundingQuoteFresh, getFundingQuote, unitsToWon } from './funding';
 import { createFundingQuote, fundingStatusLabel, getFundingNetworks, validateFundingAddress } from './movements';
-import { addressLine, validAddress } from './address';
+import { addressLine, SAMPLE_ADDRESSES, validAddress } from './address';
 import { normalizeName, UNLISTED_VENUE, validRecipientName, venueOf } from './travel';
 import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, DeliveryStage, FundingOperation, FundingSymbol, NotificationSettings, Payment, PaymentControls, Plan, Transaction, WithdrawalDestination } from './types';
 
@@ -402,8 +402,14 @@ function validKyc(value: unknown): boolean {
   return record(value) && Object.hasOwn(ID_TYPES, value.idType as string)
     && (OCCUPATIONS as readonly string[]).includes(value.occupation as string)
     && (PURPOSES as readonly string[]).includes(value.purpose as string)
-    && (FUND_SOURCES as readonly string[]).includes(value.source as string);
+    && (FUND_SOURCES as readonly string[]).includes(value.source as string)
+    && (value.match === 'face' || value.match === 'video') && validAddress(value.address) && typeof value.pep === 'boolean'
+    // Enhanced due diligence needs its proof, and only then is there one.
+    && (needsEvidence({ pep: value.pep, source: value.source as string })
+      ? (EVIDENCE as readonly string[]).includes(value.evidence as string) : value.evidence === null);
 }
+
+const addYears = (timestamp: number, years: number) => Array.from({ length: years }).reduce<number>((time) => addYear(time), timestamp);
 
 /** Validates sign-up input after the email, phone, ID, face and 1원 account checks have passed in the UI. */
 function signupAccount(action: Extract<Action, { type: 'COMPLETE_SIGNUP' }>, wallNow: number): Account {
@@ -411,7 +417,8 @@ function signupAccount(action: Extract<Action, { type: 'COMPLETE_SIGNUP' }>, wal
   if (!EMAIL_PATTERN.test(email) || email.length > 120) throw new Error('이메일 주소를 확인해 주세요.');
   if (typeof action.passwordHash !== 'string' || !HASH_PATTERN.test(action.passwordHash)) throw new Error('비밀번호를 다시 정해 주세요.');
   if (typeof action.phone !== 'string' || !PHONE_PATTERN.test(action.phone)) throw new Error('휴대폰 번호를 확인해 주세요.');
-  if (!validKyc(action.kyc)) throw new Error('고객확인 질문에 모두 답해 주세요.');
+  if (!validKyc(action.kyc)) throw new Error(record(action.kyc) && needsEvidence({ pep: action.kyc.pep === true, source: String(action.kyc.source) }) && !action.kyc.evidence
+    ? '추가 확인 서류를 올려 주세요.' : '고객확인 질문에 모두 답해 주세요.');
   const name = typeof action.name === 'string' ? action.name.trim() : '';
   if (name.length < 2 || name.length > 30) throw new Error('이름은 2자 이상 30자 이하로 입력해 주세요.');
   const birthDate = typeof action.birthDate === 'string' ? action.birthDate : '';
@@ -423,9 +430,11 @@ function signupAccount(action: Extract<Action, { type: 'COMPLETE_SIGNUP' }>, wal
     || (today.getUTCMonth() === birth.getUTCMonth() && today.getUTCDate() < birth.getUTCDate()) ? 1 : 0);
   if (age < ADULT_AGE) throw new Error(`만 ${ADULT_AGE}세 이상만 가입할 수 있어요.`);
   if (age > 120) throw new Error('생년월일을 확인해 주세요.');
-  const { idType, occupation, purpose, source } = action.kyc;
-  return { email, passwordHash: action.passwordHash, name, birthDate, phone: action.phone, kyc: { idType, occupation, purpose, source }, verifiedAt: wallNow,
-    tag: initialTag(email), findByPhone: false, findByEmail: false };
+  const { idType, occupation, purpose, source, match: faceMatch, address, pep, evidence } = action.kyc;
+  const risk = needsEvidence(action.kyc) ? 'high' : 'standard';
+  return { email, passwordHash: action.passwordHash, name, birthDate, phone: action.phone,
+    kyc: { idType, occupation, purpose, source, match: faceMatch, address: { zip: address.zip, road: address.road.trim(), detail: address.detail.trim() }, pep, evidence },
+    verifiedAt: wallNow, risk, kycDueAt: addYears(wallNow, RECHECK_YEARS[risk]), tag: initialTag(email), findByPhone: false, findByEmail: false };
 }
 
 function validateCardChange(previous: CardState, next: CardState): void {
@@ -904,6 +913,7 @@ function validAccount(value: unknown): value is Account {
     && typeof value.name === 'string' && value.name.trim().length >= 2 && value.name.length <= 30
     && typeof value.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.birthDate)
     && typeof value.phone === 'string' && PHONE_PATTERN.test(value.phone) && validKyc(value.kyc) && timestamp(value.verifiedAt)
+    && (value.risk === 'standard' || value.risk === 'high') && timestamp(value.kycDueAt) && value.kycDueAt > value.verifiedAt
     && typeof value.tag === 'string' && TAG_PATTERN.test(value.tag) && typeof value.findByPhone === 'boolean' && typeof value.findByEmail === 'boolean');
 }
 
@@ -992,9 +1002,15 @@ function migrateCard(card: Record<string, unknown>): Record<string, unknown> {
   return filled;
 }
 
-/** Older saves: accounts from before tags were stored get one made from the email, the way new accounts do; finding by phone or email stays off. */
+/**
+ * Older saves: accounts from before tags were stored get one made from the email, the way new accounts do; finding by phone
+ * or email stays off. Those from before the fuller customer check get a made-up home address, the face check, and the
+ * standard three years until it is repeated.
+ */
 function migrateAccount(account: Record<string, unknown>): Record<string, unknown> {
-  return { findByPhone: false, findByEmail: false, ...(typeof account.email === 'string' ? { tag: initialTag(account.email) } : {}), ...account };
+  const kyc = record(account.kyc) ? { match: 'face', address: { ...SAMPLE_ADDRESSES[0], detail: '' }, pep: false, evidence: null, ...account.kyc } : account.kyc;
+  return { findByPhone: false, findByEmail: false, ...(typeof account.email === 'string' ? { tag: initialTag(account.email) } : {}),
+    risk: 'standard', ...(timestamp(account.verifiedAt) ? { kycDueAt: addYears(account.verifiedAt, RECHECK_YEARS.standard) } : {}), ...account, kyc };
 }
 
 export function loadState(): AppState {

@@ -7,7 +7,8 @@ import type { Action, AppState } from './types';
 const NOW = Date.UTC(2026, 9, 13, 3);
 const signup: Action = {
   type: 'COMPLETE_SIGNUP', email: 'tester@aqua.example', passwordHash: 'a'.repeat(64), name: '아쿠아 사용자', birthDate: '1995-04-12',
-  phone: '01012345678', kyc: { idType: 'resident', occupation: '회사원', purpose: '카드 결제', source: '근로소득' },
+  phone: '01012345678', kyc: { idType: 'resident', occupation: '회사원', purpose: '카드 결제', source: '근로소득', match: 'face',
+    address: { zip: '04500', road: '서울특별시 중구 아쿠아로 1', detail: '' }, pep: false, evidence: null },
 };
 
 function deposit(state: AppState, requestId: string, symbol: 'USDC' | 'KRWS', units: number): AppState {

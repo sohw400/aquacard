@@ -48,7 +48,7 @@ export default function Settings({ state, account, cardStatus, go, onRewardsAuto
     <section className="settings-group" aria-labelledby="settings-account">
       <h2 id="settings-account">계정</h2>
       <NavRow label="내 태그와 QR" detail={`태그·QR${account.findByPhone ? '·휴대폰 번호' : ''}${account.findByEmail ? '·이메일' : ''}로 받아요`} value={`@${account.tag}`} testId="open-receive" onClick={onReceive} />
-      <dl className="breakdown plain"><div><dt>이메일</dt><dd>{maskEmail(account.email)}</dd></div><div><dt>휴대폰</dt><dd>{maskPhone(account.phone)}</dd></div><div><dt>본인확인</dt><dd>{dateLabel(account.verifiedAt)}</dd></div></dl>
+      <dl className="breakdown plain"><div><dt>이메일</dt><dd>{maskEmail(account.email)}</dd></div><div><dt>휴대폰</dt><dd>{maskPhone(account.phone)}</dd></div><div><dt>본인확인</dt><dd>{dateLabel(account.verifiedAt)}</dd></div><div><dt>다음 고객확인</dt><dd data-testid="kyc-due">{dateLabel(account.kycDueAt)}</dd></div></dl>
       <NavRow label="비밀번호 변경" testId="open-password" onClick={onPassword} />
       <NavRow label="알림" value={state.notifications.payments && state.notifications.funding ? '모두 받음' : '일부 끔'} testId="open-notifications" onClick={() => go('notifications')} />
       <button type="button" className="btn neutral block settings-signout" data-testid="sign-out" onClick={onSignOut}>로그아웃</button>

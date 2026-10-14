@@ -53,7 +53,7 @@
 .funding-relation { min-height: 48px; text-align: center; }
 .funding-venue.selected, .funding-relation.selected { border-color: var(--primary); background: var(--sunken); }
 .funding-unlisted { display: inline-flex; align-items: center; min-height: 44px; margin: 4px 0 0 -6px; padding: 0 6px; border: 0; border-radius: 10px; background: none; color: var(--accent); font-size: 14px; font-weight: 600; }
-.funding-unlisted.selected { color: var(--ink-soft); }
+.funding-unlisted.selected { background: var(--fill); color: var(--ink); }
 .funding-block { margin: 4px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--danger-weak); color: var(--danger); font-size: 14px; line-height: 1.6; }
 .funding-relation-field .funding-form-field { margin-top: 14px; }
 .funding-travel-note { margin: 12px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--accent-weak); color: var(--accent-strong); font-size: 13px; line-height: 1.6; }

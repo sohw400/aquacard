@@ -96,6 +96,9 @@ async function signUp(page, name) {
   };
   await assertFits(page, `${name} welcome`);
   await tapTarget('auth-signup');
+  await page.getByTestId('terms-all').tap();
+  await assertFits(page, `${name} terms`);
+  await tapTarget('terms-next');
   await page.getByTestId('signup-email-sample').tap();
   await tapTarget('signup-send-code');
   await page.getByTestId('signup-code').fill(await sixDigits(page.getByTestId('signup-demo-code')));
@@ -110,6 +113,7 @@ async function signUp(page, name) {
   await tapTarget('kyc-next');
   await tapTarget('kyc-id-scan');
   await page.getByTestId('kyc-id-done').waitFor();
+  await page.getByTestId('kyc-face-consent').tap();
   await tapTarget('kyc-face-scan');
   await page.getByTestId('kyc-face-done').waitFor();
   await assertFits(page, `${name} ID and face check`);
@@ -123,7 +127,12 @@ async function signUp(page, name) {
   await page.getByTestId('kyc-occupation').selectOption('회사원');
   await page.getByTestId('kyc-purpose').selectOption('카드 결제');
   await page.getByTestId('kyc-source').selectOption('근로소득');
-  await page.getByTestId('kyc-consent').check();
+  await tapTarget('kyc-address-open');
+  await page.getByTestId('address-result-04500').tap();
+  await page.getByTestId('address-save').tap();
+  await page.getByTestId('address-sheet').waitFor({ state: 'hidden' });
+  await tapTarget('kyc-owner-self');
+  await tapTarget('kyc-pep-no');
   await assertFits(page, `${name} customer questions`);
   await tapTarget('kyc-submit');
   await page.getByTestId('signup-finish').waitFor();

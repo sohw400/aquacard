@@ -814,7 +814,7 @@ test('원화 스테이블 입금은 확인이 끝나면 같은 금액을 결제 
 const HASH = 'a'.repeat(64);
 const signup = {
   type: 'COMPLETE_SIGNUP', email: ' Tester@Aqua.Example ', passwordHash: HASH, name: '아쿠아 사용자', birthDate: '1995-04-12',
-  phone: '01012345678', kyc: { idType: 'resident', occupation: '회사원', purpose: '카드 결제', source: '근로소득' },
+  phone: '01012345678', kyc: { idType: 'resident', occupation: '회사원', purpose: '카드 결제', source: '근로소득', match: 'face', address: SAMPLE_ADDRESS, pep: false, evidence: null },
 } as const satisfies Action;
 
 test('가입은 이메일·비밀번호·휴대폰·만 19세 이상·고객확인 답변을 확인한 뒤 한 번만 완료한다', () => withFundingStorage(({ values }) => {
@@ -844,6 +844,32 @@ test('가입은 이메일·비밀번호·휴대폰·만 19세 이상·고객확�
   const restored = loadState();
   assert.equal(restored.account, null, '가입 기록이 없던 저장 데이터는 가입부터 다시 진행한다');
   assert.equal(restored.signedIn, false);
+}));
+
+test('고객확인 답변으로 위험 등급과 다시 확인할 날을 정하고 외국 정치적 주요인물과 불분명한 자금 출처는 추가 서류를 받는다', () => withFundingStorage(({ values }) => {
+  const initial = createInitialState(NOW);
+  const standard = applyAction(initial, signup, NOW);
+  assert.equal(standard.account?.risk, 'standard');
+  assert.equal(standard.account?.kycDueAt, addYear(addYear(addYear(NOW))), '보통은 3년 뒤에 다시 확인한다');
+  assert.deepEqual(standard.account?.kyc.address, SAMPLE_ADDRESS);
+  const pep = { ...signup, kyc: { ...signup.kyc, pep: true } };
+  assert.throws(() => applyAction(initial, pep, NOW), /추가 확인 서류/);
+  const high = applyAction(initial, { ...pep, kyc: { ...pep.kyc, evidence: '근로소득 원천징수영수증' } }, NOW);
+  assert.deepEqual([high.account?.risk, high.account?.kycDueAt], ['high', addYear(NOW)], '추가 확인 대상은 1년 뒤에 다시 확인한다');
+  const unnamed = applyAction(initial, { ...signup, kyc: { ...signup.kyc, source: '기타', evidence: '금융거래 내역서' } }, NOW);
+  assert.equal(unnamed.account?.risk, 'high');
+  assert.throws(() => applyAction(initial, { ...signup, kyc: { ...signup.kyc, evidence: '금융거래 내역서' } }, NOW), /고객확인/, '추가 확인 대상이 아니면 서류를 받지 않는다');
+  assert.throws(() => applyAction(initial, { ...signup, kyc: { ...signup.kyc, match: 'selfie' as 'face' } }, NOW), /고객확인/);
+  assert.throws(() => applyAction(initial, { ...signup, kyc: { ...signup.kyc, address: { zip: '1', road: '', detail: '' } } }, NOW), /고객확인/);
+  assert.equal(applyAction(initial, { ...signup, kyc: { ...signup.kyc, match: 'video' } }, NOW).account?.kyc.match, 'video', '얼굴 확인 대신 영상통화로 확인할 수 있다');
+
+  const { risk: _risk, kycDueAt: _due, ...older } = standard.account!;
+  const { match: _match, address: _address, pep: _pep, evidence: _evidence, ...olderKyc } = older.kyc;
+  values.set(STORAGE_KEY, JSON.stringify({ ...standard, account: { ...older, kyc: olderKyc } }));
+  const restored = loadState().account;
+  assert.deepEqual([restored?.risk, restored?.kycDueAt, restored?.kyc.match, restored?.kyc.pep, restored?.kyc.evidence], ['standard', addYear(addYear(addYear(NOW))), 'face', false, null],
+    '고객확인 항목이 늘기 전에 가입한 계정도 불러온다');
+  assert.equal(restored?.kyc.address.road, '서울특별시 중구 아쿠아로 1');
 }));
 
 test('로그아웃 뒤에는 같은 이메일과 비밀번호로만 로그인하고 비밀번호를 바꾸면 다시 로그인한다', () => {

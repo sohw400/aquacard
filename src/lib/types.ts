@@ -48,6 +48,14 @@ export interface KycAnswers {
   occupation: string;
   purpose: string;
   source: string;
+  /** How the face was matched to the ID: the biometric check, or a video call for those who decline biometric processing. */
+  match: 'face' | 'video';
+  /** Home address, which the customer check needs. The demo only offers made-up ones. */
+  address: ShippingAddress;
+  /** A foreign politically exposed person, or family or a close associate of one. */
+  pep: boolean;
+  /** The proof sent for enhanced due diligence when the answers call for it, otherwise null. */
+  evidence: string | null;
 }
 
 /** Created once the email code, phone check, ID and face checks, 1원 account check and the customer questions (KYC) all pass. */
@@ -59,6 +67,10 @@ export interface Account {
   phone: string;
   kyc: KycAnswers;
   verifiedAt: number;
+  /** Set from the answers. Higher risk is checked again sooner. */
+  risk: 'standard' | 'high';
+  /** When the customer check is due again. */
+  kycDueAt: number;
   /** What other members send to; starts from the email's local part and can be changed. */
   tag: string;
   /** Other members can find this account by typing its whole phone number. Off until the holder turns it on. */

@@ -4,6 +4,15 @@ export const PURPOSES = ['카드 결제', '자산 보관', '코인 송금', '투
 export const FUND_SOURCES = ['근로소득', '사업소득', '금융소득', '자산 매각', '기타'] as const;
 export const CARRIERS = ['SKT', 'KT', 'LG U+', '알뜰폰'] as const;
 export const ID_TYPES = { resident: '주민등록증', driver: '운전면허증' } as const;
+/** Proof for enhanced due diligence. The demo takes no files. */
+export const EVIDENCE = ['근로소득 원천징수영수증', '소득금액증명원', '사업자등록증과 부가세 신고서', '금융거래 내역서', '매매 계약서'] as const;
+/** Foreign politically exposed persons and funds from an unnamed source get enhanced due diligence. */
+export const needsEvidence = (answers: { pep: boolean; source: string }) => answers.pep || answers.source === '기타';
+/** Years until the customer check is repeated: the industry norm is at most three, and one for higher risk. */
+export const RECHECK_YEARS = { standard: 3, high: 1 } as const;
+/** Wrong 1원 digits allowed before that transfer stops counting, and transfers allowed in a day. */
+export const BANK_TRIES = 5;
+export const BANK_SENDS = 5;
 /** Banks for the 1원 account check. The account only proves identity; no money moves through it. */
 export const BANKS = ['KB국민은행', '신한은행', '우리은행', '하나은행', 'NH농협은행', 'IBK기업은행', '카카오뱅크', '토스뱅크', '케이뱅크', 'iM뱅크', '부산은행', '우체국', '새마을금고'] as const;
 
