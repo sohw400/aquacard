@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { accountClosureBlockers, addYear, applyAction, availableToSpend, cardApplicationFee, createInitialState, loadState, portfolioValue, reserveTerms, saveState, STORAGE_KEY } from './engine';
+import { accountClosureBlockers, addYear, applyAction, availableToSpend, cardApplicationFee, createInitialState, loadState, portfolioValue, recordsKeptUntil, reserveTerms, saveState, STORAGE_KEY } from './engine';
 import { josa, ro } from './format';
 import { assertFundingQuoteFresh, getFundingQuote } from './funding';
 import { getFundingNetworks, getHeldFundingWon } from './movements';
@@ -1011,6 +1011,7 @@ test('회원 탈퇴는 카드 해지와 잔액 정리를 마친 뒤 비밀번호
   assert.throws(() => applyAction(state, { type: 'DELETE_ACCOUNT', passwordHash: 'b'.repeat(64) }, NOW), /비밀번호/);
   const deleted = applyAction(state, { type: 'DELETE_ACCOUNT', passwordHash: HASH }, NOW);
   assert.deepEqual([deleted.account, deleted.signedIn, deleted.transactions.length], [null, false, 0]);
+  assert.equal(recordsKeptUntil(NOW), addYear(addYear(addYear(addYear(addYear(NOW))))), '고객확인·거래 기록은 탈퇴한 날부터 5년 보관한다');
 });
 
 test('카드 비용 항목이 없던 Plus 저장 데이터도 불러오고 연회비 없는 스탠다드로 옮긴다', () => withFundingStorage(({ values }) => {

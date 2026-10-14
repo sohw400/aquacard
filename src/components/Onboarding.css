@@ -101,6 +101,14 @@
 .onboarding-review-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--primary); color: var(--on-primary); }
 .onboarding-review-icon.muted { background: var(--fill-strong); color: var(--ink-soft); }
 .onboarding-form.review .onboarding-hint { margin-top: -10px; }
+/* Two facts after account deletion, laid out like the sheet summaries. */
+.onboarding-facts { display: grid; align-self: stretch; margin: 0; padding: 4px 16px; border-radius: var(--radius-md); background: var(--sunken); text-align: left; }
+.onboarding-facts > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; }
+.onboarding-facts > div + div { border-top: 1px solid var(--line); }
+.onboarding-facts dt { color: var(--muted); font-size: 14px; line-height: 1.5; }
+.onboarding-facts dt { flex-shrink: 0; }
+.onboarding-facts dd { min-width: 0; margin: 0; color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.5; text-align: right; overflow-wrap: anywhere; }
+.onboarding-form.review .onboarding-facts + .onboarding-hint { margin-top: -4px; }
 .onboarding-note { margin: 28px 0 0; padding-top: 16px; border-top: 1px solid var(--line); color: var(--subtle); font-size: 13px; line-height: 1.6; }
 @keyframes onboarding-spin { to { transform: rotate(360deg); } }
 @media (min-width: 640px) {
