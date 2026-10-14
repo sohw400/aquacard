@@ -4,7 +4,8 @@ import { useModal } from './useModal';
 import QrCode from './QrCode';
 import { AmountInput } from './ui';
 import { EMAIL_SEARCH, findMember, findMemberByEmail, findMemberByPhone, formatPhone, maskName, MEMBERS, normalizeTag, PHONE_SEARCH, phoneDigits, TAG_PATTERN, tagLink, type Member } from '../lib/directory';
-import { money, particle, shortDate, won } from '../lib/format';
+import { memberSendIssue, memberSendRoom, type MemberSendRoom } from '../lib/engine';
+import { dateLabel, money, particle, shortDate, won } from '../lib/format';
 import { POLICY } from '../lib/policy';
 import type { Action, AppState } from '../lib/types';
 import './InternalTransferDialog.css';
@@ -19,6 +20,18 @@ const SCAN_SAMPLES = MEMBERS.filter((member) => ['minji.k', 'junho', 'haneul', '
 /** A demo number and email shown as hints; both belong to fictional members. */
 const SAMPLE_PHONE = MEMBERS.find((member) => member.phone)?.phone ?? '';
 const SAMPLE_EMAIL = MEMBERS.find((member) => member.email)?.email ?? '';
+const manWon = (value: number) => `${(value / 10_000).toLocaleString('ko-KR')}만원`;
+
+/** The limits in one line: all three before the first send of the month, what is left after, and why they are half. */
+function limitNote(room: MemberSendRoom): string {
+  const spent = memberSendIssue(room, POLICY.minimumTopup);
+  const left = spent || (room.sentMonth
+    ? `오늘 ${money(room.daily - room.sentToday)}, 이번 달 ${money(room.monthly - room.sentMonth)} 더 보낼 수 있어요. 한 번에는 ${manWon(room.perTransfer)}까지예요.`
+    : `한 번에 ${manWon(room.perTransfer)}, 하루 ${manWon(room.daily)}, 한 달 ${manWon(room.monthly)}까지 보낼 수 있어요.`);
+  const why = room.reduced === 'new' && room.fullFrom !== null ? ` 가입하고 ${POLICY.newAccountDays}일 동안은 한도가 절반이고, ${dateLabel(room.fullFrom)}부터 늘어나요.`
+    : room.reduced === 'high' ? ' 추가 확인을 받은 계정이라 한도가 절반이에요.' : '';
+  return left + why;
+}
 
 /** Send to another Aqua member by tag, phone number, email or QR code (free, instant), or hand over to the on-chain send flow. */
 export default function SendSheet({ state, onClose, onWallet, onReceive, dispatch }: {
@@ -52,7 +65,11 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
   const emailQuery = !phoneQuery && /^[^@\s]+@/.test(email);
   const typed = phoneQuery || emailQuery ? '' : normalizeTag(query);
   const matches = phoneQuery || emailQuery ? [] : typed ? MEMBERS.filter((item) => item.tag.includes(typed) || item.name.includes(query.trim())) : MEMBERS;
-  const amountIssue = value.trim() === '' ? '' : !Number.isSafeInteger(amount) || amount < POLICY.minimumTopup ? '1,000원 이상 원 단위로 넣어 주세요.' : amount > state.spend ? '잔액보다 많이 보낼 수 없어요.' : '';
+  // Limits count by the demo clock, like the engine that enforces them.
+  const room = memberSendRoom(state, Date.now() + state.clockOffsetMs);
+  const sendable = Math.min(state.spend, room.max);
+  const amountIssue = value.trim() === '' ? '' : !Number.isSafeInteger(amount) || amount < POLICY.minimumTopup ? '1,000원 이상 원 단위로 넣어 주세요.'
+    : amount > state.spend ? '잔액보다 많이 보낼 수 없어요.' : memberSendIssue(room, amount);
   const titles: Record<Step, string> = { choose: '보내기', tag: '누구에게 보낼까요?', scan: 'QR 코드 찍기', amount: '얼마를 보낼까요?', review: '이대로 보낼까요?', done: '보냈어요' };
 
   function pick(next: Member, from: Origin) { setMember(next); setOrigin(from); setError(''); setStep('amount'); }
@@ -130,8 +147,9 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
         {step === 'amount' && member && <form onSubmit={(event) => { event.preventDefault(); if (value && !amountIssue) setStep('review'); }} noValidate>
           <div className="send-to"><span className="send-avatar" aria-hidden="true">{member.name.charAt(0)}</span><span><strong>{maskName(member.name)}</strong><small>@{member.tag}{FOUND_BY[origin]}</small></span></div>
           <div className="itd-amount"><label htmlFor={`${uid}-amount`}>보낼 금액</label><div className="itd-input"><AmountInput id={`${uid}-amount`} unit="원" data-testid="send-amount" value={value} onValueChange={(next) => { setValue(next); setError(''); }} autoComplete="off" ref={amountInput} aria-invalid={Boolean(amountIssue)} /></div>
-            {amountIssue ? <p className="itd-field-error itd-in-place" role="alert">{amountIssue}</p> : <div className="itd-available"><span>보낼 수 있는 금액</span><strong>{money(state.spend)}</strong></div>}</div>
-          <div className="itd-presets">{[10_000, 30_000, 50_000].map((preset) => <button type="button" key={preset} disabled={preset > state.spend} onClick={() => { setValue(String(preset)); setError(''); }}>{won(preset)}원</button>)}</div>
+            {amountIssue ? <p className="itd-field-error itd-in-place" role="alert">{amountIssue}</p> : <div className="itd-available"><span>보낼 수 있는 금액</span><strong data-testid="send-available">{money(sendable)}</strong></div>}</div>
+          <div className="itd-presets">{[10_000, 30_000, 50_000].map((preset) => <button type="button" key={preset} disabled={preset > sendable} onClick={() => { setValue(String(preset)); setError(''); }}>{won(preset)}원</button>)}</div>
+          <p className="send-limit" data-testid="send-limit">{limitNote(room)}</p>
           <button type="submit" className="itd-button itd-primary send-next" data-testid="send-next" disabled={!value || Boolean(amountIssue)}>다음</button>
         </form>}
 

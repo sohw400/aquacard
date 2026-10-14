@@ -1,9 +1,9 @@
-import { ChevronRight, Clock3, LockKeyhole } from 'lucide-react';
+import { CalendarClock, ChevronRight, Clock3, LockKeyhole } from 'lucide-react';
 import CardHero from '../components/CardHero';
 import TierCard from '../components/TierCard';
 import { ActivityList, listedTransactions } from '../components/Activity';
 import { LiveRewards, Won } from '../components/ui';
-import { availableToSpend, reserveTerms } from '../lib/engine';
+import { availableToSpend, renewalMessage, renewalNotice, reserveTerms } from '../lib/engine';
 import { money, percent } from '../lib/format';
 import { fundingStatusLabel, getHeldFundingWon, isFundingPending } from '../lib/movements';
 import { fundingLabel, PLANS } from '../lib/policy';
@@ -32,6 +32,7 @@ export default function Home({ state, onDeposit, onSend, onCard, onPay, onReserv
   const held = getHeldFundingWon(state);
   const recent = listedTransactions(state.transactions);
   const active = card.stage === 'active';
+  const notice = renewalNotice(state, Date.now() + state.clockOffsetMs);
   const cardLine = active ? card.locked ? '잠겨 있어요' : `끝번호 ${card.last4}`
     : PREPARING.includes(card.stage) ? '만드는 중이에요'
       : card.stage === 'needs_info' ? '확인할 내용이 있어요'
@@ -70,6 +71,11 @@ export default function Home({ state, onDeposit, onSend, onCard, onPay, onReserv
         <span className="home-card-available"><span>카드로 쓸 수 있는 돈</span><strong data-testid="available-balance">{money(availableToSpend(state))}</strong></span>
         <button type="button" className="btn small neutral" data-testid="open-payment" onClick={onPay}>{card.locked ? '잠금 풀기' : '결제해 보기'}</button>
       </div> : <button type="button" className="btn neutral block home-card-next" data-testid="open-payment" onClick={onPay}>{PREPARING.includes(card.stage) ? '진행 상황 보기' : card.stage === 'rejected' ? '다시 신청하기' : '신청 이어서 하기'}</button>}
+      {notice && <button type="button" className={`home-status home-renewal${notice.short ? ' short' : ''}`} data-testid="home-renewal" onClick={onCard}>
+        <CalendarClock size={16} aria-hidden="true" />
+        <span><strong>{renewalMessage(notice).title}</strong>{notice.short > 0 && <small>잔액이 {money(notice.short)} 부족해요</small>}</span>
+        <ChevronRight size={16} aria-hidden="true" />
+      </button>}
     </section>}
 
     <section className="live-card home-live" aria-label="리워드">

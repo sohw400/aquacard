@@ -3,7 +3,7 @@ import {
   ArrowRight, CalendarClock, Check, ChevronLeft, CircleAlert, Clock3, CreditCard,
   Eye, EyeOff, LockKeyhole, MapPin, Package, RefreshCw, Smartphone, Truck, UnlockKeyhole,
 } from 'lucide-react';
-import { cardApplicationFee, upgradePhysical } from '../lib/engine';
+import { cardApplicationFee, nextRenewalNotice, renewalMessage, renewalNotice, unusedAnnualFee, upgradePhysical } from '../lib/engine';
 import { addressLine } from '../lib/address';
 import { maskPhone } from '../lib/auth';
 import { dateLabel, josa, money, percent, ro } from '../lib/format';
@@ -24,6 +24,8 @@ interface CardApplicationProps {
   account: Account;
   /** Spend balance that card fees come out of. */
   spend: number;
+  /** The demo clock, for the renewal notice and the fee given back. */
+  now: number;
   controls: PaymentControls;
   onOpenLimits: () => void;
   onOpenChannels: () => void;
@@ -64,7 +66,7 @@ function TierFacts({ plan }: { plan: Plan }) {
   return <Facts className="cf-tier-facts" items={[`페이백 ${percent(terms.cashbackRate)}`, terms.reserveBonus ? `리저브 +${percent(terms.reserveBonus)}p` : terms.card]} />;
 }
 
-export default function CardApplication({ card, account, spend, controls, onOpenLimits, onOpenChannels, onPay, onChange, onAction, onDeposit, onNotify }: CardApplicationProps) {
+export default function CardApplication({ card, account, spend, now, controls, onOpenLimits, onOpenChannels, onPay, onChange, onAction, onDeposit, onNotify }: CardApplicationProps) {
   const [identityConsent, setIdentityConsent] = useState(false);
   const [reviewConsent, setReviewConsent] = useState(false);
   const [revealed, setRevealed] = useState(false);
@@ -82,6 +84,10 @@ export default function CardApplication({ card, account, spend, controls, onOpen
   const preparingCard = card.stage === 'submitted' || card.stage === 'approved' || card.stage === 'issued';
   const fee = cardApplicationFee(card);
   const shortfall = Math.max(0, fee - spend);
+  const notice = renewalNotice({ card, spend }, now);
+  const renewal = notice && renewalMessage(notice);
+  const upcoming = nextRenewalNotice(card, now);
+  const refund = unusedAnnualFee(card, now);
 
   useEffect(() => { latest.current = { card, onChange, onNotify }; }, [card, onChange, onNotify]);
 
@@ -150,12 +156,18 @@ export default function CardApplication({ card, account, spend, controls, onOpen
     const terms = PLANS[target];
     const upgrade = PLAN_ORDER.indexOf(target) > PLAN_ORDER.indexOf(card.plan);
     const renewal = card.billingAt !== null ? dateLabel(card.billingAt) : '';
+    // The days left of this year's fee come off the new fee.
+    const credit = unusedAnnualFee(card, now);
+    const due = terms.annualFee - credit.amount;
     return upgrade
-      ? <CardActionSheet title={`${ro(terms.short)} 바꾸기`} lead="바꾸는 즉시 혜택이 적용돼요." spend={spend} cost={terms.annualFee} onDeposit={onDeposit} onClose={() => setSheet(null)}
-        points={[`페이백이 ${percent(terms.cashbackRate)}로 올라요. 한 달 ${manWon(terms.spendCap)} 결제까지 받아요.`, `리저브 보상이 연 ${percent(terms.reserveBonus)}p 더 쌓여요. ${manWon(terms.reserveCap)}까지예요.`, `연회비 ${won(terms.annualFee)}을 지금 잔액에서 내고, 1년 뒤 같은 날 다시 내요.`, ...(plan.annualFee ? ['지금 멤버십의 남은 기간 연회비는 돌려드리지 않아요.'] : []), upgradePhysical(card, target).note.trim()]}
-        confirmLabel={`${won(terms.annualFee)} 내고 바꾸기`} onConfirm={() => onAction({ type: 'CHANGE_PLAN', plan: target }, `${ro(terms.short)} 바꿨어요.`)} />
+      ? <CardActionSheet title={`${ro(terms.short)} 바꾸기`} lead="바꾸는 즉시 혜택이 적용돼요." spend={spend} cost={due} onDeposit={onDeposit} onClose={() => setSheet(null)}
+        points={[`페이백이 ${percent(terms.cashbackRate)}로 올라요. 한 달 ${manWon(terms.spendCap)} 결제까지 받아요.`, `리저브 보상이 연 ${percent(terms.reserveBonus)}p 더 쌓여요. ${manWon(terms.reserveCap)}까지예요.`,
+          credit.amount ? `${plan.short} 연회비 중 남은 ${credit.days}일 몫 ${won(credit.amount)}을 빼고 ${won(due)}을 지금 잔액에서 내요. 1년 뒤 같은 날부터는 ${won(terms.annualFee)}을 내요.` : `연회비 ${won(terms.annualFee)}을 지금 잔액에서 내고, 1년 뒤 같은 날 다시 내요.`,
+          upgradePhysical(card, target).note.trim()]}
+        lines={credit.amount ? [{ label: `${terms.short} 연회비`, amount: terms.annualFee }, { label: `${plan.short} 남은 ${credit.days}일`, amount: -credit.amount, testId: 'card-sheet-credit' }] : []}
+        confirmLabel={`${won(due)} 내고 바꾸기`} onConfirm={() => onAction({ type: 'CHANGE_PLAN', plan: target }, `${ro(terms.short)} 바꿨어요.`)} />
       : <CardActionSheet title={`${ro(terms.short)} 바꾸기`} spend={spend} onDeposit={onDeposit} onClose={() => setSheet(null)}
-        points={[`${renewal}까지는 ${plan.short} 혜택을 그대로 써요.`, `그날부터 ${ro(terms.short)} 바뀌어요.${terms.annualFee ? ` ${terms.short} 연회비 ${won(terms.annualFee)}은 그날 나가요.` : ' 연회비는 더 나가지 않아요.'}`, '이미 낸 연회비는 돌려드리지 않아요.']}
+        points={[`${renewal}까지는 ${plan.short} 혜택을 그대로 써요.`, `그날부터 ${ro(terms.short)} 바뀌어요.${terms.annualFee ? ` ${terms.short} 연회비 ${won(terms.annualFee)}은 그날 나가요.` : ' 연회비는 더 나가지 않아요.'}`, '그때까지 혜택을 그대로 쓰니 이미 낸 연회비는 돌려드리지 않아요.']}
         confirmLabel={`${renewal}에 바꾸기`} onConfirm={() => onAction({ type: 'CHANGE_PLAN', plan: target }, `${renewal}부터 ${ro(terms.short)} 바뀌어요.`)} />;
   };
 
@@ -250,6 +262,8 @@ export default function CardApplication({ card, account, spend, controls, onOpen
           <h3 id="cf-plan-title">멤버십</h3>
           <Facts className="cf-plan-now" items={[<strong>{plan.short}</strong>, `페이백 ${percent(plan.cashbackRate)}`, `월 ${won(plan.cashbackCap)}까지`, ...(plan.reserveBonus ? [`리저브 +${percent(plan.reserveBonus)}p`] : [])]} />
           {card.billingAt !== null && <p className="cf-plan-renewal"><CalendarClock size={15} aria-hidden="true" />{card.nextPlan ? `${dateLabel(card.billingAt)}부터 ${ro(PLANS[card.nextPlan].short)} 바뀌어요` : <>다음 갱신일 <span data-testid="card-billing-date">{dateLabel(card.billingAt)}</span></>}</p>}
+          {notice && renewal && <div className={`cf-renewal${notice.short ? ' cf-renewal-short' : ''}`} data-testid="card-renewal-notice"><p><strong>{renewal.title}</strong><span>{renewal.detail}</span></p>
+            {notice.short > 0 && <button type="button" className="cf-button cf-secondary" data-testid="card-renewal-deposit" onClick={onDeposit}>충전하기</button>}</div>}
           <ul className="cf-plan-list">{PLAN_ORDER.map((key) => {
             const current = key === card.plan;
             const scheduled = card.nextPlan === key;
@@ -295,7 +309,8 @@ export default function CardApplication({ card, account, spend, controls, onOpen
           points={[`끝번호 ${card.last4} 카드는 바로 결제가 막혀요.`, '가상카드는 새 번호로 바로 나와요.', ...(card.wallets.length ? ['휴대폰 결제에 넣은 카드는 지워져요. 새 카드로 다시 추가해 주세요.'] : []), ...(card.physical ? [`${physicalName(card.plan)}는 ${card.address ? ro(addressLine(card.address)) : '등록한 주소로'} 새로 보내 드려요.${plan.physicalFee ? ` 재발급비 ${won(plan.physicalFee)}이 들어요.` : ''}`] : []), ...(card.replacement ? [`보내고 있는 ${physicalName(card.replacement.plan)}도 막혀요.`] : [])]}
           confirmLabel={card.physical && plan.physicalFee ? `${won(plan.physicalFee)} 내고 재발급` : '신고하고 재발급'} onConfirm={() => { const done = onAction({ type: 'REISSUE_CARD' }, '새 카드를 발급했어요.'); if (done) setRevealed(false); return done; }} />}
         {sheet?.kind === 'close' && <CardActionSheet title="카드 해지" lead="해지한 카드는 다시 쓸 수 없어요." spend={spend} onDeposit={onDeposit} onClose={() => setSheet(null)} danger consent="위 내용을 확인했어요."
-          points={['카드 번호와 휴대폰 결제가 바로 멈춰요.', '잔액과 리저브는 그대로 남아요.', '리워드는 카드를 다시 만들면 쓸 수 있어요.', ...(plan.annualFee ? [`${plan.short} 멤버십도 끝나요. 이미 낸 연회비는 돌려드리지 않아요.`] : []), '확정 전 결제와 환불은 그대로 처리돼요.']}
+          points={['카드 번호와 휴대폰 결제가 바로 멈춰요.', '잔액과 리저브는 그대로 남아요.', '리워드는 카드를 다시 만들면 쓸 수 있어요.', ...(plan.annualFee ? [refund.amount ? `${plan.short} 멤버십도 끝나요. 연회비 중 남은 ${refund.days}일 몫을 잔액으로 돌려드려요.` : `${plan.short} 멤버십도 끝나요.`] : []), '확정 전 결제와 환불은 그대로 처리돼요.']}
+          lines={refund.amount ? [{ label: '돌려받는 연회비', amount: refund.amount, testId: 'card-sheet-refund' }] : []}
           confirmLabel="카드 해지" onConfirm={() => { const done = onAction({ type: 'CLOSE_CARD' }, '카드를 해지했어요.'); if (done) setRevealed(false); return done; }} />}
       </div>}
 
@@ -313,6 +328,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
       {(card.stage === 'submitted' || card.stage === 'active') && <details className="cf-demo-tools" data-testid="card-demo-tools" open={toolsOpen} onToggle={(event) => { stopTimer(); setToolsOpen(event.currentTarget.open); }}><summary>체험 도구</summary>
         {card.stage === 'submitted' && <div className="cf-simulation"><p>도구를 닫으면 심사가 자동으로 진행돼요.</p><button type="button" className="cf-button cf-secondary" data-testid="card-demo-approve" onClick={() => simulateResult('approved')}>승인하기</button><div className="cf-button-row"><button type="button" className="cf-button cf-secondary" data-testid="card-demo-needs-info" onClick={() => simulateResult('needs_info')}>보완 요청</button><button type="button" className="cf-button cf-secondary" data-testid="card-demo-reject" onClick={() => simulateResult('rejected')}>거절하기</button></div></div>}
         {card.stage === 'active' && <div className="cf-simulation cf-demo-list">
+          {upcoming && <button type="button" className="cf-button cf-secondary" data-testid="card-demo-notice" onClick={() => onAction({ type: 'ADVANCE_TO_NOTICE' }, `갱신 ${upcoming.days}일 전으로 시간을 옮겼어요.`)}><CalendarClock size={16} /> 갱신 {upcoming.days}일 전으로 이동</button>}
           {card.billingAt !== null && <button type="button" className="cf-button cf-secondary" data-testid="card-demo-billing" onClick={() => onAction({ type: 'ADVANCE_TO_BILLING' }, '갱신일로 시간을 옮겼어요.')}><CalendarClock size={16} /> 갱신일({dateLabel(card.billingAt)})로 이동</button>}
           {card.physical && card.delivery === 'preparing' && <button type="button" className="cf-button cf-secondary" data-testid="card-demo-shipped" onClick={() => patch({ delivery: 'shipped' })}><Truck size={16} /> 배송 시작</button>}
           {card.physical && card.delivery === 'shipped' && <button type="button" className="cf-button cf-secondary" data-testid="card-demo-delivered" onClick={() => patch({ delivery: 'delivered' })}><Package size={16} /> 배송 완료</button>}

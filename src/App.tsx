@@ -254,7 +254,7 @@ export default function App() {
 
       {page === 'home' && <Home state={state} onDeposit={() => setFunding({ mode: 'deposit' })} onSend={() => setSending(true)} onCard={() => navigate('card')} onPay={startPayment}
         onReserve={() => navigate('reserve')} onRewards={() => navigate('benefits')} onActivity={() => navigate('activity')} onFunding={openFundingOperation} onRefund={openRefund} />}
-      {page === 'card' && <div className="page card-page"><CardApplication card={state.card} account={account} spend={state.spend} controls={state.controls} onOpenLimits={() => navigate('limits')} onOpenChannels={() => navigate('channels')} onPay={startPayment}
+      {page === 'card' && <div className="page card-page"><CardApplication card={state.card} account={account} spend={state.spend} now={Date.now() + state.clockOffsetMs} controls={state.controls} onOpenLimits={() => navigate('limits')} onOpenChannels={() => navigate('channels')} onPay={startPayment}
         onChange={(card) => { perform({ type: 'SET_CARD', card }); }} onAction={(action, message) => perform(action, message) !== null} onDeposit={() => setFunding({ mode: 'deposit' })} onNotify={(message) => notify(message)} /></div>}
       {page === 'benefits' && <Benefits state={state} onReserve={() => navigate('reserve')} onRewardsAuto={setRewardsAuto} />}
       {page === 'reserve' && <Reserve state={state} onMove={setReserveMove} onAutoUse={setReserveAuto} />}

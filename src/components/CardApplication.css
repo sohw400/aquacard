@@ -162,6 +162,12 @@
 .card-flow .cf-plan-now strong { color: var(--ink); font-weight: 700; }
 .card-flow .cf-plan-renewal { display: flex; align-items: center; gap: 6px; margin: 4px 0 6px; color: var(--subtle); font-size: 14px; line-height: 1.6; }
 .card-flow .cf-plan-renewal > svg { flex-shrink: 0; }
+.card-flow .cf-renewal { display: grid; gap: 10px; margin: 6px 0 8px; padding: 12px 16px; border-radius: var(--radius-md); background: var(--sunken); }
+.card-flow .cf-renewal > p { display: grid; gap: 2px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.card-flow .cf-renewal strong { color: var(--ink); font-size: 15px; font-weight: 600; }
+.card-flow .cf-renewal-short { background: var(--warning-weak); }
+.card-flow .cf-renewal-short > p, .card-flow .cf-renewal-short strong { color: var(--warning); }
+.card-flow .cf-renewal > .cf-button { justify-self: start; width: auto; min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 14px; }
 .card-flow .cf-plan-list { display: grid; margin: 4px 0 0; padding: 0; list-style: none; }
 /* The right column holds one pill per row: an action, or the plan's state in the same shape so the column lines up. */
 .card-flow :is(.cf-plan-action, .cf-plan-tag) { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; min-width: 84px; min-height: 44px; padding: 0 16px; border-radius: 999px; font-family: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; }

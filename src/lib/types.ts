@@ -232,6 +232,8 @@ export type Action =
   | { type: 'REISSUE_CARD' }
   | { type: 'CLOSE_CARD' }
   | { type: 'ADVANCE_TO_BILLING' }
+  /** Moves the demo clock to the next renewal notice: 30, then 7 days before the renewal date. */
+  | { type: 'ADVANCE_TO_NOTICE' }
   | { type: 'DELETE_ACCOUNT'; passwordHash: string }
   | { type: 'ACTIVATE_PHYSICAL'; pin: string }
   | { type: 'SET_CARD_PIN'; pin: string }

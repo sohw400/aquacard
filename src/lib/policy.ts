@@ -9,6 +9,14 @@ export const POLICY = {
   perPaymentLimit: 500_000,
   dailyPaymentLimit: 1_000_000,
   monthlyPaymentLimit: 5_000_000,
+  /** Sends to other members stay inside Aqua, capped like card payments. */
+  memberSendPerTransfer: 1_000_000,
+  memberSendDaily: 2_000_000,
+  memberSendMonthly: 5_000_000,
+  /** New accounts send half as much for this many days, and accounts with extra checks always do. */
+  newAccountDays: 30,
+  /** Days before a paid membership renews that the holder hears the date and amount. */
+  renewalNoticeDays: [30, 7],
   secondsPerYear: 365 * 24 * 60 * 60,
   deliveryEstimate: '5~7영업일',
 } as const;

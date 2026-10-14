@@ -297,6 +297,11 @@ a { color: var(--accent); }
 .home-status > span { flex: 1; min-width: 0; }
 .home-status > svg:first-child { color: var(--accent); }
 .home-status > svg:last-child { color: var(--faint); }
+.home-renewal { margin-top: 10px; }
+.home-renewal > span { display: grid; gap: 1px; }
+.home-renewal strong { color: var(--ink-soft); font-weight: 500; }
+.home-renewal small { color: var(--warning); font-size: 13px; font-weight: 600; line-height: 1.5; }
+.home-renewal.short > svg:first-child { color: var(--warning); }
 .home-card { display: grid; gap: 0; padding-top: 24px; border-top: 1px solid var(--line); }
 .home-card-main { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 64px; text-align: left; }
 .tier-card { display: block; flex-shrink: 0; width: 64px; height: auto; user-select: none; }

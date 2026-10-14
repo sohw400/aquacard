@@ -47,6 +47,13 @@ const wonText = (value) => `${value.toLocaleString('ko-KR')}원`;
 const percentText = (rate) => `${Number((rate * 100).toFixed(2))}%`;
 const manWon = (value) => `${(value / 10_000).toLocaleString('ko-KR')}만원`;
 const pattern = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const kstDay = (timestamp) => Math.floor((timestamp + 9 * 3_600_000) / DAY_MS);
+const dateText = (timestamp) => new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Seoul' }).format(timestamp);
+/** What the engine gives back of this year's membership fee: the days left to renewal out of 365, rounded down. */
+const unusedFee = (state, at) => {
+  const fee = PLANS[state.card.plan].annualFee;
+  return fee && state.card.billingAt !== null ? Math.floor(fee * Math.min(365, kstDay(state.card.billingAt) - kstDay(at)) / 365) : 0;
+};
 /** Payback on the part not paid with rewards, floored and kept under the monthly cap (engine PAY). */
 const paybackOf = (plan, paidWithoutRewards, earnedThisMonth = 0) => Math.min(Math.floor(paidWithoutRewards * PLANS[plan].cashbackRate), Math.max(0, PLANS[plan].cashbackCap - earnedThisMonth));
 /** Base Reserve rate plus the membership bonus while the card is active (engine reserveTerms). */
@@ -243,6 +250,8 @@ try {
     await dialog.waitFor({ state: 'hidden' });
   }
   const displayedAmount = async (locator) => Number((await locator.innerText()).replace(/[^\d]/g, ''));
+  /** The page's demo clock: its own time plus how far the demo has moved it. */
+  const demoNow = async (target, state) => await target.evaluate(() => Date.now()) + state.clockOffsetMs;
   const fundingDialogAt = (target = page) => target.getByTestId('dialog-funding');
   const operationWhen = async (id, status, target = page) => {
     const state = await stateWhen((current) => current.fundingOperations.some((item) => item.id === id && item.status === status), target);
@@ -952,6 +961,24 @@ try {
   assert.equal(await displayedAmount(primary.getByTestId('spend-balance')), primarySpend);
   assert.ok(!JSON.stringify(afterLogin).includes('newpass2026'), '비밀번호 원문은 저장하지 않는다');
   pass('로그아웃·틀린 비밀번호 거절·이메일 코드로 재설정·새 비밀번호 로그인과 자산 유지');
+
+  await nav('card', primary);
+  const beforePrivateClose = await read(primary);
+  const privateRefund = unusedFee(beforePrivateClose, await demoNow(primary, beforePrivateClose));
+  assert.ok(privateRefund > 0, '프라이빗 연회비를 낸 지 1년이 안 됐다');
+  await primary.getByTestId('card-close').click();
+  const closeSheet = primary.getByTestId('card-sheet');
+  await closeSheet.waitFor({ state: 'visible' });
+  assert.match(await closeSheet.innerText(), new RegExp(`${PLANS.private.short} 멤버십도 끝나요\\. 연회비 중 남은 \\d+일 몫을 잔액으로 돌려드려요\\.`));
+  assert.equal(await displayedAmount(closeSheet.getByTestId('card-sheet-refund')), privateRefund);
+  assert.equal(await closeSheet.getByTestId('card-sheet-cost').count(), 0, '해지는 내는 돈이 없다');
+  await closeSheet.getByTestId('card-sheet-consent').check();
+  await closeSheet.getByTestId('card-sheet-confirm').click();
+  const closedPrimary = await stateWhen((current) => current.card.stage === 'not_applied', primary);
+  assert.equal(closedPrimary.spend, beforePrivateClose.spend + privateRefund, '남은 연회비는 잔액으로 돌려준다');
+  assert.equal(closedPrimary.transactions.find((item) => item.title === `${PLANS.private.short} 연회비 환불`).amount, privateRefund);
+  assert.match(closedPrimary.transactions.find((item) => item.title === '카드 해지').note, new RegExp(`남은 기간 연회비 ${pattern(wonText(privateRefund))}을 잔액으로 돌려드렸어요`));
+  pass('프라이빗 카드를 해지하면 남은 날수만큼 연회비를 잔액으로 돌려받는다');
   await primaryContext.close();
 
   const rewardContext = await browser.newContext({ viewport: { width: 1440, height: 1050 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
@@ -1073,6 +1100,8 @@ try {
   await sendAmount.waitFor({ state: 'visible' });
   await focusedIn(() => document.activeElement?.getAttribute('data-testid') === 'send-amount');
   assert.match(await sendSheet.innerText(), /김\*지[\s\S]*@minji\.k[\s\S]*보낼 수 있는 금액[\s\S]*128,500원/);
+  const newMember = (await read(sendPage)).account;
+  assert.equal(await sendSheet.getByTestId('send-limit').innerText(), `한 번에 ${manWon(POLICY.memberSendPerTransfer / 2)}, 하루 ${manWon(POLICY.memberSendDaily / 2)}, 한 달 ${manWon(POLICY.memberSendMonthly / 2)}까지 보낼 수 있어요. 가입하고 ${POLICY.newAccountDays}일 동안은 한도가 절반이고, ${dateText(newMember.verifiedAt + POLICY.newAccountDays * DAY_MS)}부터 늘어나요.`, '가입 30일 동안은 한도가 절반');
   await sendAmount.fill(String(START.spend + 1));
   assert.match(await sendSheet.getByRole('alert').innerText(), /잔액보다 많이 보낼 수 없어요/);
   assert.equal(await sendSheet.getByTestId('send-next').isDisabled(), true);
@@ -1269,6 +1298,44 @@ try {
   await statementPage.waitFor({ state: 'visible' });
   pass('연간 거래 내역: 보내기·받기 요약, 세금 신고 안내, 탭으로 나눈 내역 복사와 복사가 막혔을 때 직접 고르기');
 
+  await openFunding('deposit', sendPage);
+  await topUpWithKrws(1_000_000, sendPage);
+  const beforeLimits = await read(sendPage);
+  const halfPerTransfer = POLICY.memberSendPerTransfer / 2, halfDaily = POLICY.memberSendDaily / 2;
+  const limitDay = kstDay(await demoNow(sendPage, beforeLimits));
+  const sentToday = beforeLimits.transactions.filter((item) => item.kind === 'transfer' && item.member && item.amount < 0 && kstDay(item.timestamp) === limitDay).reduce((sum, item) => sum - item.amount, 0);
+  assert.ok(beforeLimits.spend > halfPerTransfer + 1, '1회 한도보다 잔액이 많다');
+  const openMemberAmount = async () => {
+    await sendPage.getByTestId('open-send').click();
+    await sendSheet.getByTestId('send-member').click();
+    await sendSheet.getByTestId('send-pick-junho').click();
+    await sendAmount.waitFor({ state: 'visible' });
+  };
+  await openMemberAmount();
+  assert.equal(await displayedAmount(sendSheet.getByTestId('send-available')), Math.min(beforeLimits.spend, halfPerTransfer, halfDaily - sentToday), '보낼 수 있는 금액은 잔액과 남은 한도 중 작은 쪽');
+  assert.match(await sendSheet.getByTestId('send-limit').innerText(), new RegExp(`^오늘 ${pattern(wonText(halfDaily - sentToday))}, 이번 달 [\\d,]+원 더 보낼 수 있어요\\. 한 번에는 ${manWon(halfPerTransfer)}까지예요\\. 가입하고 `));
+  await sendAmount.fill(String(halfPerTransfer + 1));
+  assert.equal(await sendSheet.getByRole('alert').innerText(), `한 번에 ${manWon(halfPerTransfer)}까지 보낼 수 있어요.`);
+  assert.equal(await sendSheet.getByTestId('send-next').isDisabled(), true, '1회 한도를 넘으면 다음으로 갈 수 없다');
+  await sendAmount.fill(String(halfPerTransfer));
+  await sendSheet.getByTestId('send-next').click();
+  await sendSheet.getByTestId('send-confirm').click();
+  await sendSheet.getByTestId('send-done').waitFor({ state: 'visible' });
+  await stateWhen((current) => current.spend === beforeLimits.spend - halfPerTransfer, sendPage);
+  await sendSheet.getByTestId('send-close').click();
+  await sendSheet.waitFor({ state: 'hidden' });
+  const leftToday = halfDaily - sentToday - halfPerTransfer;
+  await openMemberAmount();
+  assert.equal(await displayedAmount(sendSheet.getByTestId('send-available')), leftToday);
+  await sendAmount.fill(String(leftToday + 1));
+  assert.equal(await sendSheet.getByRole('alert').innerText(), `오늘은 ${wonText(leftToday)}까지 더 보낼 수 있어요.`);
+  assert.equal(await sendSheet.getByTestId('send-next').isDisabled(), true);
+  await sendSheet.getByRole('button', { name: '창 닫기', exact: true }).click();
+  await sendSheet.waitFor({ state: 'hidden' });
+  await nav('settings', sendPage);
+  assert.equal(await sendPage.getByTestId('settings-send-limit').innerText(), `하루 ${manWon(halfDaily)}`);
+  pass('회원 보내기 한도: 가입 30일 동안 절반, 1회 한도를 넘으면 막고 오늘 남은 한도와 보낼 수 있는 금액을 보여 준다');
+
   await nav('settings', sendPage);
   await details('demo-tools', true, sendPage);
   await sendPage.getByTestId('rate-3').click();
@@ -1281,13 +1348,14 @@ try {
   await details('demo-tools', true, sendPage);
   await sendPage.getByTestId('rate-5').click();
   await stateWhen((current) => current.reserveRate === 0.05, sendPage);
+  const beforeReset = await read(sendPage);
   await sendPage.getByTestId('reset-demo').click();
   const resetDialog = sendPage.getByTestId('dialog-reset');
   await resetDialog.waitFor({ state: 'visible' });
   assert.match(await resetDialog.innerText(), /잔액, 카드 신청, 거래 내역을 처음 상태로 돌려요/);
   await resetDialog.getByRole('button', { name: '취소', exact: true }).click();
   await resetDialog.waitFor({ state: 'hidden' });
-  assert.equal((await read(sendPage)).spend, START.spend - 30_000 + RECEIVED, '취소하면 되돌리지 않는다');
+  assert.equal((await read(sendPage)).spend, beforeReset.spend, '취소하면 되돌리지 않는다');
   await sendPage.getByTestId('reset-demo').click();
   await resetDialog.getByTestId('confirm-action').click();
   await sendPage.getByTestId('auth-signup').waitFor({ state: 'visible' });
@@ -1811,39 +1879,65 @@ try {
 
   const privateFee = PLANS.private.annualFee;
   const spendBeforePrivate = lifeState.spend;
-  assert.ok(privateFee > spendBeforePrivate, '프라이빗 연회비는 지금 잔액보다 크다');
+  const premiumCredit = unusedFee(lifeState, await demoNow(life, lifeState));
+  const privateCost = privateFee - premiumCredit;
+  assert.ok(premiumCredit > 0, '프리미엄 연회비의 남은 몫이 있다');
+  assert.ok(privateCost > spendBeforePrivate, '프라이빗으로 올리는 금액은 지금 잔액보다 크다');
   await life.getByTestId('card-plan-private').click();
   await planSheet.waitFor({ state: 'visible' });
-  await expectSheetCost(life, privateFee);
-  assert.match(await planSheet.innerText(), /지금 멤버십의 남은 기간 연회비는 돌려드리지 않아요/);
-  assert.match(await planSheet.getByRole('alert').innerText(), new RegExp(`잔액이 ${pattern(wonText(privateFee - spendBeforePrivate))} 부족해요`));
+  await expectSheetCost(life, privateCost);
+  assert.equal(await displayedAmount(planSheet.getByTestId('card-sheet-credit')), premiumCredit);
+  assert.match(await planSheet.innerText(), new RegExp(`${PLANS.premium.short} 연회비 중 남은 \\d+일 몫 ${pattern(wonText(premiumCredit))}을 빼고 ${pattern(wonText(privateCost))}을 지금 잔액에서 내요\\. 1년 뒤 같은 날부터는 ${pattern(wonText(privateFee))}을 내요`));
+  assert.match(await planSheet.getByRole('alert').innerText(), new RegExp(`잔액이 ${pattern(wonText(privateCost - spendBeforePrivate))} 부족해요`));
   assert.equal(await life.getByTestId('card-sheet-confirm').isDisabled(), true, '잔액이 모자라면 바꿀 수 없다');
   await life.getByTestId('card-sheet-deposit').click();
   await planSheet.waitFor({ state: 'hidden' });
   await fundingDialogAt(life).waitFor({ state: 'visible' });
-  const upgradeTopUp = Math.ceil((privateFee - spendBeforePrivate + premiumFee) / 100_000) * 100_000;
+  const upgradeTopUp = Math.ceil((privateCost - spendBeforePrivate + premiumFee) / 100_000) * 100_000;
   await topUpWithKrws(upgradeTopUp, life);
   const premiumBillingAt = lifeState.card.billingAt;
   await life.getByTestId('card-plan-private').click();
   await planSheet.waitFor({ state: 'visible' });
   assert.equal(await life.getByTestId('card-sheet-confirm').isDisabled(), false);
+  assert.equal(await life.getByTestId('card-sheet-confirm').innerText(), `${wonText(privateCost)} 내고 바꾸기`);
   await life.getByTestId('card-sheet-confirm').click();
   lifeState = await stateWhen((current) => current.card.plan === 'private', life);
-  assert.equal(lifeState.spend, spendBeforePrivate + upgradeTopUp - privateFee);
+  assert.equal(lifeState.spend, spendBeforePrivate + upgradeTopUp - privateCost);
   assert.ok(lifeState.card.billingAt > premiumBillingAt, '올린 날부터 새 1년을 센다');
   const privateEntry = lifeState.transactions.find((item) => item.title === `${PLANS.private.short} 연회비`);
   assert.equal(privateEntry.amount, -privateFee);
-  assert.match(privateEntry.note, /이전 멤버십의 남은 기간 연회비는 돌려드리지 않아요/);
+  assert.equal(lifeState.transactions.find((item) => item.title === `${PLANS.premium.short} 연회비 환불`).amount, premiumCredit, '돌려준 몫은 따로 내역에 남긴다');
+  assert.match(privateEntry.note, new RegExp(`${PLANS.premium.short}의 남은 기간 연회비 ${pattern(wonText(premiumCredit))}을 빼고 ${pattern(wonText(privateCost))}을 냈어요`));
   assert.match(privateEntry.note, new RegExp(`${PLANS.private.card}를 서울특별시 마포구 물결로 8로 새로 보내 드려요`));
   assert.deepEqual(lifeState.card.replacement, { plan: 'private', delivery: 'preparing' }, '메탈 카드를 쓰는 중이면 골드 카드를 새로 보낸다');
   await life.getByTestId('card-plan-premium').click();
   await planSheet.waitFor({ state: 'visible' });
-  assert.match(await planSheet.innerText(), new RegExp(`그날부터 ${PLANS.premium.short}으로 바뀌어요\\. ${PLANS.premium.short} 연회비 ${pattern(wonText(premiumFee))}은 그날 나가요`));
+  assert.match(await planSheet.innerText(), new RegExp(`그날부터 ${PLANS.premium.short}으로 바뀌어요\\. ${PLANS.premium.short} 연회비 ${pattern(wonText(premiumFee))}은 그날 나가요[\\s\\S]*그때까지 혜택을 그대로 쓰니 이미 낸 연회비는 돌려드리지 않아요`));
   await expectSheetCost(life, 0);
   await life.getByTestId('card-sheet-confirm').click();
   lifeState = await stateWhen((current) => current.card.nextPlan === 'premium', life);
-  assert.equal(lifeState.spend, spendBeforePrivate + upgradeTopUp - privateFee);
-  pass('잔액이 모자란 프라이빗 변경은 충전으로 안내하고 충전 뒤 연회비를 내며 프리미엄 변경을 갱신일로 예약');
+  assert.equal(lifeState.spend, spendBeforePrivate + upgradeTopUp - privateCost);
+  pass('프라이빗으로 올리면 프리미엄의 남은 연회비를 빼고 내며, 모자라면 충전으로 안내하고 프리미엄 변경은 갱신일로 예약');
+
+  await details('card-demo-tools', true, life);
+  const renewalBox = life.getByTestId('card-renewal-notice');
+  assert.equal(await renewalBox.count(), 0, '갱신일이 30일보다 멀면 안내하지 않는다');
+  assert.match(await life.getByTestId('card-demo-notice').innerText(), /^\s*갱신 30일 전으로 이동$/);
+  await life.getByTestId('card-demo-notice').click();
+  await stateWhen((current) => current.transactions[0].title === '갱신 30일 전으로 이동 체험', life);
+  assert.match(await renewalBox.innerText(), new RegExp(`^30일 뒤 ${PLANS.premium.short}으로 바뀌고 연회비 ${pattern(wonText(premiumFee))}이 나가요\\s+${pattern(dateText(lifeState.card.billingAt))}에 잔액에서 내요\\. 갱신하지 않으려면 그 전에 스탠다드로 바꿔 주세요\\.$`));
+  assert.equal(await life.getByTestId('card-renewal-deposit').count(), 0, '잔액이 넉넉하면 충전 버튼이 없다');
+  await life.getByTestId('nav-home').click();
+  assert.equal(await life.getByTestId('home-renewal').innerText(), `30일 뒤 ${PLANS.premium.short}으로 바뀌고 연회비 ${wonText(premiumFee)}이 나가요`);
+  await life.getByTestId('home-renewal').click();
+  await renewalBox.waitFor();
+  await details('card-demo-tools', true, life);
+  assert.match(await life.getByTestId('card-demo-notice').innerText(), /^\s*갱신 7일 전으로 이동$/);
+  await life.getByTestId('card-demo-notice').click();
+  await stateWhen((current) => current.transactions[0].title === '갱신 7일 전으로 이동 체험', life);
+  assert.match(await renewalBox.innerText(), new RegExp(`^7일 뒤 ${PLANS.premium.short}으로 바뀌고`));
+  assert.equal(await life.getByTestId('card-demo-notice').count(), 0, '7일 전 다음은 갱신일 이동만 남는다');
+  pass('갱신 30일 전·7일 전 안내: 바뀔 멤버십·연회비·날짜를 홈과 카드 화면에 보여 주고 홈에서 카드 화면으로 간다');
 
   await details('card-demo-tools', true, life);
   const beforeRenewal = await read(life);
@@ -1860,14 +1954,24 @@ try {
   assert.ok(Math.abs(earnedYearReward - expectedYearReward) < 1, `갱신일까지 프라이빗 조건으로 쌓인 리저브 보상: ${earnedYearReward} / ${expectedYearReward}`);
   assert.ok(lifeState.spend < premiumFee, '다음 갱신일에는 잔액이 모자라다');
   const beforeLapse = lifeState;
+  await life.getByTestId('card-demo-notice').click();
+  await stateWhen((current) => current.transactions[0].title === '갱신 30일 전으로 이동 체험', life);
+  assert.match(await renewalBox.innerText(), new RegExp(`^30일 뒤 ${PLANS.premium.short} 연회비 ${pattern(wonText(premiumFee))}이 나가요\\s+잔액이 ${pattern(wonText(premiumFee - beforeLapse.spend))} 부족해요\\. 그때까지 충전하지 않으면 스탠다드로 바뀌어요\\.\\s+충전하기$`));
+  assert.equal(await life.getByTestId('card-renewal-deposit').count(), 1, '모자라면 안내에서 바로 충전할 수 있다');
+  await life.getByTestId('nav-home').click();
+  assert.match(await life.getByTestId('home-renewal').innerText(), new RegExp(`잔액이 ${pattern(wonText(premiumFee - beforeLapse.spend))} 부족해요`));
+  await nav('card', life);
+  await details('card-demo-tools', true, life);
   await life.getByTestId('card-demo-billing').click();
   lifeState = await stateWhen((current) => current.card.plan === 'standard', life);
   assert.equal(lifeState.card.billingAt, null);
   assert.equal(lifeState.spend, beforeLapse.spend, '내지 못한 연회비는 빼지 않는다');
   assert.match(lifeState.transactions.find((item) => item.title === '스탠다드로 변경').note, new RegExp(`잔액이 부족해 ${PLANS.premium.short} 연회비를 내지 못했어요`));
   assert.equal(await life.getByTestId('card-demo-billing').count(), 0);
+  assert.equal(await life.getByTestId('card-demo-notice').count(), 0);
   assert.equal(await life.getByTestId('card-billing-date').count(), 0);
-  pass('갱신일 체험: 예약한 프리미엄 연회비를 잔액에서 내고, 다음 갱신일에 잔액이 모자라면 스탠다드로 바뀐다');
+  assert.equal(await renewalBox.count(), 0, '스탠다드는 갱신 안내가 없다');
+  pass('갱신일 체험: 예약한 프리미엄 연회비를 잔액에서 내고, 30일 전에 부족한 금액을 알린 뒤 갱신일에 잔액이 모자라면 스탠다드로 바뀐다');
 
   const spendBeforeClose = lifeState.spend;
   await life.getByTestId('card-close').click();
