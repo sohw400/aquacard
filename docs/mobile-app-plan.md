@@ -158,6 +158,16 @@
 - **휴대폰 본인확인.** 통신 3사가 본인확인기관이다. 앱에서는 웹 표준창을 웹뷰로 띄우고 PASS 앱을 부른 뒤, 서버에서 결과를 복호화하는 구조가 흔하다.
 - **신분증 진위확인·얼굴 대조.** 서버 API(쿠콘 등)나 API+SDK(알체라·유스비 등)로 제공된다. React Native·Flutter 지원 여부는 확인하지 못했다.
 - **가상자산사업자의 고객확인.** 가상자산사업자는 특금법상 고객확인 의무를 진다. 2025-11 금융정보분석원은 신분증 확인 소홀 등으로 두나무에 과태료 352억원을 부과했다(보도). 신분증 진위확인은 사실상 필수로 본다.
+- **해외 KYC 업체(Sumsub) 검토, 2026-10.** 한국 거주자 본인확인을 Sumsub 하나로 끝내기는 어렵다고 본다.
+  - 국내 비대면 실명확인은 2015년 금융위 방안대로 신분증 사본 제출, 영상통화, 접근매체 전달 때 확인, 기존 계좌 활용(1원 인증), 생체인증 중 2가지 이상을 함께 쓰고 휴대폰 본인확인을 더한다. 신분증 사본은 2017-01 도입된 정부 연계 진위확인으로 확인하는 것이 일반적이다.
+  - Sumsub 문서 목록(전자서명 검증용)에 한국 주민등록증이 있다. 데이터베이스 대조(Non-Doc) 지원 국가에 한국은 없다. 정부 연계 진위확인, 1원 인증, PASS 연동은 확인하지 못했다.
+  - Sumsub이 맞는 쓰임은 제재·PEP 명단 검사와 지속 모니터링, 가상자산 거래·지갑 위험 검사, 트래블룰, 외국인 여권 가입, 해외 확장이다.
+  - 도입 전에 확인할 것:
+    - 한국 신분증의 정부 연계 진위확인 지원 여부.
+    - 데이터 저장 위치. 개인정보 국외 이전(개인정보 보호법 제28조의8)과 주민등록번호 처리 범위를 법률 검토한다.
+    - 국내 트래블룰 망(VerifyVASP, CODE) 연동.
+    - 국내 레퍼런스. 2026-06 국내 업체 iMind와 결제 분야 제휴를 발표했다.
+  - 권장 구성: 국내 본인확인 업체(휴대폰 본인확인, 신분증 진위확인, 1원 인증, 얼굴 대조)를 주로 쓰고, Sumsub이나 국내 AML 솔루션을 명단 검사·거래 모니터링에 붙인다. 최종 고객확인 책임은 Aqua에 남는다.
 
 ### 전자지갑
 
@@ -256,5 +266,13 @@
 - [Android 생체 인증](https://developer.android.com/identity/sign-in/biometric-auth), [Apple 개발자 등록](https://developer.apple.com/programs/enroll/), [D-U-N-S 안내](https://developer.apple.com/help/account/membership/D-U-N-S/), [Android 개발자 인증](https://developer.android.com/developer-verification/guides)
 - [외부 SDK 요건 (Apple)](https://developer.apple.com/support/third-party-SDK-requirements/), [Associated Domains](https://developer.apple.com/documentation/xcode/supporting-associated-domains), [assetlinks.json 설정](https://developer.android.com/training/app-links/configure-assetlinks)
 - [KISA 스팸 방지 안내서 개정 보도 (2026-03-04)](https://m.boannews.com/html/detail.html?idx=142460)
+
+본인확인 업체 (2026-10-14 확인, 검색 요약 기준)
+
+- [Sumsub Non-Doc 지원 국가](https://docs.sumsub.com/docs/non-doc-identity-verification), [Sumsub 지원 신분증(전자서명용)](https://docs.sumsub.com/docs/qes-supported-identity-documents), [Sumsub 트래블룰 안내](https://docs.sumsub.com/docs/travel-rule-product-and-compliance-guide)
+- [Sumsub·iMind 제휴 (2026-06-02)](https://fintech.global/2026/06/02/sumsub-partners-imind-amid-south-korea-aml-push/), [Sumsub 한국 사업개발 채용(싱가포르 원격)](https://careers.sumsub.com/jobs/8073452-business-development-manager-south-korea)
+- [비대면 실명확인 방안 (2015, 경향신문)](https://www.khan.co.kr/article/201505181413471), [비대면 실명확인 허용 1년 (2015-12)](https://www.khan.co.kr/article/201512021103411)
+- [개인정보 보호법 제28조의8](https://casenote.kr/%EB%B2%95%EB%A0%B9/%EA%B0%9C%EC%9D%B8%EC%A0%95%EB%B3%B4_%EB%B3%B4%ED%98%B8%EB%B2%95/%EC%A0%9C28%EC%A1%B0%EC%9D%988), [한국 KYC·주민등록번호 처리 (Persona)](https://withpersona.com/blog/understanding-kyc-and-kyb-requirements-in-south-korea)
+- [VerifyVASP·CODE 트래블룰 (2022, 파이낸셜뉴스)](https://www.fnnews.com/news/202202161535270816)
 
 이 문서의 법령·정책 내용은 출시 전에 원문과 법률 검토로 다시 확인한다.
