@@ -5,7 +5,8 @@ import { josa, ro } from './format';
 import { assertFundingQuoteFresh, getFundingQuote, unitsToWon } from './funding';
 import { createFundingQuote, fundingStatusLabel, getFundingNetworks, validateFundingAddress } from './movements';
 import { addressLine, validAddress } from './address';
-import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, DeliveryStage, FundingOperation, FundingSymbol, NotificationSettings, Payment, PaymentControls, Plan, Transaction } from './types';
+import { normalizeName, UNLISTED_VENUE, validRecipientName, venueOf } from './travel';
+import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, DeliveryStage, FundingOperation, FundingSymbol, NotificationSettings, Payment, PaymentControls, Plan, Transaction, WithdrawalDestination } from './types';
 
 export const STORAGE_KEY = 'aqua-card:poc:v1';
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -149,6 +150,25 @@ function progressFunding(state: AppState, wallNow: number): void {
   }
 }
 
+/**
+ * The travel rule check for a withdrawal: an exchange must be in the directory, which holds only reporting businesses the
+ * travel rule network reaches, and a personal wallet must be the holder's own, proven by a signature.
+ */
+function checkDestination(value: unknown): WithdrawalDestination {
+  if (!record(value) || (value.kind !== 'exchange' && value.kind !== 'own_wallet')) throw new Error('받는 곳을 골라 주세요.');
+  if (value.kind === 'own_wallet') {
+    if (value.proof !== 'signature') throw new Error('내 지갑인지 서명으로 확인해 주세요. 다른 사람의 개인 지갑으로는 보낼 수 없어요.');
+    return { kind: 'own_wallet', proof: 'signature' };
+  }
+  if (typeof value.venue !== 'string' || !venueOf(value.venue)) throw new Error(UNLISTED_VENUE);
+  if (value.relation !== 'self' && value.relation !== 'other') throw new Error('받는 사람이 본인인지 골라 주세요.');
+  return { kind: 'exchange', venue: value.venue, relation: value.relation };
+}
+
+function validDestination(value: unknown): boolean {
+  try { return JSON.stringify(checkDestination(value)) === JSON.stringify(value); } catch { return false; }
+}
+
 function startFunding(state: AppState, action: Extract<Action, { type: 'START_FUNDING' }>, wallNow: number): void {
   if (typeof action.requestId !== 'string' || !REQUEST_ID.test(action.requestId)) throw new Error('입출금 요청 번호가 올바르지 않아요. 다시 시도해 주세요.');
   if (!Number.isFinite(action.quotedAt) || action.quotedAt < 0 || action.quotedAt > wallNow) throw new Error('입출금 견적 시각이 올바르지 않아요. 새 견적을 확인해 주세요.');
@@ -161,16 +181,22 @@ function startFunding(state: AppState, action: Extract<Action, { type: 'START_FU
   const normalizedAddress = address.trim();
   const addressError = validateFundingAddress(action.symbol, action.network, normalizedAddress);
   if (addressError) throw new Error(addressError);
+  if (action.kind === 'deposit' && action.destination !== undefined) throw new Error('입금에는 받는 곳을 고르지 않아요.');
+  const destination = action.kind === 'withdrawal' ? checkDestination(action.destination) : undefined;
   if (action.recipient !== undefined && typeof action.recipient !== 'string') throw new Error('받는 사람 정보를 확인해 주세요.');
-  const recipient = (action.recipient ?? '').trim();
-  if (recipient.length > 100 || (action.kind === 'withdrawal' && recipient.length === 0)) throw new Error('받는 사람 이름이나 지갑 별명을 입력해 주세요.');
+  // To the holder's own wallet or own exchange account the travel rule name is the verified one, whatever was typed.
+  const own = destination?.kind === 'own_wallet' || (destination?.kind === 'exchange' && destination.relation === 'self');
+  const recipient = own && state.account ? state.account.name : destination ? normalizeName(action.recipient ?? '') : (action.recipient ?? '').trim();
+  if (recipient.length > 100 || (action.kind === 'withdrawal' && recipient.length === 0)) throw new Error('받는 사람 이름을 입력해 주세요.');
+  if (destination?.kind === 'exchange' && destination.relation === 'other' && !validRecipientName(recipient)) throw new Error('받는 사람 이름을 확인해 주세요. 거래소 계정의 이름과 같아야 해요.');
   if (action.retryOf !== undefined && (typeof action.retryOf !== 'string' || !action.retryOf)) throw new Error('다시 시도할 요청을 확인해 주세요.');
   const simulation = action.simulation ?? 'success';
   const existing = state.fundingOperations.find((item) => item.requestId === action.requestId);
   if (existing) {
     const matches = existing.kind === action.kind && existing.source === action.source && existing.symbol === action.symbol && existing.network === action.network
       && existing.amountWon === quote.amountWon && existing.units === quote.units && existing.address === normalizedAddress
-      && existing.recipient === recipient && existing.simulation === simulation && existing.retryOf === action.retryOf;
+      && existing.recipient === recipient && JSON.stringify(existing.destination) === JSON.stringify(destination)
+      && existing.simulation === simulation && existing.retryOf === action.retryOf;
     if (!matches) throw new Error('같은 요청 번호에 다른 입출금 내용이 있어요. 새 요청 번호로 진행해 주세요.');
     return;
   }
@@ -185,7 +211,7 @@ function startFunding(state: AppState, action: Extract<Action, { type: 'START_FU
   }
   const operation: FundingOperation = {
     id: `funding-${nextSequence(state)}`, requestId: action.requestId, kind: action.kind, source: action.source,
-    symbol: action.symbol, network: action.network, ...quote, address: normalizedAddress, recipient,
+    symbol: action.symbol, network: action.network, ...quote, address: normalizedAddress, recipient, ...(destination ? { destination } : {}),
     status: action.kind === 'deposit' ? 'awaiting_deposit' : 'reviewing', createdAt: wallNow, updatedAt: wallNow,
     stageDueAt: action.kind === 'deposit' ? null : wallNow + FUNDING_STAGE_MS, simulation,
     ...(action.retryOf ? { retryOf: action.retryOf } : {}),
@@ -834,6 +860,7 @@ function validFundingOperation(value: unknown): value is FundingOperation {
     || !timestamp(value.createdAt) || !timestamp(value.updatedAt) || value.updatedAt < value.createdAt
     || !(value.stageDueAt === null || timestamp(value.stageDueAt))
     || typeof value.address !== 'string' || typeof value.recipient !== 'string' || value.recipient.length > 100
+    || (value.destination !== undefined && (value.kind !== 'withdrawal' || !validDestination(value.destination)))
     || (value.failureReason !== undefined && typeof value.failureReason !== 'string')
     || (value.retryOf !== undefined && (typeof value.retryOf !== 'string' || !value.retryOf))) return false;
   const operation = value as unknown as FundingOperation;

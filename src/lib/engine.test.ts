@@ -5,7 +5,7 @@ import { josa, ro } from './format';
 import { assertFundingQuoteFresh, getFundingQuote } from './funding';
 import { getFundingNetworks, getHeldFundingWon } from './movements';
 import { PLAN_ORDER, PLANS } from './policy';
-import type { Action, AppState, AssetSymbol, CardState, Plan } from './types';
+import type { Action, AppState, AssetSymbol, CardState, Plan, WithdrawalDestination } from './types';
 
 const NOW = Date.UTC(2026, 9, 13, 3);
 const SAMPLE_ADDRESS = { zip: '04500', road: '서울특별시 중구 아쿠아로 1', detail: '101호' };
@@ -31,7 +31,8 @@ const depositRequest = (overrides: Partial<StartFunding> = {}): StartFunding => 
 });
 const withdrawalRequest = (overrides: Partial<StartFunding> = {}): StartFunding => ({
   type: 'START_FUNDING', requestId: 'withdrawal-request', kind: 'withdrawal', source: 'spend',
-  symbol: 'USDC', network: 'polygon', amount: 14_000, address: 'aqua-preview:polygon:usdc', recipient: '내 지갑', quotedAt: NOW, ...overrides,
+  symbol: 'USDC', network: 'polygon', amount: 14_000, address: 'aqua-preview:polygon:usdc', recipient: '내 지갑',
+  destination: { kind: 'exchange', venue: 'upbit', relation: 'other' }, quotedAt: NOW, ...overrides,
 });
 function completeDeposit(state: AppState, overrides: Partial<StartFunding> = {}): AppState {
   const started = applyAction(state, depositRequest(overrides), NOW);
@@ -565,6 +566,36 @@ test('같은 요청 키의 재전송은 동일 효과만 유지하고 내용 변
   }
   assert.throws(() => applyAction(initial, depositRequest({ units: undefined }), NOW), /수량/);
 });
+
+test('지갑 주소로는 트래블룰로 확인되는 거래소나 서명으로 확인한 내 지갑에만 보내고 받는 사람 이름을 남긴다', () => withFundingStorage(({ values }) => {
+  const initial = createInitialState(NOW);
+  assert.throws(() => applyAction(initial, withdrawalRequest({ destination: undefined }), NOW), /받는 곳을 골라/);
+  assert.throws(() => applyAction(initial, withdrawalRequest({ destination: { kind: 'exchange', venue: 'unreported-exchange', relation: 'self' } }), NOW),
+    /신고하지 않았거나 트래블룰로 확인되지 않는/);
+  assert.throws(() => applyAction(initial, withdrawalRequest({ destination: { kind: 'own_wallet' } as unknown as WithdrawalDestination }), NOW), /서명으로 확인/);
+  assert.throws(() => applyAction(initial, withdrawalRequest({ recipient: '김하늘1' }), NOW), /받는 사람 이름을 확인/);
+  assert.throws(() => applyAction(initial, depositRequest({ destination: { kind: 'own_wallet', proof: 'signature' } }), NOW), /입금에는/);
+  assert.equal(initial.fundingOperations.length, 0);
+  assert.equal(initial.spend, 128_500);
+
+  const member = applyAction(initial, signup, NOW);
+  const own = applyAction(member, withdrawalRequest({ requestId: 'own-wallet', recipient: '아무 이름', destination: { kind: 'own_wallet', proof: 'signature' } }), NOW);
+  assert.equal(own.fundingOperations[0].recipient, '아쿠아 사용자', '내 지갑으로 보내면 받는 사람은 가입한 이름이다');
+  const self = applyAction(member, withdrawalRequest({ requestId: 'own-account', recipient: '', destination: { kind: 'exchange', venue: 'bithumb', relation: 'self' } }), NOW);
+  assert.equal(self.fundingOperations[0].recipient, '아쿠아 사용자', '내 거래소 계정으로 보내도 가입한 이름을 보낸다');
+  const other = applyAction(member, withdrawalRequest({ requestId: 'friend', recipient: '  김   하늘 ', destination: { kind: 'exchange', venue: 'demo-sg', relation: 'other' } }), NOW);
+  assert.equal(other.fundingOperations[0].recipient, '김 하늘', '이름 사이 빈칸은 하나로 줄인다');
+  assert.deepEqual(other.fundingOperations[0].destination, { kind: 'exchange', venue: 'demo-sg', relation: 'other' });
+  assert.throws(() => applyAction(other, withdrawalRequest({ requestId: 'friend', recipient: '김 하늘', destination: { kind: 'exchange', venue: 'upbit', relation: 'other' } }), NOW),
+    /같은 요청 번호/, '같은 요청 번호로 받는 곳을 바꿀 수 없다');
+
+  saveState(other);
+  assert.deepEqual(loadState().fundingOperations[0].destination, other.fundingOperations[0].destination);
+  const tampered = JSON.parse(values.get(STORAGE_KEY)!);
+  tampered.fundingOperations[0].destination.venue = 'unreported-exchange';
+  values.set(STORAGE_KEY, JSON.stringify(tampered));
+  assert.equal(loadState().fundingOperations.length, 0, '목록에 없는 거래소로 보낸 기록은 불러오지 않는다');
+}));
 
 test('입출금 기한은 데모 1일 진행과 무관하게 실제 시간만 따르고 카드 결제는 보류 원금을 쓰지 못한다', () => {
   const initial = activeState();

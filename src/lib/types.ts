@@ -8,6 +8,14 @@ export type DeliveryStage = 'none' | 'preparing' | 'shipped' | 'delivered';
 export type MobileWallet = 'samsung' | 'apple';
 export type FundingNetwork = 'polygon' | 'ethereum' | 'bitcoin';
 
+/**
+ * Where a withdrawal goes, as the travel rule needs it: an exchange the travel rule network reaches, with the recipient
+ * being the holder or someone named, or the holder's own wallet, proven by signing a message from it.
+ */
+export type WithdrawalDestination =
+  | { kind: 'exchange'; venue: string; relation: 'self' | 'other' }
+  | { kind: 'own_wallet'; proof: 'signature' };
+
 export interface FundingOperation {
   id: string;
   requestId: string;
@@ -24,6 +32,8 @@ export interface FundingOperation {
   outputUnits: number;
   address: string;
   recipient: string;
+  /** Withdrawals only. Those saved before the travel rule step have none. */
+  destination?: WithdrawalDestination;
   status: 'awaiting_deposit' | 'confirming' | 'converting' | 'reviewing' | 'broadcasting' | 'completed' | 'failed' | 'cancelled';
   createdAt: number;
   updatedAt: number;
@@ -189,7 +199,7 @@ export type Action =
   | { type: 'RESET_PASSWORD'; email: string; passwordHash: string }
   | { type: 'ADVANCE_DAY' }
   | { type: 'CHANGE_RATE'; rate: number }
-  | { type: 'START_FUNDING'; requestId: string; kind: 'deposit' | 'withdrawal'; symbol: FundingSymbol; network: FundingNetwork; source: 'spend'; amount?: number; units?: number; address?: string; recipient?: string; quotedAt: number; simulation?: 'success' | 'failure'; retryOf?: string }
+  | { type: 'START_FUNDING'; requestId: string; kind: 'deposit' | 'withdrawal'; symbol: FundingSymbol; network: FundingNetwork; source: 'spend'; amount?: number; units?: number; address?: string; recipient?: string; destination?: WithdrawalDestination; quotedAt: number; simulation?: 'success' | 'failure'; retryOf?: string }
   | { type: 'SIMULATE_FUNDING_DEPOSIT'; id: string }
   | { type: 'CANCEL_FUNDING'; id: string }
   | { type: 'TRANSFER_RESERVE'; direction: 'in' | 'out'; amount: number }

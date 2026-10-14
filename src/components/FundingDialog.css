@@ -46,6 +46,20 @@
 .funding-origin strong { font-size: 15px; font-weight: 700; line-height: 1.4; }
 .funding-origin span { color: var(--subtle); font-size: 12px; line-height: 1.45; }
 .funding-origin.selected { border-color: var(--primary); background: var(--sunken); }
+/* Withdrawal step 2: the exchange and who holds the account there. */
+.funding-venue-field:focus, .wallet-proof:focus { outline: none; }
+.funding-venues, .funding-relations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.funding-venue, .funding-relation { min-width: 0; min-height: 52px; padding: 10px 14px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); font-size: 15px; font-weight: 700; line-height: 1.4; text-align: left; transition: border-color .15s, background-color .15s; }
+.funding-relation { min-height: 48px; text-align: center; }
+.funding-venue.selected, .funding-relation.selected { border-color: var(--primary); background: var(--sunken); }
+.funding-unlisted { display: inline-flex; align-items: center; min-height: 44px; margin: 4px 0 0 -6px; padding: 0 6px; border: 0; border-radius: 10px; background: none; color: var(--accent); font-size: 14px; font-weight: 600; }
+.funding-unlisted.selected { color: var(--ink-soft); }
+.funding-block { margin: 4px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--danger-weak); color: var(--danger); font-size: 14px; line-height: 1.6; }
+.funding-relation-field .funding-form-field { margin-top: 14px; }
+.funding-travel-note { margin: 12px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--accent-weak); color: var(--accent-strong); font-size: 13px; line-height: 1.6; }
+.wallet-proof { margin-top: 14px; }
+.wallet-proof > p + p { margin-top: 8px; }
+.wallet-proof:has(.email-check-done) { padding-bottom: 14px; }
 .funding-coins { display: grid; gap: 8px; }
 .funding-coin { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 14px; border: 1.5px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); text-align: left; }
 .funding-coin.selected { border-color: var(--primary); background: var(--sunken); }
@@ -244,7 +258,9 @@
 }
 @media (hover: hover) {
   .funding-close:hover { background: var(--fill); }
-  .funding-coin:not(.selected):hover, .funding-origin:not(.selected):hover, .funding-network-option:not(.selected):hover { border-color: var(--control); }
+  .funding-coin:not(.selected):hover, .funding-origin:not(.selected):hover, .funding-network-option:not(.selected):hover,
+  .funding-venue:not(.selected):hover, .funding-relation:not(.selected):hover { border-color: var(--control); }
+  .funding-unlisted:hover { background: var(--fill); }
   .funding-receive-copy:hover { background: var(--primary-hover); }
   .funding-confirm:hover:not(:disabled) { background: var(--primary-hover); }
   .funding-secondary:hover:not(:disabled) { background: var(--fill-strong); }

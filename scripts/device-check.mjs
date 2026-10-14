@@ -278,7 +278,9 @@ try {
     await send.waitFor({ state: 'hidden' });
     await funding.waitFor({ state: 'visible' });
     await selectFundingRoute(funding);
-    await funding.getByTestId('funding-recipient').fill('Aqua 테스트 지갑');
+    await assertTouchTarget(funding.getByTestId('funding-venue-upbit'), `${name} exchange choice`);
+    await funding.getByTestId('funding-venue-upbit').tap();
+    await assertTouchTarget(funding.getByTestId('funding-relation-other'), `${name} recipient choice`);
     await funding.getByTestId('funding-preview-address').tap();
     await funding.getByTestId('action-amount').fill(String(WITHDRAWAL));
     await funding.getByTestId('funding-next').tap();

@@ -285,11 +285,18 @@ try {
     assert.equal(state.spend, before.spend, '입금 대기 금액은 사용 가능한 잔액이 아니다');
     return operation;
   }
-  async function prepareWithdrawal(amount, target = page, outcome = 'success') {
+  /** Fills step 2 of a withdrawal: an exchange account in the holder's name, or the holder's own wallet with its signature. */
+  async function prepareWithdrawal(amount, target = page, outcome = 'success', { venue = 'upbit' } = {}) {
     const dialog = fundingDialogAt(target);
     await dialog.getByTestId('action-amount').fill(String(amount));
-    await dialog.getByTestId('funding-recipient').fill('내 체험 지갑');
-    await dialog.getByTestId('funding-preview-address').click();
+    if (await dialog.getByTestId('wallet-proof').count()) {
+      await dialog.getByTestId('funding-preview-address').click();
+      await dialog.getByTestId('wallet-proof-sign').click();
+      await dialog.getByTestId('wallet-proof-done').waitFor();
+    } else {
+      await dialog.getByTestId(`funding-venue-${venue}`).click();
+      await dialog.getByTestId('funding-preview-address').click();
+    }
     await dialog.getByTestId('funding-next').click();
     if (outcome === 'failure') await setFundingOutcome(outcome, target);
     await dialog.getByTestId('funding-consent').check();
@@ -647,10 +654,13 @@ try {
   await sendChoice.getByTestId('send-wallet').click();
   await sendChoice.waitFor({ state: 'hidden' });
   await fundingDialog.waitFor({ state: 'visible' });
-  assert.equal(await fundingDialog.getByRole('heading', { level: 2 }).innerText(), '어떤 코인으로 보낼까요?');
+  assert.equal(await fundingDialog.getByRole('heading', { level: 2 }).innerText(), '어디로 보낼까요?');
   assert.equal(await fundingDialog.getByTestId('funding-origin-domestic').count(), 0, '보내기에는 보내는 곳 선택이 없다');
+  assert.deepEqual(await fundingDialog.locator('[data-testid^="funding-destination-"]').evaluateAll((items) => items.map((item) => [item.dataset.testid, item.getAttribute('aria-pressed')])),
+    [['funding-destination-domestic', 'true'], ['funding-destination-global', 'false'], ['funding-destination-wallet', 'false']], '받는 곳은 국내 거래소, 해외 거래소, 내 지갑 셋이다');
   await fundingRoute({ mode: 'withdraw', open: false });
   await prepareWithdrawal(10_000);
+  assert.match(await fundingDialog.getByTestId('funding-review-recipient').innerText(), /받는 곳\s+업비트 · 국내 거래소\s+받는 사람\s+아쿠아 사용자 \(본인\)/);
   assert.equal(await displayedAmount(fundingDialog.getByTestId('quote-gross')), 10_000);
   assert.equal(await displayedAmount(fundingDialog.getByTestId('quote-fee')), withdrawalFee(10_000));
   assert.equal(await displayedAmount(fundingDialog.getByTestId('quote-network-fee')), POLYGON_NETWORK_FEE);
@@ -665,8 +675,65 @@ try {
   assert.equal(state.reserve, beforeWithdrawal.reserve);
   assert.equal(state.rewards, beforeWithdrawal.rewards);
   assert.equal(state.transactions[0].amount, -10_000);
+  assert.deepEqual([spendWithdrawal.destination, spendWithdrawal.recipient], [{ kind: 'exchange', venue: 'upbit', relation: 'self' }, '아쿠아 사용자'], '내 거래소 계정으로 보내면 가입한 이름을 함께 남긴다');
   await closeFunding();
   pass('보내기 › 지갑 주소로: 출금 주소·검토·전송·전환 및 네트워크 수수료·예상 수령량·다른 자산 보존');
+
+  const beforeTravelRule = await read();
+  await page.getByTestId('open-send').click();
+  await sendChoice.getByTestId('send-wallet').click();
+  await sendChoice.waitFor({ state: 'hidden' });
+  await fundingRoute({ mode: 'withdraw', open: false });
+  await fundingDialog.getByTestId('action-amount').fill('10000');
+  await fundingDialog.getByTestId('funding-next').click();
+  assert.match((await fundingDialog.getByRole('alert').allTextContents()).join(' '), /받는 거래소를 골라 주세요/);
+  await fundingDialog.getByTestId('funding-venue-unlisted').click();
+  assert.match(await fundingDialog.getByTestId('funding-venue-blocked').innerText(), /신고하지 않았거나 트래블룰로 확인되지 않는 거래소에는 보낼 수 없어요/);
+  assert.equal(await fundingDialog.getByTestId('funding-address').count(), 0, '목록에 없는 거래소는 주소를 받지 않는다');
+  await fundingDialog.getByTestId('funding-next').click();
+  assert.equal(await fundingDialog.getByTestId('funding-consent').count(), 0, '목록에 없는 거래소로는 다음 단계로 가지 않는다');
+  await fundingDialog.getByTestId('funding-venue-bithumb').click();
+  assert.match(await fundingDialog.locator('.funding-relation-field').innerText(), /내 빗썸 계정으로 보내요\. 계정 이름이 아쿠아 사용자님과 같아야 해요\./);
+  await fundingDialog.getByTestId('funding-relation-other').click();
+  await fundingDialog.getByTestId('funding-preview-address').click();
+  await fundingDialog.getByTestId('funding-recipient').fill('정하늘2');
+  await fundingDialog.getByTestId('funding-next').click();
+  assert.match((await fundingDialog.getByRole('alert').allTextContents()).join(' '), /이름은 글자로만/, '다른 사람 계정은 이름을 글자로만 받는다');
+  await fundingDialog.getByTestId('funding-recipient-sample').click();
+  await fundingDialog.getByTestId('funding-next').click();
+  await fundingDialog.getByTestId('funding-consent').waitFor();
+  assert.match(await fundingDialog.getByTestId('funding-review-recipient').innerText(), /받는 곳\s+빗썸 · 국내 거래소\s+받는 사람\s+정하늘/);
+  assert.match(await fundingDialog.getByTestId('funding-travel-note').innerText(), /트래블룰에 따라 금액과 관계없이 내 이름과 받는 사람 이름을 빗썸에 함께 보내요\. 이름이 계정과 다르면 빗썸이 받지 않고 돌려보낼 수 있어요\./);
+  await fundingDialog.getByTestId('funding-back').click();
+  await fundingDialog.getByTestId('funding-back').click();
+  await fundingDialog.getByTestId('funding-destination-global').click();
+  await fundingDialog.getByTestId('funding-next').click();
+  assert.deepEqual(await fundingDialog.locator('[data-testid^="funding-venue-"]').evaluateAll((items) => items.map((item) => item.dataset.testid)),
+    ['funding-venue-demo-sg', 'funding-venue-demo-jp', 'funding-venue-unlisted'], '해외 거래소는 트래블룰로 확인되는 곳만 고른다');
+  await fundingDialog.getByTestId('funding-back').click();
+  await fundingDialog.getByTestId('funding-destination-wallet').click();
+  await fundingDialog.getByTestId('funding-next').click();
+  await fundingDialog.getByTestId('action-amount').fill('10000');
+  await fundingDialog.getByTestId('funding-preview-address').click();
+  await fundingDialog.getByTestId('funding-next').click();
+  assert.match((await fundingDialog.getByRole('alert').allTextContents()).join(' '), /서명으로 내 지갑인지 확인해 주세요/, '내 지갑은 서명 전에는 보내지 않는다');
+  await fundingDialog.getByTestId('wallet-proof-sign').click();
+  await fundingDialog.getByTestId('wallet-proof-done').waitFor();
+  await fundingDialog.getByTestId('funding-address').fill('aqua-preview:polygon:usdc ');
+  assert.equal(await fundingDialog.getByTestId('wallet-proof-done').count(), 0, '주소를 바꾸면 다시 서명한다');
+  await fundingDialog.getByTestId('wallet-proof-sign').click();
+  await fundingDialog.getByTestId('wallet-proof-done').waitFor();
+  await fundingDialog.getByTestId('funding-next').click();
+  await fundingDialog.getByTestId('funding-consent').check();
+  assert.match(await fundingDialog.getByTestId('funding-review-recipient').innerText(), /받는 곳\s+내 지갑 · 서명 확인\s+받는 사람\s+아쿠아 사용자 \(본인\)/);
+  await verifyWithdrawalEmail(fundingDialog);
+  await fundingDialog.getByTestId('confirm-action').click();
+  const ownWallet = (await stateWhen((current) => current.fundingOperations.length === beforeTravelRule.fundingOperations.length + 1)).fundingOperations[0];
+  assert.deepEqual([ownWallet.destination, ownWallet.recipient], [{ kind: 'own_wallet', proof: 'signature' }, '아쿠아 사용자']);
+  await settleFunding(ownWallet);
+  assert.match(await fundingDialog.locator('.funding-operation-details').innerText(), /받는 곳\s+내 지갑 · 서명 확인\s+받는 사람\s+아쿠아 사용자/, '끝난 요청의 상세에 받는 곳을 남긴다');
+  await closeFunding();
+  pass('트래블룰: 목록에 없는 거래소 차단·다른 사람 계정은 이름 확인·내 지갑은 서명한 뒤에만 보내기');
 
   await nav('home');
   await page.getByTestId('open-deposit').click();
@@ -1232,7 +1299,7 @@ try {
   await movementDialog.getByTestId('funding-next').click();
   const beforeInvalidRequest = ledgerSnapshot(await read(movementPage));
   await movementDialog.getByTestId('action-amount').fill('10000');
-  await movementDialog.getByTestId('funding-recipient').fill('내 체험 지갑');
+  await movementDialog.getByTestId('funding-venue-upbit').click();
   for (const address of ['', 'wrong-address', `0x${'0'.repeat(40)}`, 'aqua-preview:ethereum:usdc']) {
     await movementDialog.getByTestId('funding-address').fill(address);
     await movementDialog.getByTestId('funding-next').click();
@@ -1316,7 +1383,7 @@ try {
   assert.equal(await displayedAmount(movementPage.getByTestId('funding-held')), heldAmount);
   await fundingRoute({ mode: 'withdraw', target: movementPage });
   await movementDialog.getByTestId('action-amount').fill('10000');
-  await movementDialog.getByTestId('funding-recipient').fill('내 체험 지갑');
+  await movementDialog.getByTestId('funding-venue-upbit').click();
   await movementDialog.getByTestId('funding-preview-address').click();
   await movementDialog.getByTestId('funding-next').click();
   await movementDialog.getByTestId('action-amount').waitFor({ state: 'visible' });
@@ -1484,7 +1551,7 @@ try {
 
   await fundingRoute({ mode: 'withdraw', target: quotePage });
   await quoteDialog.getByTestId('action-amount').fill('10000');
-  await quoteDialog.getByTestId('funding-recipient').fill('내 체험 지갑');
+  await quoteDialog.getByTestId('funding-venue-upbit').click();
   await quoteDialog.getByTestId('funding-preview-address').click();
   await quoteDialog.getByTestId('funding-next').click();
   await quoteDialog.getByTestId('funding-consent').check();

@@ -1,4 +1,5 @@
 import { fundingLabel } from './policy';
+import { destinationName } from './travel';
 import type { AppState, FundingOperation, Transaction } from './types';
 
 /** One year of money in, money out and benefits, in Korean calendar years. */
@@ -85,6 +86,10 @@ const stamp = (timestamp: number) => new Intl.DateTimeFormat('sv-SE', { timeZone
 // Tabs split columns when pasted into a spreadsheet, so they and line breaks never appear inside a cell.
 const cell = (value: string | number) => String(value).replace(/[\t\r\n]+/g, ' ').trim();
 
+/** The exchange and the name the travel rule sent, or 내 지갑; older withdrawals only have the name or label typed then. */
+const withdrawalCounterpart = (operation: FundingOperation) => !operation.destination ? operation.recipient
+  : operation.destination.kind === 'own_wallet' ? '내 지갑' : `${destinationName(operation.destination)} · ${operation.recipient}`;
+
 export const STATEMENT_COLUMNS = ['일시', '구분', '내용', '금액(원)', '상태', '코인', '수량', '상대', '메모'];
 
 /** The year's rows, oldest first, as tab-separated text that pastes into Excel or Google Sheets as columns. */
@@ -93,7 +98,7 @@ export function statementText(state: AppState, year: number): { text: string; ro
     const operation = operationOf(state, item);
     const coin = operation ? fundingLabel(operation.symbol) : '';
     const units = operation ? String(operation.kind === 'deposit' ? operation.units : operation.outputUnits) : '';
-    const counterpart = item.member ? `@${item.member}` : operation?.kind === 'withdrawal' ? operation.recipient : '';
+    const counterpart = item.member ? `@${item.member}` : operation?.kind === 'withdrawal' ? withdrawalCounterpart(operation) : '';
     return [stamp(item.timestamp), kindName(item, operation), item.title, item.amount, STATUS[item.status], coin, units, counterpart, item.note].map(cell).join('\t');
   });
   return { text: [STATEMENT_COLUMNS.join('\t'), ...lines].join('\n'), rows: lines.length };

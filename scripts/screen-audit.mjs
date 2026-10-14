@@ -367,7 +367,11 @@ async function audit(profileName, profile) {
     await shot(page, 'withdraw-details');
     await tid(page, 'funding-next').click();
     await shot(page, 'withdraw-details-errors');
-    await tid(page, 'funding-recipient').fill('내 체험 지갑');
+    await tid(page, 'funding-venue-unlisted').click();
+    await shot(page, 'withdraw-venue-blocked');
+    await tid(page, 'funding-venue-upbit').click();
+    await tid(page, 'funding-relation-other').click();
+    await tid(page, 'funding-recipient-sample').click();
     await tid(page, 'funding-preview-address').click();
     await tid(page, 'action-amount').fill('20000');
     await shot(page, 'withdraw-details-filled');
@@ -386,9 +390,14 @@ async function audit(profileName, profile) {
     await closeSheet(page);
     await tid(page, 'open-send').click();
     await tid(page, 'send-wallet').click();
+    await tid(page, 'funding-destination-wallet').click();
+    await shot(page, 'withdraw-wallet-start');
     await tid(page, 'funding-next').click();
-    await tid(page, 'funding-recipient').fill('취소 체험');
     await tid(page, 'funding-preview-address').click();
+    await shot(page, 'withdraw-wallet-sign');
+    await tid(page, 'wallet-proof-sign').click();
+    await tid(page, 'wallet-proof-done').waitFor();
+    await shot(page, 'withdraw-wallet-signed');
     await tid(page, 'action-amount').fill('5000');
     await tid(page, 'funding-next').click();
     await tid(page, 'email-send').click();
