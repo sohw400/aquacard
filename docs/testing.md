@@ -10,17 +10,15 @@ Aqua Card는 React 기반 반응형 **웹 PoC**다. iPhone과 Android의 화면 
 
 ## 자동 테스트
 
-기존 개발 서버가 없으면 첫 터미널에서 실행한다.
+명령은 모두 저장소 루트에서 실행한다. 기존 개발 서버가 없으면 첫 터미널에서 실행한다.
 
 ```bash
-cd /workspace/aquacard
 npm run dev
 ```
 
 서버가 실행 중인 상태에서 다른 터미널에서 실행한다.
 
 ```bash
-cd /workspace/aquacard
 npm test
 npm run test:browser
 npm run test:devices
@@ -32,7 +30,7 @@ npm run build
 - `npm run test:devices`: 아래 5개 기기 프로필의 화면·터치·보내기(내 태그와 QR, QR 찍기)·연간 거래 내역·카드 신청·결제·페이백·복원 검증.
 - `npm run build`: TypeScript 확인과 배포용 정적 파일 생성.
 
-브라우저 테스트에는 Chromium이 필요하다. 현재 환경의 실행 파일은 `/usr/bin/chromium`이며 `CHROMIUM_PATH`로 바꿀 수 있다. 서버 주소는 `AQUA_BASE_URL`로 설정한다. 결과와 화면 이미지는 `artifacts/`에 저장한다.
+브라우저 테스트에는 Chromium이 필요하다. 스크립트의 기본 경로는 `/usr/bin/chromium`이고, 다른 곳에 있으면 `CHROMIUM_PATH`로 지정한다(예: Playwright가 설치한 `/opt/pw-browsers/chromium`). 서버 주소는 `AQUA_BASE_URL`로 설정한다. 결과와 화면 이미지는 `artifacts/`에 저장한다.
 
 ## 화면 점검
 

@@ -48,13 +48,13 @@ Chromium 경로는 `CHROMIUM_PATH`, 서버 주소는 `AQUA_BASE_URL`로 바꿀 �
 9. **거래 내역**: 오른쪽 위 시계 아이콘에서 엽니다. 거래 상세(승인번호, 결제 구성, 페이백), 부분·전액 환불, 입출금 처리 내역을 봅니다.
 10. **전체**: 프로필, 내 태그와 QR(태그 바꾸기, 휴대폰 번호·이메일로 찾기 허용, 회원에게 받기 체험), 카드(결제 한도, 온라인·해외 결제, 연간 거래 내역), 결제 순서(리워드·리저브 자동 사용), 계정(비밀번호 변경, 알림·광고성 정보 동의, 로그아웃, 회원 탈퇴), 요금, 도움말(자주 묻는 질문, 약관), 체험 설정.
 
-주 메뉴는 홈·카드·혜택·전체이고 리저브, 거래 내역, 연간 거래 내역은 상세 화면입니다. 연간 거래 내역은 연도별 요약과 세금 신고 안내를 보여 주고, 내역을 표 형태로 복사해 엑셀이나 구글 시트에 붙여 넣을 수 있습니다. 모바일은 하단 탭, 넓은 화면은 왼쪽 사이드바로 표시하고 기기 설정에 따라 다크 모드로 바뀝니다. 흰 바탕을 가는 선으로 나누고, 상자처럼 보이는 것은 카드와 어두운 리워드 블록뿐입니다. 앱 문구는 해요체로 씁니다. 글꼴은 앱에 포함한 Pretendard Variable입니다([글꼴](docs/fonts.md)). 첫 화면·홈·카드 소개의 카드(네이비 스탠다드를 앞에, 골드 프라이빗을 뒤에)와 리워드 블록의 동전은 three.js로 렌더링한 3D 이미지입니다. 카드는 실시간으로 렌더링해서, 누르거나 마우스를 올리면 살짝 기울고 빛반사가 따라 움직입니다(동작 감소 설정에서는 정지 이미지). 화면 구조는 [화면 설계](docs/ux-remake.md)를 따릅니다.
+주 메뉴는 홈·카드·혜택·전체이고 리저브, 거래 내역, 연간 거래 내역은 상세 화면입니다. 연간 거래 내역은 연도별 요약과 세금 신고 안내를 보여 주고, 내역을 표 형태로 복사해 엑셀이나 구글 시트에 붙여 넣을 수 있습니다. 모바일은 하단 탭, 넓은 화면은 왼쪽 사이드바로 표시하고 기기 설정에 따라 다크 모드로 바뀝니다. 흰 바탕을 가는 선으로 나누고, 상자처럼 보이는 것은 카드와 어두운 리워드 블록뿐입니다. 앱 문구는 해요체로 씁니다. 글꼴은 앱에 포함한 Pretendard Variable입니다([글꼴](docs/screen-design.md#글꼴)). 첫 화면·홈·카드 소개의 카드(네이비 스탠다드를 앞에, 골드 프라이빗을 뒤에)와 리워드 블록의 동전은 three.js로 렌더링한 3D 이미지입니다. 카드는 실시간으로 렌더링해서, 누르거나 마우스를 올리면 살짝 기울고 빛반사가 따라 움직입니다(동작 감소 설정에서는 정지 이미지). 화면 구조는 [화면 설계](docs/screen-design.md)를 따릅니다.
 
 상태는 이 브라우저의 localStorage에만 저장됩니다. 실제 이름·휴대폰·신분증·주소를 넣지 마세요. 화면의 `체험용 주소 넣기`, `샘플 정보 채우기`, 예시 주소 검색을 쓰면 됩니다. 비밀번호는 해시만 저장합니다. 이전 체험의 Basic·Plus 데이터는 스탠다드로 불러옵니다.
 
 ## 기본 정책
 
-기준 파일은 [policy.ts](src/lib/policy.ts)입니다. 멤버십은 KAST의 세 등급 구조를 따르고 금액은 한국 카드 시장에 맞췄습니다([한국 시장에 맞춘 파라미터](docs/kast-alignment.md#한국-시장에-맞춘-파라미터)).
+기준 파일은 [policy.ts](src/lib/policy.ts)입니다. 멤버십은 KAST의 세 등급 구조를 따르고 금액은 한국 카드 시장에 맞췄습니다([요금과 정책](docs/policy.md#1-한국-시장에-맞춘-파라미터)).
 
 | 항목 | 스탠다드 | 프리미엄 | 프라이빗 |
 | --- | --- | --- | --- |
@@ -75,21 +75,17 @@ Chromium 경로는 `CHROMIUM_PATH`, 서버 주소는 `AQUA_BASE_URL`로 바꿀 �
 
 원화(법정화폐) 입출금은 지원하지 않습니다. 원화 스테이블의 실제 이름·발행사·네트워크는 제휴 후 정하며 PoC는 `KRWS`라는 자리표시자를 씁니다. 시세는 고정 예시입니다.
 
-KAST는 지원 자산마다 청산 주소를 두고 받은 코인을 거래 확정 즉시 자동 매도해 USD 잔액 하나만 보여 줍니다. Aqua도 코인을 보유하지 않으므로 코인 지갑이나 코인 현황 화면이 없습니다. 실제 전환은 제휴 거래소·OTC가 맡는 구조를 권합니다([KAST 구조의 한국 적용](docs/kast-alignment.md), [공식 조사](docs/kast-funding-model.md), [입출금 흐름](docs/funding-flows.md)).
+KAST는 지원 자산마다 청산 주소를 두고 받은 코인을 거래 확정 즉시 자동 매도해 USD 잔액 하나만 보여 줍니다. Aqua도 코인을 보유하지 않으므로 코인 지갑이나 코인 현황 화면이 없습니다. 실제 전환은 제휴 거래소·OTC가 맡는 구조를 권합니다([KAST 비교와 한국 적용](docs/kast-alignment.md), [KAST 공식 자료 확인](docs/kast-funding-model.md), [입출금 흐름](docs/funding-flows.md)).
 
 ## 기획 자료
 
-- [제품 기획](docs/product-plan.md)
-- [KAST 구조의 한국 적용 (기획 v0.7)](docs/kast-alignment.md)
-- [Reserve·리워드 정책](docs/reserve-rewards.md)·[리워드·페이백 표시 기준](docs/rewards-visibility.md)
-- [경쟁 비교·파라미터](docs/benchmark-and-parameters.md)
-- [카드 신청·발급·운영 흐름](docs/card-issuance-flow.md)
-- [입출금 흐름](docs/funding-flows.md)·[입출금 백엔드 설계](docs/funding-architecture.md)
-- [화면 설계](docs/ux-remake.md)
-- [PoC 범위와 후속 기획](docs/poc-scope.md)
-- [모바일 앱 준비 (iOS·Android)](docs/mobile-app-plan.md)
-- [KYC·AML 규제와 법률 검토](docs/kyc-aml-review.md)
-- [앱스토어·구글 플레이 심사 준비](docs/store-review.md)
-- [출시 준비 목록](docs/launch-readiness.md): 먼저 정할 사업 결정, 체험판 변경, 코드 밖 준비
+먼저 [기획서](docs/product-plan.md)를 읽습니다. 지금까지 만든 것, 정한 것과 남은 결정, 출시 조건과 다음 할 일을 한곳에 정리했고 마지막 장이 문서 지도입니다. 연락할 곳, 곳마다 물을 질문, 법과 규제는 [Aqua 사업 준비 핸드북](https://claude.ai/artifact/G6ZGp3dpmLtdagiBYXVKpb)(claude.ai 문서, 공유받은 사람만 열립니다)에 모았습니다.
+
+| 주제 | 문서 |
+| --- | --- |
+| 제품 | [기획서](docs/product-plan.md), [요금과 정책](docs/policy.md), [KAST 비교와 한국 적용](docs/kast-alignment.md), [KAST 공식 자료 확인](docs/kast-funding-model.md) |
+| 기능 | [카드 신청·발급·운영 흐름](docs/card-issuance-flow.md), [입출금 흐름](docs/funding-flows.md), [입출금과 백엔드 설계](docs/funding-architecture.md), [리저브·리워드 정책](docs/reserve-rewards.md), [화면 설계](docs/screen-design.md) |
+| 출시 준비 | [출시 준비 목록](docs/launch-readiness.md), [KYC·AML 규제와 법률 검토](docs/kyc-aml-review.md), [앱스토어·구글 플레이 심사 준비](docs/store-review.md), [모바일 앱 준비 (iOS·Android)](docs/mobile-app-plan.md) |
+| 개발 | [테스트 안내](docs/testing.md), [웹 배포](docs/deployment.md) |
 
 실제 서비스를 위해서는 본인확인, 보관·전환 파트너, 카드 발급·정산, 원화 스테이블 발행·상환, 리저브 보상 재원과 한국 제공 가능 범위를 확정해야 합니다. 브라우저 장부는 실제 금융 장부나 인증 시스템으로 쓸 수 없습니다.
