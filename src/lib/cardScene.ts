@@ -13,8 +13,11 @@ import {
 const FRAME = { width: 1800, height: 1200 };
 /** Where the still image is cropped from the frame. */
 const CROP = { x: 282, y: 198, width: 1237, height: 812 };
-/** Extra frame drawn around the crop so tilted corners are never cut off. CardHero.css places the canvas to match. */
-const BLEED = 40;
+/**
+ * Extra frame drawn around the crop so tilted corners are never cut off. CardHero.css places the canvas to match.
+ * Sideways it stays inside the 16px page gutter on a 320px screen; up and down it can be roomier.
+ */
+const BLEED = { x: 40, y: 72 };
 const FONT = "'Pretendard Variable', Pretendard, Arial, sans-serif";
 
 type Plan = 'standard' | 'premium' | 'private';
@@ -40,8 +43,11 @@ const LOOKS: Record<Plan, Look> = {
     face: [1, 0.3, 0.62], logo: [0.25, 0.5, 0.6], type: [0.4, 0.5, 0.6], chip: CHIP, brushed: 0.2, coat: 0.45, edgeMetal: 0.9 },
 };
 
-/** How far a touch moves things at the edge of the hero: card tilt in radians, and the studio turned around the cards. */
-const REACH = { tiltX: 0.09, tiltY: 0.13, lightX: 0.35, lightY: 0.9 };
+/**
+ * How far a touch moves things at the edge of the hero: card tilt and the studio turned around the cards (radians),
+ * and how far the cards slide toward the finger (scene units; the front card slides more than the back one).
+ */
+const REACH = { tiltX: 0.14, tiltY: 0.21, lightX: 0.45, lightY: 1.1, slide: 0.05 };
 const SPRING = { stiffness: 120, damping: 17 };
 
 /** Soft overhead dome plus a few soft boxes and one thin strip; only their reflections are seen. */
@@ -149,8 +155,8 @@ function cardGeometry() {
 }
 
 export const CANVAS_BOX = {
-  left: -BLEED / CROP.width, top: -BLEED / CROP.height,
-  width: (CROP.width + 2 * BLEED) / CROP.width, height: (CROP.height + 2 * BLEED) / CROP.height,
+  left: -BLEED.x / CROP.width, top: -BLEED.y / CROP.height,
+  width: (CROP.width + 2 * BLEED.x) / CROP.width, height: (CROP.height + 2 * BLEED.y) / CROP.height,
 };
 
 interface Placement { plan: Plan; position: [number, number, number]; rotation: [number, number, number]; /** Share of the touch tilt. */ depth: number }
@@ -211,7 +217,7 @@ function buildStage(renderer: WebGLRenderer, placements: Placement[]) {
     const rest = new Euler(...rotation, 'XYZ');
     group.rotation.copy(rest);
     scene.add(group);
-    return { group, rest, depth };
+    return { group, rest, home: group.position.clone(), depth };
   });
   return { scene, sun, sunHome, cards, dispose: () => { for (const item of disposables) item.dispose(); } };
 }
@@ -258,7 +264,7 @@ export async function mountCardScene(host: HTMLElement, onReady: () => void, onL
   const camera = new PerspectiveCamera(26, FRAME.width / FRAME.height, 0.1, 100);
   camera.position.set(0, 0.4, 9.5);
   camera.lookAt(0, 0, 0);
-  camera.setViewOffset(FRAME.width, FRAME.height, CROP.x - BLEED, CROP.y - BLEED, CROP.width + 2 * BLEED, CROP.height + 2 * BLEED);
+  camera.setViewOffset(FRAME.width, FRAME.height, CROP.x - BLEED.x, CROP.y - BLEED.y, CROP.width + 2 * BLEED.x, CROP.height + 2 * BLEED.y);
 
   // Pose: x and y run from -1 to 1 across the hero; the spring eases toward the target.
   const pose = { x: 0, y: 0, vx: 0, vy: 0 };
@@ -269,7 +275,10 @@ export async function mountCardScene(host: HTMLElement, onReady: () => void, onL
     // The current tilt, rounded, for tests and debugging.
     const tilt = `${pose.x.toFixed(2)} ${pose.y.toFixed(2)}`.replaceAll('-0.00', '0.00');
     if (tilt !== shown) host.dataset.tilt = shown = tilt;
-    for (const { group, rest, depth } of cards) group.rotation.set(rest.x + pose.y * REACH.tiltX * depth, rest.y + pose.x * REACH.tiltY * depth, rest.z);
+    for (const { group, rest, home, depth } of cards) {
+      group.rotation.set(rest.x + pose.y * REACH.tiltX * depth, rest.y + pose.x * REACH.tiltY * depth, rest.z);
+      group.position.set(home.x + pose.x * REACH.slide * depth, home.y - pose.y * REACH.slide * depth, home.z);
+    }
     turn.set(pose.y * REACH.lightX, pose.x * REACH.lightY, 0);
     scene.environmentRotation.copy(turn);
     sun.position.copy(sunHome).applyEuler(turn);

@@ -28,7 +28,7 @@ import type { Action, AppState, CardStage, FundingSymbol, Payment, PaymentChanne
 
 type Page = 'home' | 'card' | 'benefits' | 'settings' | 'reserve' | 'activity' | 'statement' | 'limits' | 'channels' | 'notifications' | 'faq' | 'terms';
 type MainPage = 'home' | 'card' | 'benefits' | 'settings';
-type Dialog = { type: 'payment' } | { type: 'refund'; payment: Payment } | { type: 'guide' } | { type: 'reset' };
+type Dialog = { type: 'payment' } | { type: 'refund'; payment: Payment } | { type: 'reset' };
 type Toast = { message: string; type: 'success' | 'error' | 'info' };
 
 const MAIN_PAGES: MainPage[] = ['home', 'card', 'benefits', 'settings'];
@@ -247,7 +247,6 @@ export default function App() {
         </div>
         <div className="topbar-actions">
           <button type="button" className="icon-button" aria-label="거래 내역" data-testid="nav-activity" onClick={() => navigate('activity')}><Clock3 size={22} /></button>
-          {page === 'home' && <button type="button" className="icon-button" aria-label="체험 안내" data-testid="open-guide" onClick={() => setDialog({ type: 'guide' })}><Info size={22} /></button>}
         </div>
       </header>
 
@@ -294,7 +293,7 @@ function ActionDialog({ dialog, state, onClose, dispatch, notify, onPaid, onRese
   const validNumber = Number.isFinite(number) && number > 0;
   const source = sourcesFor(state, validNumber ? number : 0);
   const formId = 'aqua-action-form';
-  const titles: Record<Dialog['type'], string> = { payment: '결제해 보기', refund: '환불', guide: '이 체험판은', reset: '처음으로 되돌리기' };
+  const titles: Record<Dialog['type'], string> = { payment: '결제해 보기', refund: '환불', reset: '처음으로 되돌리기' };
 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -335,14 +334,12 @@ function ActionDialog({ dialog, state, onClose, dispatch, notify, onPaid, onRese
     } catch (issue) { setError(issue instanceof Error ? issue.message : '입력한 내용을 확인해 주세요.'); }
   }
 
-  const buttonLabels: Record<Dialog['type'], string> = { payment: `${money(validNumber ? number : 0)} 결제`, refund: '환불하기', guide: '확인', reset: '되돌리기' };
-  const infoDialog = dialog.type === 'guide';
+  const buttonLabels: Record<Dialog['type'], string> = { payment: `${money(validNumber ? number : 0)} 결제`, refund: '환불하기', reset: '되돌리기' };
 
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal" ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="dialog-title" data-testid={`dialog-${dialog.type}`}>
     <div className="modal-head"><h2 id="dialog-title">{titles[dialog.type]}</h2><button type="button" className="icon-button" onClick={onClose} aria-label="창 닫기"><X size={22} /></button></div>
     <div className="modal-body">
-      {dialog.type === 'guide' ? <div className="guide-content"><p>KAST처럼 코인을 보내면 바로 원화 스테이블 잔액이 되고, 그 잔액으로 카드를 쓰는 서비스를 미리 만들어 본 화면이에요.</p><ol className="guide-steps"><li><strong>충전</strong><p>거래소나 지갑에서 코인을 보내는 과정을 따라가 봐요. 받은 코인은 바로 원화로 바뀌어요.</p></li><li><strong>카드</strong><p>가입 때 확인한 정보로 신청하면 가상카드가 바로 나와요.</p></li><li><strong>결제</strong><p>결제하면 리워드가 먼저 빠지고 페이백이 쌓이는 걸 볼&nbsp;수 있어요.</p></li></ol><p className="small-note">실제 돈, 코인, 카드는 오가지 않아요. 데이터는 이&nbsp;브라우저에만 남고 전체 › 체험 설정에서 지울 수 있어요.</p></div>
-      : dialog.type === 'reset' ? <div><p className="reset-copy">잔액, 카드 신청, 거래 내역을 처음 상태로 돌려요.</p><p className="small-note">이 브라우저에 남은 체험 데이터가 지워져요.</p></div>
+      {dialog.type === 'reset' ? <div><p className="reset-copy">잔액, 카드 신청, 거래 내역을 처음 상태로 돌려요.</p><p className="small-note">이 브라우저에 남은 체험 데이터가 지워져요.</p></div>
       : <form id={formId} onSubmit={submit}>
         {dialog.type === 'payment' && <><div className="payment-card-tag"><TierCard plan={state.card.plan} className="payment-card-thumb" /><span>{PLANS[state.card.plan].name}</span><span>끝번호 {state.card.last4}</span></div><div className="form-field"><label htmlFor="merchant">결제할 곳</label><input id="merchant" value={merchant} onChange={(event) => setMerchant(event.target.value)} required maxLength={40} autoComplete="off" /></div></>}
         {dialog.type === 'refund' && <div className="dialog-route"><strong>{dialog.payment.merchant}</strong><span>환불할 수 있는 금액 {money(dialog.payment.amount - dialog.payment.refunded)}</span></div>}
@@ -354,6 +351,6 @@ function ActionDialog({ dialog, state, onClose, dispatch, notify, onPaid, onRese
         {error && <div className="form-error" role="alert">{error}</div>}
       </form>}
     </div>
-    <div className="modal-footer">{!infoDialog && <button type="button" className="btn neutral" onClick={onClose}>취소</button>}<button className={`btn ${dialog.type === 'reset' ? 'danger' : 'primary'}`} type={infoDialog || dialog.type === 'reset' ? 'button' : 'submit'} form={infoDialog || dialog.type === 'reset' ? undefined : formId} data-testid="confirm-action" disabled={dialog.type === 'payment' && source.shortfall > 0} onClick={infoDialog ? onClose : dialog.type === 'reset' ? onReset : undefined}>{buttonLabels[dialog.type]}</button></div>
+    <div className="modal-footer"><button type="button" className="btn neutral" onClick={onClose}>취소</button><button className={`btn ${dialog.type === 'reset' ? 'danger' : 'primary'}`} type={dialog.type === 'reset' ? 'button' : 'submit'} form={dialog.type === 'reset' ? undefined : formId} data-testid="confirm-action" disabled={dialog.type === 'payment' && source.shortfall > 0} onClick={dialog.type === 'reset' ? onReset : undefined}>{buttonLabels[dialog.type]}</button></div>
   </div></div>;
 }

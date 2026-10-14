@@ -214,9 +214,6 @@ async function audit(profileName, profile) {
   await section('pages', async (use) => {
     const page = use(await open('new'));
     await shot(page, 'home');
-    await tid(page, 'open-guide').click();
-    await shot(page, 'dialog-guide');
-    await closeSheet(page);
     await nav(page, 'card');
     await shot(page, 'card-intro');
     await nav(page, 'benefits');

@@ -1,7 +1,7 @@
 .card-hero { position: relative; }
 .card-hero > img { display: block; width: 100%; height: auto; }
-/* The canvas draws a little past the image on every side (cardScene BLEED) so tilted corners are not cut off. */
-.card-hero > .card-hero-canvas { display: none; position: absolute; top: -4.926%; left: -3.234%; width: 106.467%; height: 109.852%; pointer-events: none; }
+/* The canvas draws past the image on every side (cardScene BLEED: 40 px sideways, 72 px up and down in the 1800-wide frame) so tilted corners are not cut off. */
+.card-hero > .card-hero-canvas { display: none; position: absolute; top: -8.867%; left: -3.234%; width: 106.467%; height: 117.734%; pointer-events: none; }
 .card-hero.live { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; touch-action: pan-y; user-select: none; }
 .card-hero.live > img { opacity: 0; pointer-events: none; }
 .card-hero.live > .card-hero-canvas { display: block; }

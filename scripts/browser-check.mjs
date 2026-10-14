@@ -395,16 +395,7 @@ try {
   for (const id of ['available-balance', 'card-cta', 'funding-held', 'home-funding-status']) assert.equal(await page.getByTestId(id).count(), 0, `카드와 진행 중인 입출금이 없으면 ${id}를 보이지 않는다`);
   assert.equal(await page.getByTestId('open-payment').innerText(), '카드 만들기');
   assert.match(await page.locator('.home-card-offer').innerText(), new RegExp(`결제할 때마다 ${pattern(percentText(PLANS.standard.cashbackRate))}를 돌려받아요`));
-  await page.getByTestId('open-guide').click();
-  const guide = page.getByTestId('dialog-guide');
-  assert.match(await guide.innerText(), /코인을 보내면 바로 원화 스테이블 잔액이 되고/);
-  await guide.getByTestId('confirm-action').click();
-  await guide.waitFor({ state: 'hidden' });
-  for (const name of ['card', 'benefits', 'settings', 'activity']) {
-    await nav(name);
-    assert.equal(await page.getByTestId('open-guide').count(), 0, `체험 안내 버튼은 홈에만 있다 (${name})`);
-  }
-  await nav('home');
+  assert.deepEqual(await page.locator('.topbar-actions button').evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))), ['거래 내역'], '오른쪽 위에는 거래 내역 버튼만 둔다');
   const font = await page.evaluate(async () => {
     await document.fonts.ready;
     return {
@@ -423,7 +414,7 @@ try {
   assert.equal(await flow().getByTestId('card-apply').count(), 0, '카드 만들기를 누르면 소개 화면을 거치지 않고 본인확인을 시작한다');
   assert.equal(await page.getByTestId('nav-card').getAttribute('aria-current'), 'page');
   assert.equal(state.payments.length, 0);
-  pass('네 개 주 메뉴(홈·카드·혜택·전체)·Pretendard 글꼴·홈 잔액과 카드 안내·체험 안내는 홈에만·카드 만들기에서 본인확인 바로 시작');
+  pass('네 개 주 메뉴(홈·카드·혜택·전체)·Pretendard 글꼴·홈 잔액과 카드 안내·오른쪽 위는 거래 내역 버튼만·카드 만들기에서 본인확인 바로 시작');
 
   const beforeNavigation = ledgerSnapshot(await read());
   assert.equal(await page.getByTestId('go-back').count(), 0, '카드는 주 메뉴라 뒤로 가기가 없다');

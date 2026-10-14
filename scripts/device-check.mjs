@@ -164,7 +164,7 @@ try {
 
     // Home leads with the balance, 충전·보내기 and the card offer.
     await assertAmount(page.getByTestId('spend-balance'), START.spend, `${name} home balance`);
-    for (const id of ['open-deposit', 'open-send', 'open-payment', 'open-reserve-card', 'open-rewards', 'nav-activity', 'open-guide']) await assertTouchTarget(page.getByTestId(id), `${name} ${id}`);
+    for (const id of ['open-deposit', 'open-send', 'open-payment', 'open-reserve-card', 'open-rewards', 'nav-activity']) await assertTouchTarget(page.getByTestId(id), `${name} ${id}`);
     const cardOffer = await page.getByTestId('open-payment').boundingBox();
     assert.ok(cardOffer && cardOffer.width >= viewportWidth - 50, `${name}: card offer button does not span the screen`);
     await assertFits(page, `${name} home`);
