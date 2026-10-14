@@ -35,15 +35,13 @@ Pages 최초 활성화에는 저장소 관리 권한이 필요하다. `configure
 ## 로컬 배포 빌드 검증
 
 ```bash
-cd /workspace/aquacard
 npm run build:pages
 npm run preview:pages
 ```
 
-다른 터미널에서 프로젝트 경로를 지정해 브라우저 검증을 실행한다.
+다른 터미널에서 서버 주소를 지정해 브라우저 검증을 실행한다. 명령은 모두 저장소 루트에서 실행한다.
 
 ```bash
-cd /workspace/aquacard
 AQUA_BASE_URL=http://127.0.0.1:4173/aquacard/ npm run test:browser
 AQUA_BASE_URL=http://127.0.0.1:4173/aquacard/ npm run test:devices
 ```
