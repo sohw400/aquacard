@@ -1,4 +1,5 @@
 import { ChevronRight, Clock3, LockKeyhole } from 'lucide-react';
+import CardHero from '../components/CardHero';
 import TierCard from '../components/TierCard';
 import { ActivityList, listedTransactions } from '../components/Activity';
 import { LiveRewards, Won } from '../components/ui';
@@ -7,7 +8,6 @@ import { money, percent } from '../lib/format';
 import { fundingStatusLabel, getHeldFundingWon, isFundingPending } from '../lib/movements';
 import { fundingLabel, PLANS } from '../lib/policy';
 import type { AppState, Payment } from '../lib/types';
-import heroCards from '../assets/aqua-cards.webp';
 
 interface HomeProps {
   state: AppState;
@@ -54,7 +54,7 @@ export default function Home({ state, onDeposit, onSend, onCard, onPay, onReserv
     </section>
 
     {card.stage === 'not_applied' ? <section className="home-card-offer" aria-label="Aqua 카드">
-      <img src={heroCards} width={960} height={630} alt="" />
+      <CardHero />
       <div>
         <h2>카드를 만들면 잔액으로 바로 결제해요</h2>
         <p>가상카드는 무료이고 신청하면 바로 나와요. 결제할 때마다 {percent(PLANS.standard.cashbackRate)}를 돌려받아요.</p>

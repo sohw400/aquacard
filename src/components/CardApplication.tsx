@@ -13,10 +13,10 @@ import AddressSheet from './AddressSheet';
 import { PinSheet } from './SecuritySheets';
 import WalletSheet, { WALLET_NAMES } from './WalletSheet';
 import CardActionSheet from './CardActionSheet';
+import CardHero from './CardHero';
 import CardVisual from './CardVisual';
 import TierCard from './TierCard';
 import { NavRow } from './ui';
-import heroCards from '../assets/aqua-cards.webp';
 import './CardApplication.css';
 
 interface CardApplicationProps {
@@ -168,7 +168,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
       )}
 
       {card.stage === 'not_applied' && <div className="cf-intro">
-        <img className="cf-intro-art" src={heroCards} width={960} height={630} alt="" />
+        <CardHero className="cf-intro-art" />
         <h2>잔액으로 바로 쓰는 카드</h2>
         <p className="cf-lead">가상카드는 신청하면 바로 나와요. 멤버십에 따라 페이백과 리저브 보상이 달라져요.</p>
         <ul className="cf-tiers" aria-label="멤버십">{PLAN_ORDER.map((key) => <li key={key}><TierCard plan={key} /><span className="cf-tier-main"><strong>{PLANS[key].short}</strong><TierFacts plan={key} /></span><span className="cf-tier-fee">{feeText(key)}</span></li>)}</ul>

@@ -309,7 +309,7 @@ a { color: var(--accent); }
 .home-card-foot .btn.small { min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--surface); }
 .home-card-next { margin-top: 14px; }
 .home-card-offer { display: grid; gap: 14px; padding-top: 24px; border-top: 1px solid var(--line); }
-.home-card-offer > img { display: block; width: 100%; max-width: 300px; height: auto; margin: -6px auto -4px; filter: drop-shadow(0 16px 20px rgba(17, 30, 50, .14)); }
+.home-card-offer > .card-hero { display: block; width: 100%; max-width: 300px; height: auto; margin: -6px auto -4px; filter: drop-shadow(0 16px 20px rgba(17, 30, 50, .14)); }
 .home-card-offer h2 { color: var(--ink); font-size: 20px; font-weight: 700; line-height: 1.4; letter-spacing: -.03em; text-wrap: balance; }
 .home-card-offer p { margin-top: 6px; color: var(--muted); font-size: 15px; line-height: 1.6; }
 .home-activity { display: grid; gap: 4px; }

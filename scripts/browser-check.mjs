@@ -1828,6 +1828,35 @@ try {
   pass('비밀번호 변경·광고성 정보 수신 동의 날짜·자주 묻는 질문·약관·탈퇴 전 정리 안내');
   await lifeContext.close();
 
+  // The two-card hero renders live: a press tilts it toward that side, release springs back; reduced motion keeps the still image.
+  const heroContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
+  const heroPage = await heroContext.newPage();
+  observe(heroPage);
+  await heroPage.goto(base, { waitUntil: 'networkidle' });
+  const hero = heroPage.locator('.card-hero');
+  await heroPage.locator('.card-hero.live .card-hero-canvas').waitFor();
+  assert.equal(await hero.locator('img').getAttribute('alt'), 'Aqua 카드 두 장', '실시간 렌더링 중에도 그림 설명은 남는다');
+  assert.equal(await hero.getAttribute('data-tilt'), '0.00 0.00');
+  const heroBox = await hero.boundingBox();
+  const touchInput = await heroContext.newCDPSession(heroPage);
+  const touchHero = (type, fx = 0, fy = 0) => touchInput.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: heroBox.x + heroBox.width * fx, y: heroBox.y + heroBox.height * fy }] });
+  await touchHero('touchStart', 0.95, 0.5);
+  await heroPage.waitForFunction(() => Number(document.querySelector('.card-hero').dataset.tilt.split(' ')[0]) > 0.8);
+  await touchHero('touchMove', 0.05, 0.95);
+  await heroPage.waitForFunction(() => { const [x, y] = document.querySelector('.card-hero').dataset.tilt.split(' ').map(Number); return x < -0.8 && y > 0.8; });
+  await touchHero('touchEnd');
+  await heroPage.waitForFunction(() => document.querySelector('.card-hero').dataset.tilt === '0.00 0.00', null, { timeout: 3_000 });
+  assert.equal(await heroPage.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), 0, '카드가 그려지는 영역이 화면 밖으로 넘치지 않는다');
+  await heroContext.close();
+  const stillContext = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', locale: 'ko-KR' });
+  const stillPage = await stillContext.newPage();
+  observe(stillPage);
+  await stillPage.goto(base, { waitUntil: 'networkidle' });
+  await stillPage.waitForTimeout(500);
+  assert.equal(await stillPage.locator('.card-hero.live, .card-hero-canvas').count(), 0, '모션 줄이기에서는 정지 이미지만 보여 준다');
+  await stillContext.close();
+  pass('3D 카드 히어로: 실시간 렌더링, 누른 쪽으로 기울었다 놓으면 돌아옴, 모션 줄이기에서는 정지 이미지');
+
   assert.deepEqual(errors, [], '브라우저 실행 오류');
   assert.deepEqual([...new Set(external)], [], 'PoC는 외부 금융·폰트 요청을 하지 않는다');
   pass('브라우저 실행 오류 없음·외부 요청 없음');

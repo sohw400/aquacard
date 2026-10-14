@@ -1,10 +1,10 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Check, ChevronLeft } from 'lucide-react';
+import CardHero from './CardHero';
 import Logo from './Logo';
 import { EMAIL_PATTERN } from '../lib/engine';
 import { BANKS, CARRIERS, demoCode, FUND_SOURCES, hashPassword, ID_TYPES, OCCUPATIONS, passwordIssue, PURPOSES } from '../lib/auth';
 import type { Action, AppState, KycAnswers } from '../lib/types';
-import heroCards from '../assets/aqua-cards.webp';
 import './Onboarding.css';
 
 type Screen = 'welcome' | 'account' | 'phone' | 'identity' | 'bank' | 'questions' | 'review' | 'login' | 'reset';
@@ -182,7 +182,7 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
   let body: ReactNode;
   if (screen === 'welcome') {
     body = <div className="onboarding-form welcome">
-      <img className="onboarding-hero" src={heroCards} width={960} height={630} alt="Aqua 카드 두 장" />
+      <CardHero className="onboarding-hero" alt="Aqua 카드 두 장" />
       <h1 ref={heading} tabIndex={-1}>코인을 보내면<br />원화로 쓰는 카드</h1>
       <p className="onboarding-lead">받은 코인은 바로 원화 스테이블 잔액이 돼요. 카드로 쓸&nbsp;때마다 1%를 돌려받고, 리저브에 둔 돈에는 1초마다 보상이 쌓여요.</p>
       <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="auth-signup" onClick={() => go('account')}>시작하기</button><button type="button" className="btn neutral block" data-testid="auth-login" onClick={() => go('login')}>로그인</button></div>
