@@ -418,8 +418,8 @@ try {
     await flow.getByTestId('card-identity-consent').check();
     await flow.getByTestId('card-identity-next').tap();
     await assertFits(page, `${name} membership choice`);
-    for (const key of ['standard', 'premium', 'private']) await assertTouchTarget(flow.getByRole('radio', { name: PLANS[key].name }).locator('..'), `${name} ${PLANS[key].short} option`);
-    assert.equal(await flow.getByRole('radio', { name: PLANS.standard.name }).isChecked(), true);
+    for (const key of ['standard', 'premium', 'private']) await assertTouchTarget(flow.getByRole('radio', { name: PLANS[key].short }).locator('..'), `${name} ${PLANS[key].short} option`);
+    assert.equal(await flow.getByRole('radio', { name: PLANS.standard.short }).isChecked(), true);
     assert.equal(await flow.getByTestId('card-physical-choice').isChecked(), false);
     await flow.getByTestId('card-selection-next').tap();
     await assertFits(page, `${name} application review`);

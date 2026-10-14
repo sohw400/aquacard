@@ -314,7 +314,7 @@ try {
     assert.equal(await cardFlow.locator('.cf-steps li').count(), 3, '신청 화면은 본인확인·멤버십·신청 확인의 세 단계');
     await cardFlow.getByTestId('card-identity-consent').check();
     await cardFlow.getByTestId('card-identity-next').click();
-    await cardFlow.getByRole('radio', { name: PLANS[plan].name }).check();
+    await cardFlow.getByRole('radio', { name: PLANS[plan].short }).check();
     if (plan === 'standard') await cardFlow.getByTestId('card-physical-choice').setChecked(physical);
     else assert.equal(await cardFlow.getByTestId('card-physical-choice').count(), 0, `${PLANS[plan].short}은 ${PLANS[plan].card}가 함께 나와 실물카드 선택지가 없다`);
     if (physical && (await read(target)).card.address === null) {
@@ -733,9 +733,9 @@ try {
   await primaryFlow.getByTestId('card-identity-consent').check();
   await primaryFlow.getByTestId('card-identity-next').click();
   assert.equal(await primaryFlow.getByRole('radio').count(), 3);
-  assert.equal(await primaryFlow.getByRole('radio', { name: PLANS.standard.name }).isChecked(), true, '처음 고른 멤버십은 스탠다드');
+  assert.equal(await primaryFlow.getByRole('radio', { name: PLANS.standard.short }).isChecked(), true, '처음 고른 멤버십은 스탠다드');
   assert.equal(await primaryFlow.getByTestId('card-physical-choice').isChecked(), false, '스탠다드는 가상카드만 받을 수 있다');
-  await primaryFlow.getByRole('radio', { name: PLANS.premium.name }).check();
+  await primaryFlow.getByRole('radio', { name: PLANS.premium.short }).check();
   assert.equal(await primaryFlow.getByTestId('card-physical-choice').count(), 0, '프리미엄은 실물카드 선택지가 없다');
   assert.match(await primaryFlow.locator('.cf-included').innerText(), new RegExp(`${PLANS.premium.card}가 함께 나와요`));
   assert.equal(await primaryFlow.getByTestId('card-selection-next').isDisabled(), true, '프리미엄은 카드를 받을 주소가 있어야 다음으로 간다');
@@ -748,7 +748,7 @@ try {
   assert.match(await primaryFlow.locator('.cf-summary').innerText(), new RegExp(`가상카드와 ${PLANS.premium.card}`));
   if (premiumApplicationFee <= startSpend) assert.equal(await primaryFlow.getByTestId('card-fee-shortfall').count(), 0, '잔액으로 낼 수 있으면 부족 안내가 없다');
   await primaryFlow.getByRole('button', { name: '이전', exact: true }).click();
-  await primaryFlow.getByRole('radio', { name: PLANS.private.name }).check();
+  await primaryFlow.getByRole('radio', { name: PLANS.private.short }).check();
   assert.equal(await primaryFlow.getByTestId('card-physical-choice').count(), 0, '프라이빗은 실물카드 선택지가 없다');
   assert.match(await primaryFlow.locator('.cf-included').innerText(), new RegExp(`${PLANS.private.card}가 함께 나와요`));
   await primaryFlow.getByTestId('card-selection-next').click();
@@ -779,7 +779,7 @@ try {
   assert.equal(primaryState.transactions.find((item) => item.title === '카드 신청 비용').amount, -privateApplicationFee);
   assert.ok(primaryState.card.billingAt > Date.now() + 364 * DAY_MS && primaryState.card.billingAt < Date.now() + 367 * DAY_MS, '1년 뒤 같은 날 갱신한다');
   assert.match(await primary.getByTestId('card-billing-date').innerText(), /^\d{4}년 \d{1,2}월 \d{1,2}일$/);
-  assert.match(await primary.getByTestId('card-plan').innerText(), new RegExp(`${PLANS.private.short} · 페이백 ${pattern(percentText(PLANS.private.cashbackRate))} · 월 ${pattern(wonText(PLANS.private.cashbackCap))}까지 · 리저브 \\+${pattern(percentText(PLANS.private.reserveBonus))}p`));
+  assert.match(await primary.getByTestId('card-plan').innerText(), new RegExp(`${PLANS.private.short}\\s+페이백 ${pattern(percentText(PLANS.private.cashbackRate))}\\s+월 ${pattern(wonText(PLANS.private.cashbackCap))}까지\\s+리저브 \\+${pattern(percentText(PLANS.private.reserveBonus))}p`));
   assert.equal(await primary.getByTestId('card-demo-tools').evaluate((item) => item.open), false);
   await details('card-demo-tools', true, primary);
   assert.equal(await primary.getByTestId('card-demo-shipped').count(), 1, `${PLANS.private.card} 배송을 체험할 수 있다`);
@@ -1649,7 +1649,7 @@ try {
   assert.equal(lifeState.spend, spendBeforeUpgrade - premiumFee, '올리면 연회비를 바로 낸다');
   assert.ok(lifeState.card.billingAt > Date.now() + 364 * DAY_MS, '다음 갱신일은 1년 뒤');
   assert.equal(lifeState.transactions.find((item) => item.title === `${PLANS.premium.short} 연회비`).amount, -premiumFee);
-  assert.match(await life.getByTestId('card-plan').innerText(), new RegExp(`${PLANS.premium.short} · 페이백 ${pattern(percentText(PLANS.premium.cashbackRate))} · 월 ${pattern(wonText(PLANS.premium.cashbackCap))}까지 · 리저브 \\+${pattern(percentText(PLANS.premium.reserveBonus))}p`));
+  assert.match(await life.getByTestId('card-plan').innerText(), new RegExp(`${PLANS.premium.short}\\s+페이백 ${pattern(percentText(PLANS.premium.cashbackRate))}\\s+월 ${pattern(wonText(PLANS.premium.cashbackCap))}까지\\s+리저브 \\+${pattern(percentText(PLANS.premium.reserveBonus))}p`));
   assert.deepEqual([lifeState.card.physicalPlan, lifeState.card.replacement], ['standard', { plan: 'premium', delivery: 'preparing' }], '쓰던 실물카드는 그대로 두고 메탈 카드를 새로 보낸다');
   const replacementBlock = life.getByTestId('card-replacement');
   assert.match(await replacementBlock.innerText(), new RegExp(`새 ${PLANS.premium.card}[\\s\\S]*만드는 중[\\s\\S]*받을 때까지 지금 카드를 그대로 써요`));
