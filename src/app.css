@@ -575,8 +575,8 @@ summary, label { -webkit-tap-highlight-color: transparent; }
   .app-header > .brand:hover { opacity: .75; }
   :is(.onboarding-text-button, .send-sheet .send-own-qr, .card-flow .cf-inline-link, .funding-text-button, .funding-quote-clock button, .funding-destination-heading button, .funding-operation-reference button):hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
   .onboarding-back:hover { color: var(--ink); }
-  :is(.rule-details > summary, .demo-tools > summary, .faq-item > summary, .card-flow .cf-demo-tools summary, .funding-simulation summary, .funding-operation-details summary):hover { color: var(--ink); }
-  :is(.rule-details > summary, .demo-tools > summary, .faq-item > summary, .card-flow .cf-demo-tools summary, .funding-simulation summary, .funding-operation-details summary):hover::after { border-color: var(--muted); }
+  :is(.rule-details > summary, .demo-tools > summary, .faq-item > summary, .card-flow .cf-demo-tools summary, .funding-simulation summary, .onboarding-simulation summary, .funding-operation-details summary):hover { color: var(--ink); }
+  :is(.rule-details > summary, .demo-tools > summary, .faq-item > summary, .card-flow .cf-demo-tools summary, .funding-simulation summary, .onboarding-simulation summary, .funding-operation-details summary):hover::after { border-color: var(--muted); }
   :is(.address-results button, .home-status):hover { background: var(--fill); }
   .segmented button:not(.selected):hover { color: var(--ink); }
   .switch:hover::before { background: var(--control); }
