@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowRight, CalendarClock, Check, ChevronLeft, CircleAlert, Clock3, CreditCard,
   Eye, EyeOff, LockKeyhole, MapPin, Package, RefreshCw, Smartphone, Truck, UnlockKeyhole,
@@ -13,10 +13,10 @@ import AddressSheet from './AddressSheet';
 import { PinSheet } from './SecuritySheets';
 import WalletSheet, { WALLET_NAMES } from './WalletSheet';
 import CardActionSheet from './CardActionSheet';
+import CardHero from './CardHero';
 import CardVisual from './CardVisual';
 import TierCard from './TierCard';
 import { NavRow } from './ui';
-import heroCards from '../assets/aqua-cards.webp';
 import './CardApplication.css';
 
 interface CardApplicationProps {
@@ -54,14 +54,14 @@ function DeliverySteps({ delivery }: { delivery: DeliveryStage }) {
 }
 
 /** Facts joined by middle dots. Each fact wraps as a whole and carries the dot before it, so a dot never ends a line. */
-function Facts({ items, className }: { items: string[]; className?: string }) {
-  return <span className={className}>{items.map((fact, index) => <Fragment key={fact}>{index > 0 && ' '}<span className="nowrap">{index > 0 && '· '}{fact}</span></Fragment>)}</span>;
+function Facts({ items, className }: { items: ReactNode[]; className?: string }) {
+  return <span className={`cf-facts${className ? ` ${className}` : ''}`}><span>{items.map((fact, index) => <span key={index}>{fact}</span>)}</span></span>;
 }
 
 /** One line per tier: what it gives. */
 function TierFacts({ plan }: { plan: Plan }) {
   const terms = PLANS[plan];
-  return <Facts className="cf-tier-facts" items={[`페이백 ${percent(terms.cashbackRate)}`, ...(terms.reserveBonus ? [`리저브 +${percent(terms.reserveBonus)}p`] : []), terms.card]} />;
+  return <Facts className="cf-tier-facts" items={[`페이백 ${percent(terms.cashbackRate)}`, terms.reserveBonus ? `리저브 +${percent(terms.reserveBonus)}p` : terms.card]} />;
 }
 
 export default function CardApplication({ card, account, spend, controls, onOpenLimits, onOpenChannels, onPay, onChange, onAction, onDeposit, onNotify }: CardApplicationProps) {
@@ -168,7 +168,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
       )}
 
       {card.stage === 'not_applied' && <div className="cf-intro">
-        <img className="cf-intro-art" src={heroCards} width={960} height={630} alt="" />
+        <CardHero className="cf-intro-art" />
         <h2>잔액으로 바로 쓰는 카드</h2>
         <p className="cf-lead">가상카드는 신청하면 바로 나와요. 멤버십에 따라 페이백과 리저브 보상이 달라져요.</p>
         <ul className="cf-tiers" aria-label="멤버십">{PLAN_ORDER.map((key) => <li key={key}><TierCard plan={key} /><span className="cf-tier-main"><strong>{PLANS[key].short}</strong><TierFacts plan={key} /></span><span className="cf-tier-fee">{feeText(key)}</span></li>)}</ul>
@@ -178,7 +178,7 @@ export default function CardApplication({ card, account, spend, controls, onOpen
 
       {card.stage === 'identity' && <div className="cf-step">
         <h2>본인확인</h2><p className="cf-lead">가입할 때 확인한 정보로 신청해요. 다시 촬영하지 않아도 돼요.</p>
-        <div className="cf-profile"><span className="cf-avatar" aria-hidden="true">{account.name.charAt(0)}</span><div><strong>{account.name}</strong><p>{account.birthDate.replaceAll('-', '.')} · {maskPhone(account.phone)}</p></div><span className="cf-profile-status"><Check size={13} strokeWidth={2.6} />확인됨</span></div>
+        <div className="cf-profile"><span className="cf-avatar" aria-hidden="true">{account.name.charAt(0)}</span><div><strong>{account.name}</strong><p><Facts items={[account.birthDate.replaceAll('-', '.'), maskPhone(account.phone)]} /></p></div><span className="cf-profile-status"><Check size={13} strokeWidth={2.6} />확인됨</span></div>
         <label className="cf-final-consent"><input type="checkbox" data-testid="card-identity-consent" checked={identityConsent} onChange={(event) => setIdentityConsent(event.target.checked)} /><span>본인확인 정보를 카드 발급사에 제공하는 데 동의해요.</span></label>
         <button type="button" className="cf-button cf-primary" data-testid="card-identity-next" disabled={!identityConsent} onClick={() => patch({ identityVerified: true, stage: 'plan' })}>다음 <ArrowRight size={17} /></button>
         <button type="button" className="cf-text-button" onClick={() => nextStage('not_applied')}><ChevronLeft size={15} /> 그만두기</button>
@@ -186,10 +186,10 @@ export default function CardApplication({ card, account, spend, controls, onOpen
 
       {selectingCard && <div className="cf-step">
         <h2>멤버십 고르기</h2><p className="cf-lead">나중에 카드 화면에서 언제든 바꿀 수 있어요.</p>
-        <fieldset className="cf-options"><legend className="cf-sr-only">멤버십</legend>{PLAN_ORDER.map((key) => { const option = PLANS[key]; return <label key={key} className={`cf-option ${card.plan === key ? 'cf-option-selected' : ''}`}><input type="radio" name="card-plan" value={key} checked={card.plan === key} onChange={() => choosePlan(key)} /><TierCard plan={key} /><span className="cf-option-main"><span className="cf-option-title">{option.name}</span><span className="cf-option-price">{feeText(key)}</span><TierFacts plan={key} /></span></label>; })}</fieldset>
-        {card.plan === 'standard' ? <label className="cf-physical-option" data-testid="card-physical-row"><input type="checkbox" data-testid="card-physical-choice" checked={card.physical} onChange={(event) => patch({ physical: event.target.checked })} /><span><strong>실물카드도 받기</strong><small>{PLANS.standard.physicalFee ? `발급비 ${won(PLANS.standard.physicalFee)}` : '무료'} · 배송 {POLICY.deliveryEstimate}</small></span></label>
-          : <p className="cf-included"><Package size={16} aria-hidden="true" />{plan.card}가 함께 나와요. 배송까지 {POLICY.deliveryEstimate}이 걸려요.</p>}
-        {card.physical && <div className="cf-address" data-testid="card-address"><MapPin size={17} /><div>{card.address ? <><strong>{card.address.road}</strong><p>{card.address.detail || '상세 주소 없음'} · {card.address.zip}</p></> : <><strong>받을 주소를 넣어 주세요</strong><p>본인만 받을 수 있어요.</p></>}</div><button type="button" className="cf-address-button" data-testid="card-address-open" onClick={() => setAddressSheet('select')}>{card.address ? '변경' : '입력'}</button></div>}
+        <fieldset className="cf-options"><legend className="cf-sr-only">멤버십</legend>{PLAN_ORDER.map((key) => { const option = PLANS[key]; return <label key={key} className={`cf-option ${card.plan === key ? 'cf-option-selected' : ''}`}><input type="radio" name="card-plan" value={key} checked={card.plan === key} onChange={() => choosePlan(key)} /><TierCard plan={key} /><span className="cf-option-main"><span className="cf-option-title">{option.short}</span><span className="cf-option-price">{feeText(key)}</span><TierFacts plan={key} /></span></label>; })}</fieldset>
+        {card.plan === 'standard' ? <label className="cf-physical-option" data-testid="card-physical-row"><input type="checkbox" data-testid="card-physical-choice" checked={card.physical} onChange={(event) => patch({ physical: event.target.checked })} /><span><strong>실물카드도 받기</strong><small><Facts items={[PLANS.standard.physicalFee ? `발급비 ${won(PLANS.standard.physicalFee)}` : '무료', `배송 ${POLICY.deliveryEstimate}`]} /></small></span></label>
+          : <p className="cf-included"><Package size={16} aria-hidden="true" /><span><span className="nowrap">{plan.card}가 함께 나와요.</span> <span className="nowrap">배송까지 {POLICY.deliveryEstimate}이 걸려요.</span></span></p>}
+        {card.physical && <div className="cf-address" data-testid="card-address"><MapPin size={17} /><div>{card.address ? <><strong>{card.address.road}</strong><p><Facts items={[card.address.detail || '상세 주소 없음', card.address.zip]} /></p></> : <><strong>받을 주소를 넣어 주세요</strong><p>본인만 받을 수 있어요.</p></>}</div><button type="button" className="cf-address-button" data-testid="card-address-open" onClick={() => setAddressSheet('select')}>{card.address ? '변경' : '입력'}</button></div>}
         <button type="button" className="cf-button cf-primary" data-testid="card-selection-next" disabled={card.physical && !card.address} onClick={review}>다음 <ArrowRight size={17} /></button>
         <button type="button" className="cf-text-button" onClick={backToIdentity}><ChevronLeft size={15} /> 이전</button>
       </div>}
@@ -248,14 +248,14 @@ export default function CardApplication({ card, account, spend, controls, onOpen
 
         <section className="cf-section" data-testid="card-plan" aria-labelledby="cf-plan-title">
           <h3 id="cf-plan-title">멤버십</h3>
-          <p className="cf-plan-now"><strong>{plan.short}</strong> <Facts items={[`· 페이백 ${percent(plan.cashbackRate)}`, `월 ${won(plan.cashbackCap)}까지`, ...(plan.reserveBonus ? [`리저브 +${percent(plan.reserveBonus)}p`] : [])]} /></p>
+          <Facts className="cf-plan-now" items={[<strong>{plan.short}</strong>, `페이백 ${percent(plan.cashbackRate)}`, `월 ${won(plan.cashbackCap)}까지`, ...(plan.reserveBonus ? [`리저브 +${percent(plan.reserveBonus)}p`] : [])]} />
           {card.billingAt !== null && <p className="cf-plan-renewal"><CalendarClock size={15} aria-hidden="true" />{card.nextPlan ? `${dateLabel(card.billingAt)}부터 ${ro(PLANS[card.nextPlan].short)} 바뀌어요` : <>다음 갱신일 <span data-testid="card-billing-date">{dateLabel(card.billingAt)}</span></>}</p>}
           <ul className="cf-plan-list">{PLAN_ORDER.map((key) => {
             const current = key === card.plan;
             const scheduled = card.nextPlan === key;
-            return <li key={key} className={current ? 'cf-plan-current' : ''}><TierCard plan={key} /><span className="cf-tier-main"><strong>{PLANS[key].short}</strong><span>{feeText(key)} · 페이백 {percent(PLANS[key].cashbackRate)}</span></span>
+            return <li key={key} className={current ? 'cf-plan-current' : ''}><TierCard plan={key} /><span className="cf-tier-main"><strong>{PLANS[key].short}</strong><Facts items={[feeText(key), `페이백 ${percent(PLANS[key].cashbackRate)}`]} /></span>
               {current ? card.nextPlan ? <button type="button" className="cf-plan-action" data-testid="card-plan-keep" onClick={() => onAction({ type: 'CHANGE_PLAN', plan: key }, `${josa(PLANS[key].short, '을', '를')} 계속 써요.`)}>계속 쓰기</button> : <span className="cf-plan-tag">사용 중</span>
-                : scheduled ? <span className="cf-plan-tag">예약됨</span>
+                : scheduled ? <span className="cf-plan-tag scheduled">예약됨</span>
                   : <button type="button" className="cf-plan-action" data-testid={`card-plan-${key}`} onClick={() => setSheet({ kind: 'plan', plan: key })}>바꾸기</button>}</li>;
           })}</ul>
         </section>

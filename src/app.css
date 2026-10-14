@@ -309,7 +309,7 @@ a { color: var(--accent); }
 .home-card-foot .btn.small { min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--surface); }
 .home-card-next { margin-top: 14px; }
 .home-card-offer { display: grid; gap: 14px; padding-top: 24px; border-top: 1px solid var(--line); }
-.home-card-offer > img { display: block; width: 100%; max-width: 300px; height: auto; margin: -6px auto -4px; filter: drop-shadow(0 16px 20px rgba(17, 30, 50, .14)); }
+.home-card-offer > .card-hero { display: block; width: 100%; max-width: 300px; height: auto; margin: -6px auto -4px; filter: drop-shadow(0 16px 20px rgba(17, 30, 50, .14)); }
 .home-card-offer h2 { color: var(--ink); font-size: 20px; font-weight: 700; line-height: 1.4; letter-spacing: -.03em; text-wrap: balance; }
 .home-card-offer p { margin-top: 6px; color: var(--muted); font-size: 15px; line-height: 1.6; }
 .home-activity { display: grid; gap: 4px; }
@@ -458,13 +458,6 @@ a { color: var(--accent); }
 .quote-total strong { color: var(--accent); font-size: 20px; font-weight: 700; letter-spacing: -.03em; }
 .payment-sources .small-note { margin-top: 4px; }
 .payment-sources .form-error { margin: 8px 0; }
-.guide-content > p { color: var(--muted); font-size: 15px; line-height: 1.7; }
-.guide-steps { display: grid; gap: 0; margin: 14px 0 16px; padding: 0; list-style: none; counter-reset: guide; }
-.guide-steps li { display: grid; grid-template-columns: 34px 1fr; column-gap: 10px; padding: 12px 0; counter-increment: guide; }
-.guide-steps li + li { border-top: 1px solid var(--line); }
-.guide-steps li::before { content: counter(guide, decimal-leading-zero); grid-row: span 2; color: var(--accent); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.5; }
-.guide-steps strong { color: var(--ink); font-size: 15px; font-weight: 600; }
-.guide-steps p { margin-top: 2px; color: var(--muted); font-size: 14px; line-height: 1.6; }
 .reset-copy { color: var(--ink-soft); font-size: 15px; line-height: 1.7; }
 .reset-copy + .small-note { margin-top: 8px; }
 

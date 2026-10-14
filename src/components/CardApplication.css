@@ -37,6 +37,12 @@
 .card-flow .cf-tier-main { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
 .card-flow .cf-tier-main > strong { color: var(--ink); font-size: 16px; font-weight: 700; line-height: 1.45; }
 .card-flow .cf-tier-main > span, .card-flow .cf-tier-facts { color: var(--subtle); font-size: 13px; line-height: 1.5; }
+/* Facts joined by dots. Every fact carries its dot in front, and the dot of a fact that starts a line falls
+   outside the clipped box, so a wrapped line always begins with a fact. */
+.card-flow .cf-facts { display: block; overflow: hidden; }
+.card-flow .cf-facts > span { display: flex; flex-wrap: wrap; margin-left: -1em; }
+.card-flow .cf-facts > span > span { white-space: nowrap; }
+.card-flow .cf-facts > span > span::before { content: '·'; display: inline-block; width: 1em; text-align: center; }
 .card-flow .cf-tier-fee { flex-shrink: 0; color: var(--ink); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Identity. */
@@ -70,8 +76,8 @@
 .card-flow .cf-physical-option > span { display: flex; flex-direction: column; gap: 1px; }
 .card-flow .cf-physical-option strong { color: var(--ink); font-size: 16px; font-weight: 600; }
 .card-flow .cf-physical-option small { color: var(--subtle); font-size: 13px; }
-.card-flow .cf-included { display: flex; align-items: center; gap: 8px; margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.6; }
-.card-flow .cf-included > svg { flex-shrink: 0; color: var(--accent); }
+.card-flow .cf-included { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.card-flow .cf-included > svg { flex-shrink: 0; margin-top: 3px; color: var(--accent); }
 .card-flow .cf-address { display: flex; gap: 10px; margin: 0 0 22px; padding: 14px 16px; border-radius: var(--radius-md); background: var(--sunken); color: var(--subtle); }
 .card-flow .cf-address > svg { width: 17px; height: 17px; margin-top: 2px; flex-shrink: 0; }
 .card-flow .cf-address > div { flex: 1; min-width: 0; }
@@ -153,12 +159,15 @@
 .card-flow .cf-wallet-added { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; color: var(--accent); font-size: 14px; font-weight: 600; }
 .card-flow .cf-wallet-note { margin: 4px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
 .card-flow .cf-plan-now { margin: 2px 0 0; color: var(--muted); font-size: 15px; line-height: 1.6; }
-.card-flow .cf-plan-now > strong { color: var(--ink); font-weight: 700; }
+.card-flow .cf-plan-now strong { color: var(--ink); font-weight: 700; }
 .card-flow .cf-plan-renewal { display: flex; align-items: center; gap: 6px; margin: 4px 0 6px; color: var(--subtle); font-size: 14px; line-height: 1.6; }
 .card-flow .cf-plan-renewal > svg { flex-shrink: 0; }
 .card-flow .cf-plan-list { display: grid; margin: 4px 0 0; padding: 0; list-style: none; }
-.card-flow .cf-plan-action { flex-shrink: 0; min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--fill); color: var(--ink); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
-.card-flow .cf-plan-tag { flex-shrink: 0; color: var(--accent); font-size: 14px; font-weight: 600; }
+/* The right column holds one pill per row: an action, or the plan's state in the same shape so the column lines up. */
+.card-flow :is(.cf-plan-action, .cf-plan-tag) { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; min-width: 84px; min-height: 44px; padding: 0 16px; border-radius: 999px; font-family: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.card-flow .cf-plan-action { border: 0; background: var(--fill); color: var(--ink); cursor: pointer; }
+.card-flow .cf-plan-tag { background: var(--accent-weak); color: var(--accent-strong); }
+.card-flow .cf-plan-tag.scheduled { background: none; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); }
 .card-flow .cf-delivery { display: grid; gap: 4px; padding: 16px 0; border-top: 1px solid var(--line); }
 .card-flow .cf-section > .nav-row + .cf-delivery { margin-top: 0; }
 .card-flow .cf-delivery + .nav-row { border-top: 1px solid var(--line); }

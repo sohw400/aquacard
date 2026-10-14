@@ -84,6 +84,7 @@ async function prepareDeposit(funding, failure = false) {
 }
 
 const sixDigits = async (locator) => (await locator.innerText()).match(/\d{6}/)[0];
+const fourDigits = async (locator) => (await locator.innerText()).match(/\d{4}/)[0];
 
 /** Signs up by touch and checks every sign-up screen for horizontal overflow and 44px targets. */
 async function signUp(page, name) {
@@ -113,6 +114,12 @@ async function signUp(page, name) {
   await page.getByTestId('kyc-face-done').waitFor();
   await assertFits(page, `${name} ID and face check`);
   await tapTarget('kyc-id-next');
+  await tapTarget('kyc-bank-sample');
+  await tapTarget('kyc-bank-send');
+  await page.getByTestId('kyc-bank-code').fill(await fourDigits(page.getByTestId('kyc-bank-demo-code')));
+  await page.getByTestId('kyc-bank-verified').waitFor();
+  await assertFits(page, `${name} 1 won account check`);
+  await tapTarget('kyc-bank-next');
   await page.getByTestId('kyc-occupation').selectOption('회사원');
   await page.getByTestId('kyc-purpose').selectOption('카드 결제');
   await page.getByTestId('kyc-source').selectOption('근로소득');
@@ -157,7 +164,7 @@ try {
 
     // Home leads with the balance, 충전·보내기 and the card offer.
     await assertAmount(page.getByTestId('spend-balance'), START.spend, `${name} home balance`);
-    for (const id of ['open-deposit', 'open-send', 'open-payment', 'open-reserve-card', 'open-rewards', 'nav-activity', 'open-guide']) await assertTouchTarget(page.getByTestId(id), `${name} ${id}`);
+    for (const id of ['open-deposit', 'open-send', 'open-payment', 'open-reserve-card', 'open-rewards', 'nav-activity']) await assertTouchTarget(page.getByTestId(id), `${name} ${id}`);
     const cardOffer = await page.getByTestId('open-payment').boundingBox();
     assert.ok(cardOffer && cardOffer.width >= viewportWidth - 50, `${name}: card offer button does not span the screen`);
     await assertFits(page, `${name} home`);
@@ -418,8 +425,8 @@ try {
     await flow.getByTestId('card-identity-consent').check();
     await flow.getByTestId('card-identity-next').tap();
     await assertFits(page, `${name} membership choice`);
-    for (const key of ['standard', 'premium', 'private']) await assertTouchTarget(flow.getByRole('radio', { name: PLANS[key].name }).locator('..'), `${name} ${PLANS[key].short} option`);
-    assert.equal(await flow.getByRole('radio', { name: PLANS.standard.name }).isChecked(), true);
+    for (const key of ['standard', 'premium', 'private']) await assertTouchTarget(flow.getByRole('radio', { name: PLANS[key].short }).locator('..'), `${name} ${PLANS[key].short} option`);
+    assert.equal(await flow.getByRole('radio', { name: PLANS.standard.short }).isChecked(), true);
     assert.equal(await flow.getByTestId('card-physical-choice').isChecked(), false);
     await flow.getByTestId('card-selection-next').tap();
     await assertFits(page, `${name} application review`);

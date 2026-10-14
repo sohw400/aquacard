@@ -1,4 +1,4 @@
-import { ActivityList } from '../components/Activity';
+import { ActivityList, listedTransactions } from '../components/Activity';
 import { NavRow } from '../components/ui';
 import { money } from '../lib/format';
 import { PLANS } from '../lib/policy';
@@ -11,7 +11,7 @@ export default function ActivityPage({ state, filter, onFilter, onFunding, onDet
   state: AppState; filter: ActivityFilter; onFilter: (filter: ActivityFilter) => void;
   onFunding: (id: string) => void; onDetail: (item: Transaction) => void; onRefund: (payment: Payment) => void; onStatement: () => void;
 }) {
-  const items = state.transactions.filter((item) => filter === 'all' || (filter === 'payment' ? ['payment', 'refund', 'card'].includes(item.kind) : ['deposit', 'convert', 'transfer'].includes(item.kind)));
+  const items = listedTransactions(state.transactions).filter((item) => filter === 'all' || (filter === 'payment' ? ['payment', 'refund', 'card'].includes(item.kind) : ['deposit', 'convert', 'transfer'].includes(item.kind)));
   return <div className="page activity-page">
     <div className="segmented" role="group" aria-label="거래 종류">{FILTERS.map(([key, label]) => <button type="button" key={key} className={filter === key ? 'selected' : ''} aria-pressed={filter === key} onClick={() => onFilter(key)}>{label}</button>)}</div>
     <ActivityList detailed onFunding={onFunding} onDetail={onDetail} items={items} payments={state.payments} operations={state.fundingOperations} onRefund={onRefund}

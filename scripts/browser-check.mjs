@@ -58,9 +58,46 @@ const applicationFee = (plan, physical) => PLANS[plan].annualFee + (physical ? P
 const withdrawalFee = (amount) => Math.ceil(amount * POLICY.conversionFee - 1e-9);
 
 const sixDigits = async (locator) => (await locator.innerText()).match(/\d{6}/)[0];
+const fourDigits = async (locator) => (await locator.innerText()).match(/\d{4}/)[0];
 const PASSWORD = 'aqua2026pass';
-/** Completes sign-up with sample data: email code, password, phone code, ID and face checks, customer questions. */
-async function signUp(target) {
+/** The 1원 account check: holder rule and real-account warning, input errors, a wrong code, then the sample account. */
+async function checkBankStep(target) {
+  assert.equal(await target.locator('.onboarding-progress p').innerText(), '가입 4/5 · 계좌');
+  assert.match(await target.locator('.onboarding-lead').innerText(), /본인 확인용으로 1원을 보내요\. 이 계좌로 돈을 주고받지는 않아요\./);
+  assert.match(await target.getByTestId('kyc-bank-hint').innerText(), /예금주가 아쿠아 사용자님인 계좌만[\s\S]*실제 계좌는 넣지 말고 샘플 계좌를/);
+  assert.match(await target.locator('.onboarding-note').innerText(), /계좌\s정보는 넣지 마세요/);
+  assert.equal(await target.getByTestId('kyc-bank-next').isDisabled(), true, '1원 인증 전에는 다음으로 갈 수 없다');
+  const guide = target.getByTestId('kyc-bank-guide');
+  assert.match(await guide.innerText(), /입출금 내역\s+예시[\s\S]*아쿠아 1234\s+\+1원[\s\S]*1원이 들어오면 입금자명 뒤 숫자 4자리를 넣으면 돼요\./, '보내기 전에는 은행 앱 예시로 어디의 숫자를 넣는지 보여 준다');
+  await target.getByTestId('kyc-bank-send').click();
+  assert.equal(await target.getByRole('alert').innerText(), '은행을 골라 주세요.');
+  await target.getByTestId('kyc-bank').selectOption('카카오뱅크');
+  await target.getByTestId('kyc-account').fill('12-34');
+  assert.equal(await target.getByTestId('kyc-account').inputValue(), '1234', '계좌번호는 숫자만 받는다');
+  await target.getByTestId('kyc-bank-send').click();
+  assert.equal(await target.getByRole('alert').innerText(), '계좌번호 10~14자리를 확인해 주세요.');
+  await target.getByTestId('kyc-bank-sample').click();
+  assert.equal(await target.getByTestId('kyc-bank').inputValue(), '신한은행');
+  await target.getByTestId('kyc-bank-send').click();
+  const code = await fourDigits(target.getByTestId('kyc-bank-demo-code'));
+  assert.doesNotMatch(await guide.innerText(), /예시/);
+  assert.match(await guide.innerText(), /체험판이라 1원은 보내지 않고 은행 앱에 찍힐 내역을 여기 보여 드려요\./);
+  assert.equal(await guide.locator('[role="img"]').getAttribute('aria-label'), `은행 앱 입출금 내역: 입금자명 아쿠아 ${code}, 1원 입금`, '보낸 뒤에는 체험판 숫자를 그림에 넣는다');
+  await target.getByTestId('kyc-bank-code').fill(code === '1000' ? '1001' : '1000');
+  assert.equal(await target.getByTestId('kyc-bank-next').isDisabled(), true, '틀린 입금자명 숫자로는 인증되지 않는다');
+  await target.getByTestId('kyc-account').fill('123456789013');
+  assert.equal(await target.getByTestId('kyc-bank-demo-code').count(), 0, '계좌번호를 바꾸면 1원을 다시 보내야 한다');
+  await target.getByTestId('kyc-bank-sample').click();
+  await target.getByTestId('kyc-bank-send').click();
+  await target.getByTestId('kyc-bank-code').fill(await fourDigits(target.getByTestId('kyc-bank-demo-code')));
+  await target.getByTestId('kyc-bank-verified').waitFor();
+  assert.equal(await target.getByTestId('kyc-account').isDisabled(), true, '인증한 계좌는 바꿀 수 없다');
+  assert.equal(await target.getByTestId('kyc-bank').isDisabled(), true);
+  assert.equal(await target.getByTestId('kyc-bank-sample').count(), 0);
+  assert.equal(await guide.count(), 0, '인증을 마치면 안내 그림을 닫는다');
+}
+/** Completes sign-up with sample data: email code, password, phone code, ID and face checks, 1원 account check, customer questions. */
+async function signUp(target, { checks = false } = {}) {
   await target.getByTestId('auth-signup').click();
   await target.getByTestId('signup-email-sample').click();
   await target.getByTestId('signup-send-code').click();
@@ -75,6 +112,13 @@ async function signUp(target) {
   await target.getByTestId('kyc-id-scan').click();
   await target.getByTestId('kyc-face-scan').click();
   await target.getByTestId('kyc-id-next').click();
+  if (checks) await checkBankStep(target);
+  else {
+    await target.getByTestId('kyc-bank-sample').click();
+    await target.getByTestId('kyc-bank-send').click();
+    await target.getByTestId('kyc-bank-code').fill(await fourDigits(target.getByTestId('kyc-bank-demo-code')));
+  }
+  await target.getByTestId('kyc-bank-next').click();
   await target.getByTestId('kyc-occupation').selectOption('회사원');
   await target.getByTestId('kyc-purpose').selectOption('카드 결제');
   await target.getByTestId('kyc-source').selectOption('근로소득');
@@ -120,7 +164,7 @@ try {
   observe(page);
   page.setDefaultTimeout(10_000);
   await page.goto(base, { waitUntil: 'networkidle' });
-  await signUp(page);
+  await signUp(page, { checks: true });
   const read = (target = page) => target.evaluate(() => JSON.parse(localStorage.getItem('aqua-card:poc:v1')));
   async function stateWhen(predicate, target = page) {
     const deadline = Date.now() + 10_000;
@@ -314,7 +358,7 @@ try {
     assert.equal(await cardFlow.locator('.cf-steps li').count(), 3, '신청 화면은 본인확인·멤버십·신청 확인의 세 단계');
     await cardFlow.getByTestId('card-identity-consent').check();
     await cardFlow.getByTestId('card-identity-next').click();
-    await cardFlow.getByRole('radio', { name: PLANS[plan].name }).check();
+    await cardFlow.getByRole('radio', { name: PLANS[plan].short }).check();
     if (plan === 'standard') await cardFlow.getByTestId('card-physical-choice').setChecked(physical);
     else assert.equal(await cardFlow.getByTestId('card-physical-choice').count(), 0, `${PLANS[plan].short}은 ${PLANS[plan].card}가 함께 나와 실물카드 선택지가 없다`);
     if (physical && (await read(target)).card.address === null) {
@@ -351,16 +395,7 @@ try {
   for (const id of ['available-balance', 'card-cta', 'funding-held', 'home-funding-status']) assert.equal(await page.getByTestId(id).count(), 0, `카드와 진행 중인 입출금이 없으면 ${id}를 보이지 않는다`);
   assert.equal(await page.getByTestId('open-payment').innerText(), '카드 만들기');
   assert.match(await page.locator('.home-card-offer').innerText(), new RegExp(`결제할 때마다 ${pattern(percentText(PLANS.standard.cashbackRate))}를 돌려받아요`));
-  await page.getByTestId('open-guide').click();
-  const guide = page.getByTestId('dialog-guide');
-  assert.match(await guide.innerText(), /코인을 보내면 바로 원화 스테이블 잔액이 되고/);
-  await guide.getByTestId('confirm-action').click();
-  await guide.waitFor({ state: 'hidden' });
-  for (const name of ['card', 'benefits', 'settings', 'activity']) {
-    await nav(name);
-    assert.equal(await page.getByTestId('open-guide').count(), 0, `체험 안내 버튼은 홈에만 있다 (${name})`);
-  }
-  await nav('home');
+  assert.deepEqual(await page.locator('.topbar-actions button').evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))), ['거래 내역'], '오른쪽 위에는 거래 내역 버튼만 둔다');
   const font = await page.evaluate(async () => {
     await document.fonts.ready;
     return {
@@ -379,7 +414,7 @@ try {
   assert.equal(await flow().getByTestId('card-apply').count(), 0, '카드 만들기를 누르면 소개 화면을 거치지 않고 본인확인을 시작한다');
   assert.equal(await page.getByTestId('nav-card').getAttribute('aria-current'), 'page');
   assert.equal(state.payments.length, 0);
-  pass('네 개 주 메뉴(홈·카드·혜택·전체)·Pretendard 글꼴·홈 잔액과 카드 안내·체험 안내는 홈에만·카드 만들기에서 본인확인 바로 시작');
+  pass('네 개 주 메뉴(홈·카드·혜택·전체)·Pretendard 글꼴·홈 잔액과 카드 안내·오른쪽 위는 거래 내역 버튼만·카드 만들기에서 본인확인 바로 시작');
 
   const beforeNavigation = ledgerSnapshot(await read());
   assert.equal(await page.getByTestId('go-back').count(), 0, '카드는 주 메뉴라 뒤로 가기가 없다');
@@ -690,11 +725,18 @@ try {
   const liveNumber = async (testId) => Number((await benefits.getByTestId(testId).locator('..').innerText()).replace(/[^\d.]/g, ''));
   const reserveCredits = (await read()).transactions.filter((item) => item.title === '리저브 보상').reduce((sum, item) => sum + item.amount, 0);
   assert.ok(Math.abs(await liveNumber('reserve-total') - reserveCredits) < 1, '지금까지 쌓인 보상은 리워드에 더한 리저브 보상과 같다');
+  assert.match(await page.locator('[aria-labelledby="reward-history-title"]').innerText(), /리저브 보상/, '리저브 보상은 리워드 내역에 날짜별로 남는다');
   await page.screenshot({ path: new URL('aqua-benefits.png', artifacts).pathname, fullPage: true });
+  // Nothing is claimed, so the accrual is not a transaction; demo-setting notes are not either.
+  const notListed = /리저브 보상|하루 지나기 체험|보상률 변경/;
+  await nav('home');
+  assert.doesNotMatch(await page.locator('.home-activity').innerText(), notListed, '저절로 쌓이는 보상과 체험 설정 기록은 최근 거래에 없다');
+  await nav('activity');
+  assert.doesNotMatch(await page.locator('.activity-page').innerText(), notListed, '거래 내역에도 없다');
   await nav('reserve');
   assert.equal(await page.locator('.reserve-live .live-rate').innerText(), `연 ${percentText(reserveTermsOf(await read()).rate)}`);
   await page.screenshot({ path: new URL('aqua-reserve.png', artifacts).pathname, fullPage: true });
-  pass('접힌 체험 설정·하루 적립·보상률 변경 구간·받기 없이 리워드에 더해지는 리저브 보상');
+  pass('접힌 체험 설정·하루 적립·보상률 변경 구간·받기 없이 리워드에 더해지고 리워드 내역에만 남는 리저브 보상');
 
   const beforeReload = await read();
   await page.reload({ waitUntil: 'networkidle' });
@@ -726,9 +768,9 @@ try {
   await primaryFlow.getByTestId('card-identity-consent').check();
   await primaryFlow.getByTestId('card-identity-next').click();
   assert.equal(await primaryFlow.getByRole('radio').count(), 3);
-  assert.equal(await primaryFlow.getByRole('radio', { name: PLANS.standard.name }).isChecked(), true, '처음 고른 멤버십은 스탠다드');
+  assert.equal(await primaryFlow.getByRole('radio', { name: PLANS.standard.short }).isChecked(), true, '처음 고른 멤버십은 스탠다드');
   assert.equal(await primaryFlow.getByTestId('card-physical-choice').isChecked(), false, '스탠다드는 가상카드만 받을 수 있다');
-  await primaryFlow.getByRole('radio', { name: PLANS.premium.name }).check();
+  await primaryFlow.getByRole('radio', { name: PLANS.premium.short }).check();
   assert.equal(await primaryFlow.getByTestId('card-physical-choice').count(), 0, '프리미엄은 실물카드 선택지가 없다');
   assert.match(await primaryFlow.locator('.cf-included').innerText(), new RegExp(`${PLANS.premium.card}가 함께 나와요`));
   assert.equal(await primaryFlow.getByTestId('card-selection-next').isDisabled(), true, '프리미엄은 카드를 받을 주소가 있어야 다음으로 간다');
@@ -741,7 +783,7 @@ try {
   assert.match(await primaryFlow.locator('.cf-summary').innerText(), new RegExp(`가상카드와 ${PLANS.premium.card}`));
   if (premiumApplicationFee <= startSpend) assert.equal(await primaryFlow.getByTestId('card-fee-shortfall').count(), 0, '잔액으로 낼 수 있으면 부족 안내가 없다');
   await primaryFlow.getByRole('button', { name: '이전', exact: true }).click();
-  await primaryFlow.getByRole('radio', { name: PLANS.private.name }).check();
+  await primaryFlow.getByRole('radio', { name: PLANS.private.short }).check();
   assert.equal(await primaryFlow.getByTestId('card-physical-choice').count(), 0, '프라이빗은 실물카드 선택지가 없다');
   assert.match(await primaryFlow.locator('.cf-included').innerText(), new RegExp(`${PLANS.private.card}가 함께 나와요`));
   await primaryFlow.getByTestId('card-selection-next').click();
@@ -772,7 +814,7 @@ try {
   assert.equal(primaryState.transactions.find((item) => item.title === '카드 신청 비용').amount, -privateApplicationFee);
   assert.ok(primaryState.card.billingAt > Date.now() + 364 * DAY_MS && primaryState.card.billingAt < Date.now() + 367 * DAY_MS, '1년 뒤 같은 날 갱신한다');
   assert.match(await primary.getByTestId('card-billing-date').innerText(), /^\d{4}년 \d{1,2}월 \d{1,2}일$/);
-  assert.match(await primary.getByTestId('card-plan').innerText(), new RegExp(`${PLANS.private.short} · 페이백 ${pattern(percentText(PLANS.private.cashbackRate))} · 월 ${pattern(wonText(PLANS.private.cashbackCap))}까지 · 리저브 \\+${pattern(percentText(PLANS.private.reserveBonus))}p`));
+  assert.match(await primary.getByTestId('card-plan').innerText(), new RegExp(`${PLANS.private.short}\\s+페이백 ${pattern(percentText(PLANS.private.cashbackRate))}\\s+월 ${pattern(wonText(PLANS.private.cashbackCap))}까지\\s+리저브 \\+${pattern(percentText(PLANS.private.reserveBonus))}p`));
   assert.equal(await primary.getByTestId('card-demo-tools').evaluate((item) => item.open), false);
   await details('card-demo-tools', true, primary);
   assert.equal(await primary.getByTestId('card-demo-shipped').count(), 1, `${PLANS.private.card} 배송을 체험할 수 있다`);
@@ -1642,7 +1684,7 @@ try {
   assert.equal(lifeState.spend, spendBeforeUpgrade - premiumFee, '올리면 연회비를 바로 낸다');
   assert.ok(lifeState.card.billingAt > Date.now() + 364 * DAY_MS, '다음 갱신일은 1년 뒤');
   assert.equal(lifeState.transactions.find((item) => item.title === `${PLANS.premium.short} 연회비`).amount, -premiumFee);
-  assert.match(await life.getByTestId('card-plan').innerText(), new RegExp(`${PLANS.premium.short} · 페이백 ${pattern(percentText(PLANS.premium.cashbackRate))} · 월 ${pattern(wonText(PLANS.premium.cashbackCap))}까지 · 리저브 \\+${pattern(percentText(PLANS.premium.reserveBonus))}p`));
+  assert.match(await life.getByTestId('card-plan').innerText(), new RegExp(`${PLANS.premium.short}\\s+페이백 ${pattern(percentText(PLANS.premium.cashbackRate))}\\s+월 ${pattern(wonText(PLANS.premium.cashbackCap))}까지\\s+리저브 \\+${pattern(percentText(PLANS.premium.reserveBonus))}p`));
   assert.deepEqual([lifeState.card.physicalPlan, lifeState.card.replacement], ['standard', { plan: 'premium', delivery: 'preparing' }], '쓰던 실물카드는 그대로 두고 메탈 카드를 새로 보낸다');
   const replacementBlock = life.getByTestId('card-replacement');
   assert.match(await replacementBlock.innerText(), new RegExp(`새 ${PLANS.premium.card}[\\s\\S]*만드는 중[\\s\\S]*받을 때까지 지금 카드를 그대로 써요`));
@@ -1776,6 +1818,35 @@ try {
   await life.keyboard.press('Escape');
   pass('비밀번호 변경·광고성 정보 수신 동의 날짜·자주 묻는 질문·약관·탈퇴 전 정리 안내');
   await lifeContext.close();
+
+  // The two-card hero renders live: a press tilts it toward that side, release springs back; reduced motion keeps the still image.
+  const heroContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
+  const heroPage = await heroContext.newPage();
+  observe(heroPage);
+  await heroPage.goto(base, { waitUntil: 'networkidle' });
+  const hero = heroPage.locator('.card-hero');
+  await heroPage.locator('.card-hero.live .card-hero-canvas').waitFor();
+  assert.equal(await hero.locator('img').getAttribute('alt'), 'Aqua 카드 두 장', '실시간 렌더링 중에도 그림 설명은 남는다');
+  assert.equal(await hero.getAttribute('data-tilt'), '0.00 0.00');
+  const heroBox = await hero.boundingBox();
+  const touchInput = await heroContext.newCDPSession(heroPage);
+  const touchHero = (type, fx = 0, fy = 0) => touchInput.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: heroBox.x + heroBox.width * fx, y: heroBox.y + heroBox.height * fy }] });
+  await touchHero('touchStart', 0.95, 0.5);
+  await heroPage.waitForFunction(() => Number(document.querySelector('.card-hero').dataset.tilt.split(' ')[0]) > 0.8);
+  await touchHero('touchMove', 0.05, 0.95);
+  await heroPage.waitForFunction(() => { const [x, y] = document.querySelector('.card-hero').dataset.tilt.split(' ').map(Number); return x < -0.8 && y > 0.8; });
+  await touchHero('touchEnd');
+  await heroPage.waitForFunction(() => document.querySelector('.card-hero').dataset.tilt === '0.00 0.00', null, { timeout: 3_000 });
+  assert.equal(await heroPage.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), 0, '카드가 그려지는 영역이 화면 밖으로 넘치지 않는다');
+  await heroContext.close();
+  const stillContext = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', locale: 'ko-KR' });
+  const stillPage = await stillContext.newPage();
+  observe(stillPage);
+  await stillPage.goto(base, { waitUntil: 'networkidle' });
+  await stillPage.waitForTimeout(500);
+  assert.equal(await stillPage.locator('.card-hero.live, .card-hero-canvas').count(), 0, '모션 줄이기에서는 정지 이미지만 보여 준다');
+  await stillContext.close();
+  pass('3D 카드 히어로: 실시간 렌더링, 누른 쪽으로 기울었다 놓으면 돌아옴, 모션 줄이기에서는 정지 이미지');
 
   assert.deepEqual(errors, [], '브라우저 실행 오류');
   assert.deepEqual([...new Set(external)], [], 'PoC는 외부 금융·폰트 요청을 하지 않는다');

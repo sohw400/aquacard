@@ -40,7 +40,7 @@ export interface KycAnswers {
   source: string;
 }
 
-/** Created once the email code, phone check, ID and face checks and the customer questions (KYC) all pass. */
+/** Created once the email code, phone check, ID and face checks, 1원 account check and the customer questions (KYC) all pass. */
 export interface Account {
   email: string;
   passwordHash: string;

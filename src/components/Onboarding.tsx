@@ -1,16 +1,16 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Check, ChevronLeft } from 'lucide-react';
+import CardHero from './CardHero';
 import Logo from './Logo';
 import { EMAIL_PATTERN } from '../lib/engine';
-import { CARRIERS, demoCode, FUND_SOURCES, hashPassword, ID_TYPES, OCCUPATIONS, passwordIssue, PURPOSES } from '../lib/auth';
+import { BANKS, CARRIERS, demoCode, FUND_SOURCES, hashPassword, ID_TYPES, OCCUPATIONS, passwordIssue, PURPOSES } from '../lib/auth';
 import type { Action, AppState, KycAnswers } from '../lib/types';
-import heroCards from '../assets/aqua-cards.webp';
 import './Onboarding.css';
 
-type Screen = 'welcome' | 'account' | 'phone' | 'identity' | 'questions' | 'review' | 'login' | 'reset';
+type Screen = 'welcome' | 'account' | 'phone' | 'identity' | 'bank' | 'questions' | 'review' | 'login' | 'reset';
 type Scan = 'none' | 'checking' | 'done';
-const SIGNUP_STEPS: [Screen, string][] = [['account', '계정'], ['phone', '휴대폰'], ['identity', '신분증'], ['questions', '고객확인']];
-const SAMPLE = { email: 'demo@aqua.example', name: '아쿠아 사용자', birth: '19950412', phone: '01012345678' };
+const SIGNUP_STEPS: [Screen, string][] = [['account', '계정'], ['phone', '휴대폰'], ['identity', '신분증'], ['bank', '계좌'], ['questions', '고객확인']];
+const SAMPLE = { email: 'demo@aqua.example', name: '아쿠아 사용자', birth: '19950412', phone: '01012345678', bank: '신한은행', account: '123456789012' };
 const SCAN_MS = 700;
 
 function useScan(state: Scan, done: () => void) {
@@ -30,7 +30,29 @@ function CheckText({ steps, current, done }: { steps: string[]; current: number;
   return <p className="onboarding-check-text">{steps.map((text, index) => <span key={index} className={index === current ? undefined : 'reserve'} aria-hidden={index === current ? undefined : true}>{text}</span>)}</p>;
 }
 
-/** Sign-up with KYC, sign-in and password reset. Codes are shown on screen because the demo sends no mail or SMS. */
+const bankDate = (timestamp: number) => {
+  const parts = new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', timeZone: 'Asia/Seoul' }).formatToParts(timestamp);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('month')}.${part('day')}`;
+};
+
+/**
+ * A bank app's history with the 1원 deposit on top and the four digits to type marked. Before sending it is an example;
+ * after, the demo shows its own code here because it sends nothing. The real app keeps the example and never shows the code.
+ */
+function BankGuide({ code, now }: { code: string | null; now: number }) {
+  const digits = code ?? '1234';
+  return <figure className="bank-guide" data-testid="kyc-bank-guide">
+    <div className="bank-guide-screen" role="img" aria-label={`은행 앱 입출금 내역${code ? '' : ' 예시'}: 입금자명 아쿠아 ${digits}, 1원 입금`}>
+      <p className="bank-guide-head"><span>입출금 내역</span>{!code && <span>예시</span>}</p>
+      <p className="bank-guide-row current"><span>{bankDate(now)}</span><span>아쿠아 <mark data-testid={code ? 'kyc-bank-demo-code' : undefined}>{digits}</mark></span><strong>+1원</strong></p>
+      <p className="bank-guide-row"><span>{bankDate(now - 86_400_000)}</span><span>편의점</span><strong>−3,200원</strong></p>
+    </div>
+    <figcaption>{code ? '체험판이라 1원은 보내지 않고 은행 앱에 찍힐 내역을 여기 보여 드려요.' : '1원이 들어오면 입금자명 뒤 숫자 4자리를 넣으면 돼요.'}</figcaption>
+  </figure>;
+}
+
+/** Sign-up with KYC, sign-in and password reset. Codes are shown on screen because the demo sends no mail, SMS or 1원 transfer. */
 export default function Onboarding({ state, dispatch }: { state: AppState; dispatch: (action: Action) => AppState }) {
   const [screen, setScreen] = useState<Screen>(state.account ? 'login' : 'welcome');
   const [error, setError] = useState('');
@@ -58,6 +80,12 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
   const [idType, setIdType] = useState<KycAnswers['idType']>('resident');
   const [idScan, setIdScan] = useState<Scan>('none');
   const [faceScan, setFaceScan] = useState<Scan>('none');
+  // 1원 account check: proves the holder is the person verified above; the account is never used for money.
+  const [bank, setBank] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+  const [bankCode, setBankCode] = useState<string | null>(null);
+  const [bankInput, setBankInput] = useState('');
+  const bankVerified = bankCode !== null && bankInput === bankCode;
   const [occupation, setOccupation] = useState('');
   const [purpose, setPurpose] = useState('');
   const [source, setSource] = useState('');
@@ -90,6 +118,11 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
     if (age < 19) { setError('만 19세 이상만 가입할 수 있어요.'); return; }
     if (!/^01[016789]\d{7,8}$/.test(phone)) { setError('휴대폰 번호를 확인해 주세요.'); return; }
     setPhoneCode(demoCode()); setPhoneInput(''); setError('');
+  }
+  function sendBankCode() {
+    if (!bank) { setError('은행을 골라 주세요.'); return; }
+    if (!/^\d{10,14}$/.test(bankAccount)) { setError('계좌번호 10~14자리를 확인해 주세요.'); return; }
+    setBankCode(demoCode(4)); setBankInput(''); setError('');
   }
 
   async function finishSignup() {
@@ -127,6 +160,8 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
   const progress = stepIndex >= 0 && <div className="onboarding-progress"><div className="onboarding-bars" aria-hidden="true">{SIGNUP_STEPS.map(([key], index) => <span key={key} className={index <= stepIndex ? 'filled' : ''} />)}</div><p>가입 {stepIndex + 1}/{SIGNUP_STEPS.length} · {SIGNUP_STEPS[stepIndex][1]}</p></div>;
   const errorBox = error && <p className="form-error" role="alert">{error}</p>;
   const field = (key: string, label: string, input: ReactNode, aside?: ReactNode) => <div className="form-field"><div className="onboarding-label-row"><label htmlFor={id(key)}>{label}</label>{aside}</div>{input}</div>;
+  const select = (key: string, label: string, value: string, options: readonly string[], set: (value: string) => void, disabled = false) => field(key, label,
+    <select id={id(key)} data-testid={`kyc-${key}`} value={value} disabled={disabled} onChange={(event) => { set(event.target.value); setError(''); }}><option value="" disabled>선택해 주세요</option>{options.map((item) => <option key={item} value={item}>{item}</option>)}</select>);
   const back = (target: Screen, label = '이전') => <button type="button" className="onboarding-back" onClick={() => go(target)}><ChevronLeft size={18} />{label}</button>;
   const emailBlock = (prefix: 'signup' | 'reset') => <>
     {field(`${prefix}-email`, '이메일', <input id={id(`${prefix}-email`)} data-testid={`${prefix}-email`} type="email" inputMode="email" autoComplete="email" value={email} placeholder="name@example.com" disabled={emailVerified} onChange={(event) => { setEmail(event.target.value); setEmailCode(null); setError(''); }} />,
@@ -147,7 +182,7 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
   let body: ReactNode;
   if (screen === 'welcome') {
     body = <div className="onboarding-form welcome">
-      <img className="onboarding-hero" src={heroCards} width={960} height={630} alt="Aqua 카드 두 장" />
+      <CardHero className="onboarding-hero" alt="Aqua 카드 두 장" />
       <h1 ref={heading} tabIndex={-1}>코인을 보내면<br />원화로 쓰는 카드</h1>
       <p className="onboarding-lead">받은 코인은 바로 원화 스테이블 잔액이 돼요. 카드로 쓸&nbsp;때마다 1%를 돌려받고, 리저브에 둔 돈에는 1초마다 보상이 쌓여요.</p>
       <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="auth-signup" onClick={() => go('account')}>시작하기</button><button type="button" className="btn neutral block" data-testid="auth-login" onClick={() => go('login')}>로그인</button></div>
@@ -197,14 +232,29 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
         <CheckText current={faceScan === 'checking' ? 2 : idScan === 'done' ? 1 : 0} steps={['신분증부터 찍어 주세요.', '안내에 따라 고개를 천천히 돌려 주세요.', '얼굴을 맞춰 보고 있어요.']} done={faceScan === 'done' ? '신분증 사진과 같은 사람이에요.' : null} />
       </div>
       <p className="onboarding-hint">체험판이라 카메라는 켜지 않고 과정만 보여 드려요.</p>
-      <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="kyc-id-next" disabled={idScan !== 'done' || faceScan !== 'done'} onClick={() => go('questions')}>다음</button></div>
+      <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="kyc-id-next" disabled={idScan !== 'done' || faceScan !== 'done'} onClick={() => go('bank')}>다음</button></div>
     </div>;
+  } else if (screen === 'bank') {
+    body = <form className="onboarding-form" noValidate onSubmit={(event) => { event.preventDefault(); if (bankVerified) go('questions'); }}>
+      {back('identity')}
+      <h1 ref={heading} tabIndex={-1}>본인 계좌 확인</h1>
+      <p className="onboarding-lead">본인 확인용으로 1원을 보내요. 이 계좌로 돈을 주고받지는 않아요.</p>
+      {select('bank', '은행', bank, BANKS, (value) => { setBank(value); setBankCode(null); }, bankVerified)}
+      {field('account', '계좌번호', <input id={id('account')} data-testid="kyc-account" inputMode="numeric" autoComplete="off" maxLength={14} placeholder="숫자만 입력" value={bankAccount} disabled={bankVerified} onChange={(event) => { setBankAccount(event.target.value.replace(/\D/g, '')); setBankCode(null); setError(''); }} />,
+        bankVerified ? <span className="onboarding-done" data-testid="kyc-bank-verified"><Check size={15} strokeWidth={2.6} />인증 완료</span>
+          : <button type="button" className="onboarding-text-button" data-testid="kyc-bank-sample" onClick={() => { setBank(SAMPLE.bank); setBankAccount(SAMPLE.account); setBankCode(null); setError(''); }}>샘플 계좌 채우기</button>)}
+      <p className="onboarding-hint" data-testid="kyc-bank-hint">예금주가 {name.trim()}님인 계좌만 확인할 수 있어요.<br />실제 계좌는 넣지 말고 샘플 계좌를 써&nbsp;주세요.</p>
+      {!bankVerified && <BankGuide code={bankCode} now={Date.now() + state.clockOffsetMs} />}
+      {!bankVerified && (bankCode ? <>
+        {field('bank-code', '입금자명 숫자 4자리', <input id={id('bank-code')} data-testid="kyc-bank-code" inputMode="numeric" autoComplete="off" maxLength={4} value={bankInput} onChange={(event) => setBankInput(event.target.value.replace(/\D/g, ''))} />, <button type="button" className="onboarding-text-button" onClick={sendBankCode}>다시 보내기</button>)}
+      </> : <button type="button" className="btn neutral block" data-testid="kyc-bank-send" onClick={sendBankCode}>1원 보내기</button>)}
+      {errorBox}
+      <div className="onboarding-actions"><button type="submit" className="btn primary block" data-testid="kyc-bank-next" disabled={!bankVerified}>다음</button></div>
+    </form>;
   } else if (screen === 'questions') {
-    const select = (key: string, label: string, value: string, options: readonly string[], set: (value: string) => void) => field(key, label,
-      <select id={id(key)} data-testid={`kyc-${key}`} value={value} onChange={(event) => { set(event.target.value); setError(''); }}><option value="" disabled>선택해 주세요</option>{options.map((item) => <option key={item} value={item}>{item}</option>)}</select>);
     const ready = occupation && purpose && source && consent;
     body = <form className="onboarding-form" noValidate onSubmit={(event) => { event.preventDefault(); if (ready) { setReview('checking'); go('review'); } }}>
-      {back('identity')}
+      {back('bank')}
       <h1 ref={heading} tabIndex={-1}>몇 가지만 여쭤볼게요</h1>
       <p className="onboarding-lead">가상자산을 다루는 서비스라 법에 따라 거래 목적과 자금&nbsp;출처를 확인해요.</p>
       {select('occupation', '직업', occupation, OCCUPATIONS, setOccupation)}
@@ -251,7 +301,7 @@ export default function Onboarding({ state, dispatch }: { state: AppState; dispa
       <div className="onboarding-brand"><Logo size={30} /><span className="demo-tag">체험판</span></div>
       {progress}
       {body}
-      <p className="onboarding-note">체험판이에요. 실제 이름, 휴대폰 번호, 신분증 정보는 넣지 마세요. 입력한 내용은 이&nbsp;브라우저에만 남고 비밀번호는 해시로만 저장돼요.</p>
+      <p className="onboarding-note">체험판이에요. 실제 이름, 휴대폰 번호, 신분증, 계좌&nbsp;정보는 넣지 마세요. 입력한 내용은 이&nbsp;브라우저에만 남고 비밀번호는 해시로만 저장돼요.</p>
     </div>
   </main>;
 }

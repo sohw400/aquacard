@@ -20,6 +20,7 @@ const chosen = process.argv.slice(2).filter((name) => PROFILES[name]);
 const PASSWORD = 'aqua2026pass';
 const NEW_PASSWORD = 'aqua2027pass';
 const sixDigits = async (locator) => (await locator.innerText()).match(/\d{6}/)[0];
+const fourDigits = async (locator) => (await locator.innerText()).match(/\d{4}/)[0];
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium',
@@ -184,6 +185,15 @@ async function audit(profileName, profile) {
     await tid(page, 'kyc-face-done').waitFor();
     await shot(page, 'signup-identity-done');
     await tid(page, 'kyc-id-next').click();
+    await shot(page, 'signup-bank');
+    await tid(page, 'kyc-bank-send').click();
+    await shot(page, 'signup-bank-error');
+    await tid(page, 'kyc-bank-sample').click();
+    await tid(page, 'kyc-bank-send').click();
+    await shot(page, 'signup-bank-code');
+    await tid(page, 'kyc-bank-code').fill(await fourDigits(tid(page, 'kyc-bank-demo-code')));
+    await shot(page, 'signup-bank-verified');
+    await tid(page, 'kyc-bank-next').click();
     await shot(page, 'signup-questions');
     await tid(page, 'kyc-occupation').selectOption('회사원');
     await tid(page, 'kyc-purpose').selectOption('카드 결제');
@@ -204,9 +214,6 @@ async function audit(profileName, profile) {
   await section('pages', async (use) => {
     const page = use(await open('new'));
     await shot(page, 'home');
-    await tid(page, 'open-guide').click();
-    await shot(page, 'dialog-guide');
-    await closeSheet(page);
     await nav(page, 'card');
     await shot(page, 'card-intro');
     await nav(page, 'benefits');

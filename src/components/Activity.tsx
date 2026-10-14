@@ -1,6 +1,6 @@
 import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, CreditCard, Percent, RefreshCw, RotateCcw, Waves, type LucideIcon } from 'lucide-react';
 import CoinIcon from './CoinIcon';
-import { dayLabel, money, shortDate, timeLabel } from '../lib/format';
+import { dateLabel, dayLabel, money, monthDay, shortDate, timeLabel } from '../lib/format';
 import type { AppState, FundingOperation, FundingSymbol, Payment, Transaction } from '../lib/types';
 
 export type Tone = '' | 'accent' | 'warning' | 'danger';
@@ -9,6 +9,13 @@ const ICONS: Record<Transaction['kind'], LucideIcon> = {
   deposit: ArrowDownLeft, transfer: ArrowLeftRight, convert: RefreshCw, payment: CreditCard,
   refund: RotateCcw, reward: Waves, payback: Percent, rate: Percent, card: CreditCard,
 };
+
+/**
+ * Lines for the transaction lists (recent on home and 거래 내역): money something moved. Reserve rewards credit
+ * themselves every second with nothing to claim, so their daily line lives in 혜택 › 리워드 내역 and the yearly
+ * statement instead, and demo-setting notes are not transactions at all.
+ */
+export const listedTransactions = (transactions: Transaction[]) => transactions.filter((item) => item.kind !== 'reward' && item.kind !== 'rate');
 
 export function statusOf(item: Transaction): [string, Tone] | null {
   if (item.status === 'pending') return [item.fundingId ? '처리 중' : '승인 중', 'accent'];
@@ -56,16 +63,19 @@ export function ActivityList({ items, onRefund, payments, operations, onFunding,
 
 /** Credits from paybacks and Reserve, and what card payments took out of rewards. */
 export function RewardHistory({ state }: { state: AppState }) {
+  const today = dateLabel(Date.now() + state.clockOffsetMs);
   const credits = state.transactions.filter((item) => (item.kind === 'payback' || item.kind === 'reward') && item.amount > 0).map((item) => {
     const payment = item.paymentId ? state.payments.find((value) => value.id === item.paymentId) : undefined;
-    return { id: item.id, title: item.title, detail: payment?.refunded ? '환불 조정 반영' : '', amount: payment ? payment.cashback - payment.cashbackReversed : item.amount, timestamp: item.timestamp, use: false };
+    // A Reserve line is the day's running total, not a payout at one moment, so it shows the date only.
+    if (item.kind === 'reward') return { id: item.id, title: item.title, when: monthDay(item.timestamp), detail: dateLabel(item.timestamp) === today ? '오늘 쌓이는 중' : '하루 동안 쌓인 보상', amount: item.amount, timestamp: item.timestamp, use: false };
+    return { id: item.id, title: item.title, when: shortDate(item.timestamp), detail: payment?.refunded ? '환불 조정 반영' : '', amount: payment ? payment.cashback - payment.cashbackReversed : item.amount, timestamp: item.timestamp, use: false };
   });
   const uses = state.payments.filter((payment) => payment.fromRewards > 0).map((payment) => ({
-    id: `${payment.id}-rewards`, title: `${payment.merchant} 결제에 사용`,
+    id: `${payment.id}-rewards`, title: `${payment.merchant} 결제에 사용`, when: shortDate(payment.timestamp),
     detail: payment.refunded ? '환불로 돌려받음' : payment.status === 'pending' ? '승인 중' : '',
     amount: -(payment.fromRewards - payment.rewardsRestored), timestamp: payment.timestamp, use: true,
   }));
   const items = [...credits, ...uses].sort((a, b) => b.timestamp - a.timestamp).slice(0, 8);
   if (!items.length) return <p className="empty-text">결제하면 페이백이 여기에 쌓여요.</p>;
-  return <div className="plain-list">{items.map((item) => <div className="plain-row" key={item.id}><span className="row-main"><strong>{item.title}</strong><span>{shortDate(item.timestamp)}{item.detail && ` · ${item.detail}`}</span></span><strong className={`row-value${item.use ? '' : ' positive'}`}>{signed(item.amount, true)}</strong></div>)}</div>;
+  return <div className="plain-list">{items.map((item) => <div className="plain-row" key={item.id}><span className="row-main"><strong>{item.title}</strong><span>{item.when}{item.detail && ` · ${item.detail}`}</span></span><strong className={`row-value${item.use ? '' : ' positive'}`}>{signed(item.amount, true)}</strong></div>)}</div>;
 }
