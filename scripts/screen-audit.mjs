@@ -618,6 +618,22 @@ async function audit(profileName, profile) {
     await shot(page, 'card-downgrade-scheduled');
     await nav(page, 'settings');
     await shot(page, 'settings-premium');
+    // What is left of the Premium fee: taken off an upgrade, given back on closing.
+    await nav(page, 'card');
+    await tid(page, 'card-plan-private').click();
+    await shot(page, 'plan-upgrade-private-credit');
+    await closeSheet(page);
+    await tid(page, 'card-close').click();
+    await shot(page, 'close-sheet-refund');
+    await closeSheet(page);
+    // Renewal notices from 30 days before: the scheduled Standard, then Premium again with a short balance.
+    await openDetails(tid(page, 'card-demo-tools'));
+    await tid(page, 'card-demo-notice').click();
+    await shot(page, 'card-renewal-downgrade');
+    await tid(page, 'card-plan-keep').click();
+    await shot(page, 'card-renewal-short');
+    await nav(page, 'home');
+    await shot(page, 'home-renewal-short');
     await save(page, 'premium');
     return page;
   });

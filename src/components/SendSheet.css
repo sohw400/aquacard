@@ -34,6 +34,7 @@
 .send-sheet .send-search-field { gap: 8px; }
 .send-sheet .send-search-field > span { display: grid; place-items: center; }
 .send-sheet .send-demo-note { margin: 10px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
+.send-sheet .send-limit { margin: 14px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
 .send-sheet .send-scan-lead { margin: 0 0 16px; color: var(--subtle); font-size: 14px; line-height: 1.6; }
 .send-sheet .send-qr-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; margin: 0; padding: 0 0 4px; list-style: none; }
 .send-sheet .send-qr-list button { display: grid; justify-items: center; gap: 4px; width: 100%; min-height: 44px; padding: 4px 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); text-align: center; cursor: pointer; transition: border-color .15s; }

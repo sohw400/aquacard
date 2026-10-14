@@ -233,6 +233,52 @@ export const RESERVE_REWARD_TITLE = '리저브 보상';
 const KST_OFFSET_MS = 9 * 60 * 60 * 1_000;
 const fullDate = (timestamp: number) => new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Seoul' }).format(timestamp);
 const wonText = (value: number) => `${value.toLocaleString('ko-KR')}원`;
+const kstDay = (timestamp: number) => Math.floor((timestamp + KST_OFFSET_MS) / DAY_MS);
+const kstMonth = (timestamp: number) => { const date = new Date(timestamp + KST_OFFSET_MS); return date.getUTCFullYear() * 12 + date.getUTCMonth(); };
+/** Calendar days in Korea from one moment to a later one: 0 on the same date, 1 for the next day. */
+export const daysUntil = (from: number, to: number) => kstDay(to) - kstDay(from);
+
+export interface MemberSendRoom {
+  perTransfer: number;
+  daily: number;
+  monthly: number;
+  /** Why the limits are half: the first days after sign-up, or an account with extra checks. */
+  reduced: 'new' | 'high' | null;
+  /** When a new account's limits go up to the full amounts. */
+  fullFrom: number | null;
+  sentToday: number;
+  sentMonth: number;
+  /** The most one send can be now, before the balance. */
+  max: number;
+}
+
+/** The member send limits and what is left of them, counted by Korean day and month like the card limits. */
+export function memberSendRoom(state: Pick<AppState, 'account' | 'transactions'>, now: number): MemberSendRoom {
+  const account = state.account;
+  const until = account ? account.verifiedAt + POLICY.newAccountDays * DAY_MS : null;
+  const reduced = account?.risk === 'high' ? 'high' : until !== null && now < until ? 'new' : null;
+  const share = reduced ? 2 : 1;
+  const perTransfer = POLICY.memberSendPerTransfer / share, daily = POLICY.memberSendDaily / share, monthly = POLICY.memberSendMonthly / share;
+  const day = kstDay(now), month = kstMonth(now);
+  let sentToday = 0, sentMonth = 0;
+  for (const item of state.transactions) {
+    if (item.kind !== 'transfer' || !item.member || item.amount >= 0 || kstMonth(item.timestamp) !== month) continue;
+    sentMonth -= item.amount;
+    if (kstDay(item.timestamp) === day) sentToday -= item.amount;
+  }
+  return { perTransfer, daily, monthly, reduced, fullFrom: reduced === 'new' ? until : null, sentToday, sentMonth,
+    max: Math.max(0, Math.min(perTransfer, daily - sentToday, monthly - sentMonth)) };
+}
+
+/** Which member send limit an amount goes over, worded for the holder; empty when it fits. */
+export function memberSendIssue(room: MemberSendRoom, amount: number): string {
+  const today = room.daily - room.sentToday, month = room.monthly - room.sentMonth;
+  if (amount > room.perTransfer) return `한 번에 ${manWon(room.perTransfer)}까지 보낼 수 있어요.`;
+  // Less than the smallest send left counts as used up.
+  if (amount > today && today <= month) return today < POLICY.minimumTopup ? '오늘 보낼 수 있는 한도를 다 썼어요. 내일 다시 보내 주세요.' : `오늘은 ${wonText(today)}까지 더 보낼 수 있어요.`;
+  if (amount > month) return month < POLICY.minimumTopup ? '이번 달 보낼 수 있는 한도를 다 썼어요. 다음 달 1일부터 다시 보낼 수 있어요.' : `이번 달은 ${wonText(month)}까지 더 보낼 수 있어요.`;
+  return '';
+}
 
 /** Same date next year in Korea; 29 February becomes 28 February. */
 export function addYear(timestamp: number): number {
@@ -294,6 +340,60 @@ export function upgradePhysical(card: CardState, plan: Plan): { patch: Partial<C
   const stopped = card.replacement && card.replacement.delivery !== 'preparing' ? ` 보내던 ${josa(physicalCardName(card.replacement.plan), '은', '는')} 쓸 수 없게 막았어요.` : '';
   const where = card.address ? `${ro(addressLine(card.address))} ` : '';
   return { patch: { replacement: { plan, delivery: 'preparing' } }, note: `${stopped} ${josa(name, '을', '를')} ${where}새로 보내 드려요. 받을 때까지 지금 카드를 그대로 쓰면 돼요.` };
+}
+
+/**
+ * The part of this year's membership fee not yet used, given back on closing and taken off an upgrade: the fee times the
+ * days left out of 365, counting today and stopping the day before renewal, rounded down to the won.
+ */
+export function unusedAnnualFee(card: Pick<CardState, 'stage' | 'plan' | 'billingAt'>, now: number): { amount: number; days: number } {
+  const fee = PLANS[card.plan].annualFee;
+  if (card.stage !== 'active' || !fee || card.billingAt === null || card.billingAt <= now) return { amount: 0, days: 0 };
+  const days = Math.min(365, daysUntil(now, card.billingAt));
+  return { amount: Math.floor(fee * days / 365), days };
+}
+
+export interface RenewalNotice {
+  due: number;
+  /** Calendar days until then in Korea; 0 is today. */
+  days: number;
+  /** The membership from that day: the one scheduled, or the same one again. */
+  plan: Plan;
+  /** A lower membership was scheduled for that day. */
+  scheduled: boolean;
+  fee: number;
+  /** What the spend balance lacks for that fee. Still short on the day, the membership drops to Standard. */
+  short: number;
+}
+
+/** What the holder is told from 30 days before a paid membership renews; null outside that window. */
+export function renewalNotice(state: Pick<AppState, 'card' | 'spend'>, now: number): RenewalNotice | null {
+  const card = state.card;
+  if (card.stage !== 'active' || card.billingAt === null || !PLANS[card.plan].annualFee) return null;
+  const days = daysUntil(now, card.billingAt);
+  if (days > POLICY.renewalNoticeDays[0]) return null;
+  const plan = card.nextPlan ?? card.plan;
+  const fee = PLANS[plan].annualFee;
+  return { due: card.billingAt, days: Math.max(0, days), plan, scheduled: card.nextPlan !== null, fee, short: Math.max(0, fee - state.spend) };
+}
+
+/** The notice in words: what happens when, then what the holder can do about it. */
+export function renewalMessage(notice: RenewalNotice): { title: string; detail: string } {
+  const when = notice.days === 0 ? '오늘' : notice.days === 1 ? '내일' : `${notice.days}일 뒤`;
+  const name = PLANS[notice.plan].short;
+  const title = !notice.fee ? `${when} ${ro(name)} 바뀌어요`
+    : notice.scheduled ? `${when} ${ro(name)} 바뀌고 연회비 ${wonText(notice.fee)}이 나가요` : `${when} ${name} 연회비 ${wonText(notice.fee)}이 나가요`;
+  const detail = !notice.fee ? `${fullDate(notice.due)}부터 연회비가 나가지 않아요.`
+    : notice.short ? `잔액이 ${wonText(notice.short)} 부족해요. 그때까지 충전하지 않으면 스탠다드로 바뀌어요.`
+      : `${fullDate(notice.due)}에 잔액에서 내요. 갱신하지 않으려면 그 전에 스탠다드로 바꿔 주세요.`;
+  return { title, detail };
+}
+
+/** The next notice still ahead, 30 then 7 days before renewal, for the demo's time jump. */
+export function nextRenewalNotice(card: Pick<CardState, 'stage' | 'billingAt'>, now: number): { at: number; days: number } | null {
+  const due = card.stage === 'active' ? card.billingAt : null;
+  const days = due === null ? undefined : POLICY.renewalNoticeDays.find((item) => due - item * DAY_MS > now);
+  return due === null || days === undefined ? null : { at: due - days * DAY_MS, days };
 }
 
 /** Paid memberships renew yearly from the spend balance. A scheduled lower tier starts that day; a short balance drops to Standard. */
@@ -531,6 +631,8 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       if (!member) throw new Error('받을 회원을 찾지 못했어요. 태그를 다시 확인해 주세요.');
       integer(action.amount, POLICY.minimumTopup);
       if (state.spend < action.amount) throw new Error('잔액이 부족해요. 보낼 금액을 줄여 주세요.');
+      const issue = memberSendIssue(memberSendRoom(state, now), action.amount);
+      if (issue) throw new Error(issue);
       state.spend -= action.amount;
       transaction(state, now, { kind: 'transfer', title: `${maskName(member.name)}님에게 보냄`, amount: -action.amount, status: 'completed', member: member.tag,
         note: `@${member.tag}에게 수수료 없이 바로 보냈어요. 체험판이라 실제로 보내지는 않아요.` });
@@ -621,12 +723,17 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
         return state;
       }
       if (rank(action.plan) > rank(card.plan)) {
-        chargeSpend(state, target.annualFee, '바꿔 주세요');
+        // The days left of the current fee come off the new one, so an upgrade never pays twice for the same days.
+        const credit = unusedAnnualFee(card, now);
+        const previous = PLANS[card.plan].short;
+        chargeSpend(state, target.annualFee - credit.amount, '바꿔 주세요');
         const billingAt = addYear(now);
         const physical = upgradePhysical(card, action.plan);
         state.card = { ...card, plan: action.plan, billingAt, nextPlan: null, ...physical.patch };
+        if (credit.amount) transaction(state, now, { kind: 'card', title: `${previous} 연회비 환불`, amount: credit.amount, status: 'completed',
+          note: `${ro(target.short)} 바꿔서 ${previous} 연회비 중 남은 ${credit.days}일 몫을 돌려드렸어요.` });
         transaction(state, now, { kind: 'card', title: `${target.short} 연회비`, amount: -target.annualFee, status: 'completed',
-          note: `${ro(target.short)} 바꿨어요. 페이백 ${target.cashbackRate * 100}%와 리저브 추가 보상이 바로 적용돼요.${PLANS[card.plan].annualFee ? ' 이전 멤버십의 남은 기간 연회비는 돌려드리지 않아요.' : ''} 다음 갱신일은 ${fullDate(billingAt)}이에요.${physical.note}` });
+          note: `${ro(target.short)} 바꿨어요. 페이백 ${target.cashbackRate * 100}%와 리저브 추가 보상이 바로 적용돼요.${credit.amount ? ` ${previous}의 남은 기간 연회비 ${wonText(credit.amount)}을 빼고 ${wonText(target.annualFee - credit.amount)}을 냈어요.` : ''} 다음 갱신일은 ${fullDate(billingAt)}이에요.${physical.note}` });
         return state;
       }
       if (card.nextPlan === action.plan) throw new Error(`${target.short} 변경은 이미 예약돼 있어요.`);
@@ -640,6 +747,14 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       state.clockOffsetMs += Math.max(0, state.card.billingAt - now);
       now = accrue(state, wallNow);
       transaction(state, now, { kind: 'rate', title: '갱신일로 이동 체험', amount: 0, status: 'completed', note: '체험 시간을 다음 멤버십 갱신일로 옮겼어요. 그동안 쌓인 리저브 보상도 리워드에 더했어요.' });
+      return state;
+    }
+    case 'ADVANCE_TO_NOTICE': {
+      const notice = nextRenewalNotice(state.card, now);
+      if (!notice) throw new Error('다가오는 갱신 안내가 없어요.');
+      state.clockOffsetMs += notice.at - now;
+      now = accrue(state, wallNow);
+      transaction(state, now, { kind: 'rate', title: `갱신 ${notice.days}일 전으로 이동 체험`, amount: 0, status: 'completed', note: `체험 시간을 멤버십 갱신 ${notice.days}일 전으로 옮겼어요. 그동안 쌓인 리저브 보상도 리워드에 더했어요.` });
       return state;
     }
     case 'ADD_PHYSICAL_CARD': {
@@ -669,9 +784,15 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
     case 'CLOSE_CARD': {
       const card = state.card;
       if (card.stage !== 'active') throw new Error('사용 중인 카드가 없어요.');
+      const plan = PLANS[card.plan];
+      const refund = unusedAnnualFee(card, now);
+      if (refund.amount) creditSpend(state, refund.amount);
       state.card = { ...createInitialState(now).card, last4: freshLast4(state, card.last4) };
+      if (refund.amount) transaction(state, now, { kind: 'card', title: `${plan.short} 연회비 환불`, amount: refund.amount, status: 'completed',
+        note: `카드를 해지해서 ${plan.short} 연회비 중 남은 ${refund.days}일 몫을 잔액으로 돌려드렸어요.` });
       transaction(state, now, { kind: 'card', title: '카드 해지', amount: 0, status: 'completed',
-        note: `끝번호 ${card.last4} 카드와 휴대폰 결제가 모두 멈췄어요. 잔액, 리저브, 리워드는 그대로 남아 있어요.${PLANS[card.plan].annualFee ? ` ${PLANS[card.plan].short} 멤버십도 끝나고, 이미 낸 연회비는 돌려드리지 않아요.` : ''}` });
+        note: `끝번호 ${card.last4} 카드와 휴대폰 결제가 모두 멈췄어요. 잔액, 리저브, 리워드는 그대로 남아 있어요.${plan.annualFee ? refund.amount
+          ? ` ${plan.short} 멤버십도 끝나서 남은 기간 연회비 ${wonText(refund.amount)}을 잔액으로 돌려드렸어요.` : ` ${plan.short} 멤버십도 끝났어요.` : ''}` });
       return state;
     }
     case 'ACTIVATE_PHYSICAL': {

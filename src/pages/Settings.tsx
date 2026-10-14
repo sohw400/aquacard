@@ -1,5 +1,6 @@
 import { NavRow, Toggle } from '../components/ui';
 import { maskEmail, maskPhone } from '../lib/auth';
+import { memberSendRoom } from '../lib/engine';
 import { dateLabel, money, percent, ro } from '../lib/format';
 import { PLANS } from '../lib/policy';
 import type { Account, AppState } from '../lib/types';
@@ -20,10 +21,12 @@ interface SettingsProps {
   onReset: () => void;
 }
 
+const manWon = (value: number) => `${(value / 10_000).toLocaleString('ko-KR')}만원`;
 const channelText = (online: boolean, overseas: boolean) => online && overseas ? '모두 허용' : !online && !overseas ? '모두 막음' : online ? '해외 막음' : '온라인 막음';
 
 export default function Settings({ state, account, cardStatus, go, onRewardsAuto, onReserveAuto, onReceive, onPassword, onSignOut, onClose, onAdvanceDay, onRate, onReset }: SettingsProps) {
   const plan = PLANS[state.card.plan];
+  const sendLimits = memberSendRoom(state, Date.now() + state.clockOffsetMs);
   return <div className="page settings-page">
     <section className="profile" aria-label="내 정보">
       <span className="avatar" aria-hidden="true">{account.name.charAt(0)}</span>
@@ -62,6 +65,7 @@ export default function Settings({ state, account, cardStatus, go, onRewardsAuto
         {state.card.billingAt !== null && <div><dt>{state.card.nextPlan ? `${ro(PLANS[state.card.nextPlan].short)} 바뀌는 날` : '다음 갱신일'}</dt><dd>{dateLabel(state.card.billingAt)}</dd></div>}
         <div><dt>충전</dt><dd>무료</dd></div>
         <div><dt>Aqua 회원에게 보내기</dt><dd>무료</dd></div>
+        <div><dt>회원에게 보내기 한도</dt><dd data-testid="settings-send-limit">하루 {manWon(sendLimits.daily)}</dd></div>
         <div><dt>지갑 주소로 보내기</dt><dd>네트워크 비용, 다른 코인은 +0.5%</dd></div>
       </dl>
     </section>
