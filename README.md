@@ -6,7 +6,7 @@ React·TypeScript·Vite로 만든 웹 앱이며 모든 자금·카드·본인확
 
 ## 실행
 
-Node.js 22.12 이상이 필요합니다.
+Node.js 24 LTS를 사용합니다.
 
 ```bash
 npm ci --no-audit --no-fund
@@ -14,6 +14,12 @@ npm run dev
 ```
 
 개발 서버는 5173번 포트를 씁니다.
+
+## 서버 연결 개발
+
+서버 기반은 **Node.js 24 LTS·Fastify 5·PostgreSQL 18**입니다. `docker compose up -d --wait postgres`로 로컬 DB를 실행하고 `.env.example`을 참고해 접속 정보를 설정한 뒤 `npm run db:migrate`, `npm run server:dev`를 실행합니다. 별도 터미널의 `npm run dev:server`에서 가입·로그인·회원 간 송금을 확인합니다. 신규 계정은 0원에서 시작하며 브라우저 체험 잔액을 가져오지 않습니다. CLI 적립은 테스트 금액이며 실제 자금·카드·본인확인과 연결되지 않습니다.
+
+[서버 실행·검증 안내](docs/server-development.md)와 [기술 선택·배포 방향](docs/technology-decisions.md)에 재현 절차와 구현·계획을 구분했습니다. 운영 대상은 AWS 서울 리전 ECS Fargate·RDS PostgreSQL이며 아직 AWS 리소스나 유료 인프라를 생성하지 않았습니다. 공개 GitHub Pages는 기존 데모 모드를 유지합니다.
 
 ## 검증
 

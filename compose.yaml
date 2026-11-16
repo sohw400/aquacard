@@ -1,0 +1,23 @@
+name: aquacard
+
+services:
+  postgres:
+    image: postgres:18-bookworm@sha256:ece55f7868da684e400f82f1030a050718adbdd65c23aa500c486f6e2950dc0f
+    environment:
+      POSTGRES_USER: aqua
+      POSTGRES_PASSWORD: aqua_local_only
+      POSTGRES_DB: aqua
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - aqua_postgres:/var/lib/postgresql
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/010_aqua_app.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U aqua -d aqua"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  aqua_postgres:
