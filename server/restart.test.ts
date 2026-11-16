@@ -8,9 +8,11 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import type { AccountSnapshot, TransferResult } from '../shared/api';
+import { createTestDatabase } from './test-support';
 
 test('API process restart preserves sessions, balances and the result of a repeated transfer', { timeout: 30_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'aqua-restart-'));
+  const fixture = await createTestDatabase();
   const probe = createServer();
   probe.listen(0, '127.0.0.1');
   await once(probe, 'listening');
@@ -18,7 +20,7 @@ test('API process restart preserves sessions, balances and the result of a repea
   assert.ok(address && typeof address === 'object');
   const port = address.port;
   await new Promise<void>((done) => probe.close(() => done()));
-  const env = { ...process.env, NODE_ENV: 'development', AQUA_DB_PATH: join(directory, 'db.sqlite'), AQUA_MAIL_DIR: join(directory, 'mail'), AQUA_HOST: '127.0.0.1', AQUA_PORT: String(port), AQUA_ALLOWED_ORIGINS: 'http://127.0.0.1:5173' };
+  const env = { ...process.env, NODE_ENV: 'development', DATABASE_URL: fixture.connectionString, DATABASE_SCHEMA: fixture.schema, AQUA_MAIL_DIR: join(directory, 'mail'), AQUA_HOST: '127.0.0.1', AQUA_PORT: String(port), AQUA_ALLOWED_ORIGINS: 'http://127.0.0.1:5173' };
   const origin = 'http://127.0.0.1:5173';
   const base = `http://127.0.0.1:${port}/api`;
   let child: ChildProcess | undefined;
@@ -58,5 +60,5 @@ test('API process restart preserves sessions, balances and the result of a repea
     const retried = await request('/transfers', sender.cookie, { recipientTag: 'restart.receiver', amountWon: 7_000 }, 'restart-transfer-0001', sender.data.user.id);
     assert.equal(retried.data.transfer.id, original.data.transfer.id);
     assert.equal((await request('/account', receiver.cookie)).data.transactions.length, 1);
-  } finally { await stop(); await rm(directory, { recursive: true, force: true }); }
+  } finally { await stop(); await fixture.cleanup(); await rm(directory, { recursive: true, force: true }); }
 });

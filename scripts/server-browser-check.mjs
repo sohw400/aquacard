@@ -5,9 +5,9 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 
-// Run against the server UI and API started by the caller. The credit CLI must use the same AQUA_DB_PATH as the API.
+// Run against the caller's UI and API. The credit CLI must use the same PostgreSQL URL and schema.
 const base = new URL(process.env.AQUA_BASE_URL ?? 'http://127.0.0.1:5173');
-assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(base.hostname), 'This suite requires a loopback UI: test funding uses the local SQLite credit CLI.');
+assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(base.hostname), 'This suite requires a loopback UI and a dedicated PostgreSQL test schema.');
 const accountUrl = new URL('/api/account', base).href;
 const healthUrl = new URL('/api/health', base).href;
 const repo = fileURLToPath(new URL('../', import.meta.url));
@@ -91,7 +91,7 @@ function credit(user, amountWon, key) {
   const result = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'server:credit', '--', user.email, String(amountWon), key], {
     cwd: repo, env: { ...process.env }, encoding: 'utf8', timeout: 30_000,
   });
-  assert.equal(result.status, 0, `Credit CLI failed; ensure AQUA_DB_PATH matches the running API.\n${result.error?.message ?? ''}\n${result.stderr?.slice(-2000) ?? ''}`);
+  assert.equal(result.status, 0, `Credit CLI failed; ensure DATABASE_URL and DATABASE_SCHEMA match the running API.\n${result.error?.message ?? ''}\n${result.stderr?.slice(-2000) ?? ''}`);
 }
 
 async function prepareTransfer(page, to, amountWon) {
@@ -334,7 +334,7 @@ try {
     engine: 'Chromium', realDeviceTested: false, balances: expected, totalWon: expected.sender + expected.receiver,
     screenshots: ['sender-desktop.png', 'receiver-mobile.png', 'unknown-after-refresh.png'],
   }, null, 2));
-  console.log(`${checks.length} server browser checks passed. Both accounts use real HTTP, cookie sessions, and the local SQLite database.`);
+  console.log(`${checks.length} server browser checks passed. Both accounts use real HTTP, cookie sessions, and PostgreSQL.`);
 } catch (error) {
   if (currentPage && !currentPage.isClosed()) await currentPage.screenshot({ path: new URL('failure.png', artifacts).pathname, fullPage: true }).catch(() => {});
   console.error(error);

@@ -1,9 +1,8 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { Database } from './database';
+import { createTestDatabase } from './test-support';
 import { AuthService } from './auth';
 import { LedgerError, LedgerStore } from './ledger';
 
@@ -13,20 +12,26 @@ const PASSWORD = 'Aqua-Secure-Password42!';
 const REPLACEMENT = 'Aqua-Replaced-Password84!';
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 
-function fixture(t: TestContext, persistent = false) {
-  const directory = persistent ? mkdtempSync(join(tmpdir(), 'aqua-auth-test-')) : null;
-  const filename = directory ? join(directory, 'auth.sqlite') : ':memory:';
+async function fixture(t: TestContext) {
+  const base = await createTestDatabase();
+  const peers: Database[] = [];
   let now = NOW;
-  let store = new LedgerStore(filename);
   const mail: { email: string; token: string }[] = [];
   const options = { now: () => now, deliverRecovery: async (email: string, token: string) => { mail.push({ email, token }); } };
+  let store = new LedgerStore(base.database);
   let auth = new AuthService(store, options);
-  t.after(() => { store.close(); if (directory) rmSync(directory, { recursive: true, force: true }); });
+  const peer = () => {
+    const database = new Database({ connectionString: base.connectionString, schema: base.schema, maxConnections: 8 });
+    peers.push(database);
+    const peerStore = new LedgerStore(database);
+    return { database, store: peerStore, auth: new AuthService(peerStore, options) };
+  };
+  t.after(async () => { for (const database of peers) await database.close(); await base.cleanup(); });
   return {
-    get store() { return store; }, get auth() { return auth; }, mail,
+    get store() { return store; }, get auth() { return auth; }, mail, peer,
     now: () => now,
     advance(milliseconds: number) { now += milliseconds; },
-    reopen() { store.close(); store = new LedgerStore(filename); auth = new AuthService(store, options); },
+    async reopen() { const next = peer(); store = next.store; auth = next.auth; },
   };
 }
 
@@ -47,7 +52,7 @@ async function failure(promise: Promise<unknown>, status: number, code?: string)
 }
 
 test('signup normalizes profile fields, uses independent scrypt salts, and starts with zero money', async (t) => {
-  const f = fixture(t);
+  const f = await fixture(t);
   const first = await f.auth.signup({ email: '  Alice@Example.TEST ', name: '  김  아쿠아  ', tag: ' @Alice_7 ', password: PASSWORD }, 'signup-first');
   const second = await signup(f.auth, 'bobby');
   assert.deepEqual(Object.keys(first.user).sort(), ['createdAt', 'email', 'id', 'name', 'tag']);
@@ -55,18 +60,18 @@ test('signup normalizes profile fields, uses independent scrypt salts, and start
   assert.equal(first.user.tag, 'alice_7');
   assert.equal(first.user.name, '김 아쿠아');
   assert.equal(first.user.createdAt, NOW);
-  assert.equal(f.store.snapshot(first.user.id).balanceWon, 0);
-  assert.equal(f.store.snapshot(first.user.id).transactions.length, 0);
-  const firstHash = f.store.getUserById(first.user.id)!.passwordHash;
-  const secondHash = f.store.getUserById(second.user.id)!.passwordHash;
+  assert.equal((await f.store.snapshot(first.user.id)).balanceWon, 0);
+  assert.equal((await f.store.snapshot(first.user.id)).transactions.length, 0);
+  const firstHash = (await f.store.getUserById(first.user.id))!.passwordHash;
+  const secondHash = (await f.store.getUserById(second.user.id))!.passwordHash;
   assert.equal(firstHash.split('$')[0], 'scrypt');
   assert.ok(firstHash !== secondHash, 'identical passwords must receive independent salts');
   assert.ok(!firstHash.includes(PASSWORD), 'passwords must never be stored as plaintext');
-  assert.equal('passwordHash' in f.auth.authenticate(first.token)!, false);
+  assert.equal('passwordHash' in (await f.auth.authenticate(first.token))!, false);
 });
 
 test('signup rejects malformed input and reserved or ambiguous tags before creating a user', async (t) => {
-  const f = fixture(t);
+  const f = await fixture(t);
   const base = { email: 'valid@example.test', name: '유효 이름', tag: 'valid.user', password: PASSWORD };
   const invalid: Record<string, unknown>[] = [
     { email: 'broken' }, { email: 'a\r\nb@example.test' }, { email: `${'a'.repeat(65)}@example.test` },
@@ -80,11 +85,11 @@ test('signup rejects malformed input and reserved or ambiguous tags before creat
   for (const [index, change] of invalid.entries()) {
     await failure(f.auth.signup({ ...base, ...change } as typeof base, `invalid-${index}`), 400);
   }
-  assert.equal((f.store.db.prepare('SELECT COUNT(*) AS total FROM users').get() as { total: number }).total, 0);
+  assert.equal(Number((await f.store.database.query('SELECT COUNT(*) AS total FROM users')).rows[0].total), 0);
 });
 
 test('duplicate normalized email and tag return the same signup conflict without exposing hashes', async (t) => {
-  const f = fixture(t);
+  const f = await fixture(t);
   await signup(f.auth);
   const sameEmail = await failure(f.auth.signup({ email: 'ALICE@example.test', name: '다른 이름', tag: 'other.user', password: PASSWORD }, 'duplicate-email'), 409);
   const sameTag = await failure(f.auth.signup({ email: 'other@example.test', name: '다른 이름', tag: '@ALICE', password: PASSWORD }, 'duplicate-tag'), 409);
@@ -93,7 +98,7 @@ test('duplicate normalized email and tag return the same signup conflict without
 });
 
 test('known, unknown, and malformed login credentials fail generically; valid login issues a fresh session', async (t) => {
-  const f = fixture(t);
+  const f = await fixture(t);
   const member = await signup(f.auth);
   const known = await failure(f.auth.login({ email: 'alice@example.test', password: REPLACEMENT }, 'known-ip'), 401);
   const unknown = await failure(f.auth.login({ email: 'absent@example.test', password: REPLACEMENT }, 'unknown-ip'), 401);
@@ -104,33 +109,33 @@ test('known, unknown, and malformed login credentials fail generically; valid lo
   const login = await f.auth.login({ email: ' ALICE@EXAMPLE.TEST ', password: PASSWORD }, 'valid-ip');
   assert.equal(login.user.id, member.user.id);
   assert.ok(login.token !== member.token, 'each login must generate an independent session secret');
-  assert.equal(f.auth.authenticate(login.token)?.id, member.user.id);
+  assert.equal((await f.auth.authenticate(login.token))?.id, member.user.id);
 });
 
-test('session secrets are hashed in SQLite; logout, restart, and fixed TTL cannot revive a session', async (t) => {
-  const f = fixture(t, true);
+test('session secrets are hashed in PostgreSQL; logout, restart, and fixed TTL cannot revive a session', async (t) => {
+  const f = await fixture(t);
   const first = await signup(f.auth);
   const second = await f.auth.login({ email: 'alice@example.test', password: PASSWORD }, 'second-session');
-  const rows = f.store.db.prepare('SELECT token_hash FROM auth_sessions').all() as { token_hash: string }[];
+  const { rows } = await f.store.database.query<{ token_hash: string }>('SELECT token_hash FROM auth_sessions');
   assert.equal(first.token.length, 64);
   assert.ok(rows.some((row) => row.token_hash === hash(first.token)));
   assert.ok(rows.every((row) => row.token_hash !== first.token && row.token_hash !== second.token));
-  f.reopen();
-  assert.equal(f.auth.authenticate(first.token)?.id, first.user.id);
-  f.auth.logout(first.token);
-  f.auth.logout(first.token);
-  f.reopen();
-  assert.equal(f.auth.authenticate(first.token), null);
-  assert.equal(f.auth.authenticate(second.token)?.id, second.user.id);
-  assert.equal(f.auth.authenticate(undefined), null);
-  assert.equal(f.auth.authenticate('not-a-token'), null);
+  await f.reopen();
+  assert.equal((await f.auth.authenticate(first.token))?.id, first.user.id);
+  await f.auth.logout(first.token);
+  await f.auth.logout(first.token);
+  await f.reopen();
+  assert.equal(await f.auth.authenticate(first.token), null);
+  assert.equal((await f.auth.authenticate(second.token))?.id, second.user.id);
+  assert.equal(await f.auth.authenticate(undefined), null);
+  assert.equal(await f.auth.authenticate('not-a-token'), null);
   f.advance(7 * 24 * 60 * MINUTE);
-  assert.equal(f.auth.authenticate(second.token), null);
-  assert.equal((f.store.db.prepare('SELECT COUNT(*) AS total FROM auth_sessions').get() as { total: number }).total, 0);
+  assert.equal(await f.auth.authenticate(second.token), null);
+  assert.equal(Number((await f.store.database.query('SELECT COUNT(*) AS total FROM auth_sessions')).rows[0].total), 0);
 });
 
 test('recovery is generic, stores only a token hash, consumes the token, and invalidates every old session', async (t) => {
-  const f = fixture(t);
+  const f = await fixture(t);
   const first = await signup(f.auth);
   const second = await f.auth.login({ email: first.user.email, password: PASSWORD }, 'second-login');
   assert.equal(await f.auth.requestRecovery('absent@example.test', 'missing-recovery'), undefined);
@@ -138,20 +143,20 @@ test('recovery is generic, stores only a token hash, consumes the token, and inv
   assert.equal(f.mail.length, 1);
   const token = f.mail[0].token;
   assert.equal(f.mail[0].email, first.user.email);
-  const stored = f.store.db.prepare('SELECT token_hash FROM auth_recovery').get() as { token_hash: string };
+  const stored = (await f.store.database.query<{ token_hash: string }>('SELECT token_hash FROM auth_recovery')).rows[0];
   assert.ok(stored.token_hash !== token);
   assert.ok(stored.token_hash === hash(token));
   await f.auth.resetPassword(token, REPLACEMENT, 'reset-user');
-  assert.equal(f.auth.authenticate(first.token), null);
-  assert.equal(f.auth.authenticate(second.token), null);
+  assert.equal(await f.auth.authenticate(first.token), null);
+  assert.equal(await f.auth.authenticate(second.token), null);
   await failure(f.auth.resetPassword(token, PASSWORD, 'replay-user'), 400, 'INVALID_RECOVERY');
   await failure(f.auth.login({ email: first.user.email, password: PASSWORD }, 'old-password'), 401);
   assert.equal((await f.auth.login({ email: first.user.email, password: REPLACEMENT }, 'new-password')).user.id, first.user.id);
-  assert.equal((f.store.db.prepare('SELECT COUNT(*) AS total FROM auth_recovery').get() as { total: number }).total, 0);
+  assert.equal(Number((await f.store.database.query('SELECT COUNT(*) AS total FROM auth_recovery')).rows[0].total), 0);
 });
 
 test('expired and superseded recovery tokens cannot reset a password or invalidate an existing session', async (t) => {
-  const f = fixture(t);
+  const f = await fixture(t);
   const member = await signup(f.auth);
   await f.auth.requestRecovery(member.user.email, 'first-request');
   const oldToken = f.mail[0].token;
@@ -159,46 +164,61 @@ test('expired and superseded recovery tokens cannot reset a password or invalida
   await failure(f.auth.resetPassword(oldToken, REPLACEMENT, 'superseded-reset'), 400, 'INVALID_RECOVERY');
   f.advance(15 * MINUTE);
   await failure(f.auth.resetPassword(f.mail[1].token, REPLACEMENT, 'expired-reset'), 400, 'INVALID_RECOVERY');
-  assert.equal(f.auth.authenticate(member.token)?.id, member.user.id);
+  assert.equal((await f.auth.authenticate(member.token))?.id, member.user.id);
   assert.equal((await f.auth.login({ email: member.user.email, password: PASSWORD }, 'unchanged-login')).user.id, member.user.id);
 });
 
 test('simultaneous password resets consume one recovery token exactly once', async (t) => {
-  const f = fixture(t);
+  const f = await fixture(t);
   const member = await signup(f.auth);
   await f.auth.requestRecovery(member.user.email, 'concurrent-request');
   const alternatives = [REPLACEMENT, 'Other-Replacement-Password19!'];
-  const results = await Promise.allSettled(alternatives.map((password, index) => f.auth.resetPassword(f.mail[0].token, password, `reset-${index}`)));
+  const otherInstance = f.peer().auth;
+  const results = await Promise.allSettled(alternatives.map((password, index) => (index === 0 ? f.auth : otherInstance).resetPassword(f.mail[0].token, password, `reset-${index}`)));
   assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
   const loser = results.find((result) => result.status === 'rejected') as PromiseRejectedResult;
   assert.ok(loser.reason instanceof LedgerError);
   assert.equal(loser.reason.code, 'INVALID_RECOVERY');
-  assert.equal(f.auth.authenticate(member.token), null);
+  assert.equal(await f.auth.authenticate(member.token), null);
   const winner = results.findIndex((result) => result.status === 'fulfilled');
   assert.equal((await f.auth.login({ email: member.user.email, password: alternatives[winner] }, 'reset-winner-login')).user.id, member.user.id);
 });
 
-test('a password changed during async verification cannot issue an old-credential session', async (t) => {
-  const f = fixture(t);
+test('a stale credential snapshot cannot issue a session after a reset on another connection', async (t) => {
+  const f = await fixture(t);
   const alice = await signup(f.auth);
   const other = await signup(f.auth, 'bobby', REPLACEMENT);
-  const replacementHash = f.store.getUserById(other.user.id)!.passwordHash;
+  const replacementHash = (await f.store.getUserById(other.user.id))!.passwordHash;
+  const peer = f.peer();
+  const originalRead = f.store.getUserByEmail.bind(f.store);
+  let markRead!: () => void;
+  let releaseRead!: () => void;
+  const hasRead = new Promise<void>((resolve) => { markRead = resolve; });
+  const continueRead = new Promise<void>((resolve) => { releaseRead = resolve; });
+  f.store.getUserByEmail = async (email: string) => {
+    const snapshot = await originalRead(email);
+    markRead();
+    await continueRead;
+    return snapshot;
+  };
   const inFlight = f.auth.login({ email: alice.user.email, password: PASSWORD }, 'login-during-reset');
-  // Model a committed reset from another request while the old password's scrypt is pending.
-  f.store.db.exec('BEGIN IMMEDIATE');
-  f.store.db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(replacementHash, alice.user.id);
-  f.store.db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(alice.user.id);
-  f.store.db.exec('COMMIT');
+  await hasRead;
+  await peer.database.transaction(async (client) => {
+    await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [alice.user.id]);
+    await client.query('UPDATE users SET password_hash = $1 WHERE id = $2', [replacementHash, alice.user.id]);
+    await client.query('DELETE FROM auth_sessions WHERE user_id = $1', [alice.user.id]);
+  });
+  releaseRead();
   await failure(inFlight, 401, 'INVALID_CREDENTIALS');
-  assert.equal(f.auth.authenticate(alice.token), null);
-  assert.equal(f.auth.authenticate(other.token)?.id, other.user.id);
+  assert.equal(await f.auth.authenticate(alice.token), null);
+  assert.equal((await f.auth.authenticate(other.token))?.id, other.user.id);
 });
 
 test('account login throttles survive restart and blocked requests do not extend the fixed window', async (t) => {
-  const f = fixture(t, true);
+  const f = await fixture(t);
   const member = await signup(f.auth);
   for (let index = 0; index < 5; index += 1) {
-    if (index === 3) f.reopen();
+    if (index === 3) await f.reopen();
     await failure(f.auth.login({ email: member.user.email, password: REPLACEMENT }, `wrong-ip-${index}`), 401);
   }
   await failure(f.auth.login({ email: member.user.email, password: PASSWORD }, 'new-ip'), 429, 'RATE_LIMITED');
@@ -206,24 +226,24 @@ test('account login throttles survive restart and blocked requests do not extend
   await failure(f.auth.login({ email: member.user.email, password: PASSWORD }, 'blocked-ip'), 429);
   f.advance(MINUTE + 1);
   assert.equal((await f.auth.login({ email: member.user.email, password: PASSWORD }, 'unblocked-ip')).user.id, member.user.id);
-  const stale = f.store.db.prepare('SELECT COUNT(*) AS total FROM auth_rate_limits WHERE expires_at <= ?').get(f.now()) as { total: number };
-  assert.equal(stale.total, 0);
+  const stale = await f.store.database.query('SELECT COUNT(*) AS total FROM auth_rate_limits WHERE expires_at <= $1', [f.now()]);
+  assert.equal(Number(stale.rows[0].total), 0);
 });
 
 test('login IP limits apply across different account names and expire independently', async (t) => {
-  const f = fixture(t);
+  const f = await fixture(t);
   for (let index = 0; index < 10; index += 1) {
     await failure(f.auth.login({ email: `unknown${index}@example.test`, password: PASSWORD }, 'same-ip'), 401);
   }
   await failure(f.auth.login({ email: 'different@example.test', password: PASSWORD }, 'same-ip'), 429);
   f.advance(MINUTE + 1);
   await failure(f.auth.login({ email: 'newunknown@example.test', password: PASSWORD }, 'same-ip'), 401);
-  const rows = f.store.db.prepare('SELECT key_hash FROM auth_rate_limits').all() as { key_hash: string }[];
+  const { rows } = await f.store.database.query<{ key_hash: string }>('SELECT key_hash FROM auth_rate_limits');
   assert.ok(rows.every((row) => /^[a-f0-9]{64}$/.test(row.key_hash)), 'rate tables store bounded hashed identifiers');
 });
 
 test('signup and recovery limits reject excess attempts without indefinitely locking an account', async (t) => {
-  const f = fixture(t);
+  const f = await fixture(t);
   for (let index = 0; index < 5; index += 1) {
     await failure(f.auth.signup({ email: `invalid${index}@example.test`, name: '테스트 회원', tag: 'admin', password: PASSWORD }, 'signup-ip'), 400);
   }
@@ -235,7 +255,7 @@ test('signup and recovery limits reject excess attempts without indefinitely loc
 });
 
 test('unavailable or failing recovery delivery never exposes a token or account existence', async (t) => {
-  const f = fixture(t);
+  const f = await fixture(t);
   const member = await signup(f.auth);
   const unavailable = new AuthService(f.store, { now: f.now });
   const known = await failure(unavailable.requestRecovery(member.user.email, 'unavailable-known'), 503);
@@ -245,5 +265,53 @@ test('unavailable or failing recovery delivery never exposes a token or account 
   const failing = new AuthService(f.store, { now: f.now, deliverRecovery: async () => { throw new Error('transport unavailable'); } });
   assert.equal(await failing.requestRecovery(member.user.email, 'transport-failure'), undefined);
   assert.equal(await failing.requestRecovery('other@example.test', 'transport-absent'), undefined);
-  assert.equal((f.store.db.prepare('SELECT COUNT(*) AS total FROM auth_recovery').get() as { total: number }).total, 0);
+  assert.equal(Number((await f.store.database.query('SELECT COUNT(*) AS total FROM auth_recovery')).rows[0].total), 0);
+});
+
+test('simultaneous logins across independent API pools share account and IP budgets exactly', async (t) => {
+  const f = await fixture(t);
+  const member = await signup(f.auth);
+  const second = f.peer().auth;
+  const accountResults = await Promise.allSettled(Array.from({ length: 12 }, (_, index) =>
+    (index % 2 === 0 ? f.auth : second).login({ email: member.user.email, password: REPLACEMENT }, `parallel-account-${index}`)));
+  const accountErrors = accountResults.map((result) => {
+    assert.equal(result.status, 'rejected');
+    const error = (result as PromiseRejectedResult).reason;
+    assert.ok(error instanceof LedgerError);
+    return error;
+  });
+  assert.equal(accountErrors.filter((error) => error.status === 401).length, 5);
+  assert.equal(accountErrors.filter((error) => error.status === 429).length, 7);
+  const accountRate = await f.store.database.query('SELECT attempts, expires_at FROM auth_rate_limits WHERE scope = $1', ['login:account']);
+  assert.equal(accountRate.rows.length, 1);
+  assert.equal(accountRate.rows[0].attempts, 5);
+  assert.equal(Number(accountRate.rows[0].expires_at), NOW + 5 * MINUTE);
+
+  f.advance(5 * MINUTE + 1);
+  const ipResults = await Promise.allSettled(Array.from({ length: 12 }, (_, index) =>
+    (index % 2 === 0 ? f.auth : second).login({ email: `parallel${index}@example.test`, password: PASSWORD }, 'parallel-shared-ip')));
+  const ipErrors = ipResults.map((result) => {
+    assert.equal(result.status, 'rejected');
+    const error = (result as PromiseRejectedResult).reason;
+    assert.ok(error instanceof LedgerError);
+    return error;
+  });
+  assert.equal(ipErrors.filter((error) => error.status === 401).length, 10);
+  assert.equal(ipErrors.filter((error) => error.status === 429).length, 2);
+});
+
+test('member lookup limits remain shared and expire across independent API instances', async (t) => {
+  const f = await fixture(t);
+  const member = await signup(f.auth);
+  const second = f.peer().auth;
+  const results = await Promise.allSettled(Array.from({ length: 36 }, (_, index) =>
+    (index % 2 === 0 ? f.auth : second).enforceMemberLookup(member.user.id)));
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 30);
+  const denied = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+  assert.equal(denied.length, 6);
+  assert.ok(denied.every((result) => result.reason instanceof LedgerError && result.reason.status === 429));
+  await f.reopen();
+  await failure(f.auth.enforceMemberLookup(member.user.id), 429);
+  f.advance(MINUTE + 1);
+  await f.auth.enforceMemberLookup(member.user.id);
 });
