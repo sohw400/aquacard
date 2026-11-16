@@ -15,7 +15,15 @@
     "test": "tsx --test src/lib/*.test.ts",
     "test:browser": "node scripts/browser-check.mjs",
     "test:devices": "node scripts/device-check.mjs",
-    "audit:screens": "node scripts/screen-audit.mjs"
+    "audit:screens": "node scripts/screen-audit.mjs",
+    "dev:server": "VITE_DATA_MODE=server vite --host 0.0.0.0 --port 5173 --strictPort",
+    "server:dev": "tsx watch server/index.ts",
+    "server:start": "tsx server/index.ts",
+    "server:credit": "tsx server/credit.ts",
+    "build:server": "tsc --noEmit -p tsconfig.server.json",
+    "build:connected": "tsc --noEmit && VITE_DATA_MODE=server vite build",
+    "test:server": "tsx --test server/*.test.ts",
+    "test:server:browser": "node scripts/server-browser-check.mjs"
   },
   "dependencies": {
     "lucide-react": "1.55.0",

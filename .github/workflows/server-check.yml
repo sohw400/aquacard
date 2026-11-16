@@ -1,0 +1,87 @@
+name: Check server sandbox
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AQUA_BASE_URL: http://127.0.0.1:5173
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Set isolated sandbox paths
+        shell: bash
+        run: |
+          printf 'AQUA_DB_PATH=%s\nAQUA_MAIL_DIR=%s\n' "$RUNNER_TEMP/aqua-server-check/aqua.sqlite" "$RUNNER_TEMP/aqua-server-check/mail" >> "$GITHUB_ENV"
+      - name: Check server types
+        run: npm run build:server
+      - name: Check server behavior
+        run: npm run test:server
+      - name: Check existing product logic
+        run: npm test
+      - name: Build the public demo
+        run: npm run build
+      - name: Build the connected client
+        run: npm run build:connected
+      - name: Locate a browser for the connected flow
+        shell: bash
+        run: |
+          aqua_browser="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          if [[ -z "$aqua_browser" ]]; then
+            ./node_modules/.bin/playwright-core install --with-deps chromium
+            aqua_browser="$(node --input-type=module -e 'import { chromium } from "playwright-core"; process.stdout.write(chromium.executablePath())')"
+          fi
+          printf 'CHROMIUM_PATH=%s\n' "$aqua_browser" >> "$GITHUB_ENV"
+      - name: Check the connected browser flow
+        shell: bash
+        run: |
+          mkdir -p "$(dirname "$AQUA_DB_PATH")" "$AQUA_MAIL_DIR"
+          NODE_ENV=development npm run server:start > "$RUNNER_TEMP/aqua-api.log" 2>&1 &
+          aqua_api_pid=$!
+          npm run dev:server > "$RUNNER_TEMP/aqua-web.log" 2>&1 &
+          aqua_web_pid=$!
+          cleanup() {
+            aqua_status=$?
+            kill "$aqua_api_pid" "$aqua_web_pid" 2>/dev/null || true
+            if [[ "$aqua_status" -ne 0 ]]; then
+              cat "$RUNNER_TEMP/aqua-api.log" "$RUNNER_TEMP/aqua-web.log"
+            fi
+          }
+          trap cleanup EXIT
+          aqua_ready=false
+          for ((aqua_attempt=0; aqua_attempt<60; aqua_attempt++)); do
+            if curl --fail --silent http://127.0.0.1:3001/api/health > /dev/null && curl --fail --silent "$AQUA_BASE_URL" > /dev/null; then
+              aqua_ready=true
+              break
+            fi
+            if ! kill -0 "$aqua_api_pid" 2>/dev/null || ! kill -0 "$aqua_web_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$aqua_ready" != true ]]; then
+            printf 'The API and connected client did not become ready.\n' >&2
+            exit 1
+          fi
+          npm run test:server:browser
