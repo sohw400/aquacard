@@ -99,6 +99,39 @@ export interface RewardsSnapshot {
 export interface RewardPreferenceResult { useFirst: boolean; version: number }
 export interface RewardGrantResult { amountWon: number; availableWon: number; adjustmentDueWon: number; offsetWon: number }
 
+export type IssuerCardStatus = 'active' | 'locked';
+export type IssuerCommandStatus = 'pending' | 'in_flight' | 'retry' | 'succeeded' | 'failed' | 'needs_review';
+
+/** Sandbox issuer state only. This does not gate the separate test ledger's authorization commands. */
+export interface IssuerCardSnapshot {
+  mode: 'sandbox';
+  card: {
+    id: string;
+    desiredStatus: IssuerCardStatus;
+    confirmedStatus: IssuerCardStatus;
+    version: number;
+    updatedAt: number;
+    command: {
+      id: string;
+      status: IssuerCommandStatus;
+      phase: 'send' | 'lookup';
+      attemptCount: number;
+      errorCode: string | null;
+      createdAt: number;
+      updatedAt: number;
+    } | null;
+  } | null;
+}
+
+/** Durable receipt, not confirmation that the issuer has changed the card. */
+export interface IssuerCardStatusReceipt {
+  id: string;
+  cardId: string;
+  status: 'pending';
+  cardVersion: number;
+  duplicate: boolean;
+}
+
 /** Internal sandbox command, not an issuer webhook contract or a public write API. */
 export type SandboxCardEvent = {
   eventId: string;

@@ -25,6 +25,8 @@ npm run dev
 
 카드 이벤트는 서명한 sandbox HTTP 또는 `server:inbox` 명령으로 먼저 보관하고 별도 작업자가 처리할 수 있습니다. 같은 결제의 매입 순서, 중복 전달, 서버 중단, 제한된 재시도와 운영자 이력을 관리합니다. 수신 202는 카드 승인 결과가 아닙니다. [카드 이벤트 수신·재처리 안내](docs/card-event-inbox.md)에 별도 DB 역할과 실행 방법을 정리했습니다.
 
+발급사 카드 잠금·해제 요청은 별도 outbox와 발신 작업자로 처리합니다. 로그인한 회원의 요청 상태와 발급사 확인 상태를 분리하고, 응답이 끊기면 같은 명령의 결과를 조회합니다. 현재는 로컬 sandbox 계약이며 웹 카드 설정과 기존 원장 승인 차단에는 연결하지 않았습니다. [발급사 요청·복구 안내](docs/issuer-command-outbox.md)에 API·기한·권한과 검증 범위를 정리했습니다.
+
 [서버 실행·검증 안내](docs/server-development.md)와 [기술 선택·배포 방향](docs/technology-decisions.md)에 재현 절차와 구현·계획을 구분했습니다. 운영 대상은 AWS 서울 리전 ECS Fargate·RDS PostgreSQL이며 아직 AWS 리소스나 유료 인프라를 생성하지 않았습니다. 공개 GitHub Pages는 기존 데모 모드를 유지합니다.
 
 ## 검증
@@ -43,7 +45,7 @@ npm run test:devices
 
 Chromium 경로는 `CHROMIUM_PATH`, 서버 주소는 `AQUA_BASE_URL`로 바꿀 수 있습니다(기본 `/usr/bin/chromium`, `http://127.0.0.1:5173`).
 
-2026-11-19 기준 서버 테스트 139개, 제품·클라이언트 로직 테스트 127개가 통과했습니다. CI는 서버 연결 브라우저 검사 28개도 함께 실행합니다. [리워드 서버 처리 안내](docs/rewards-server.md)와 [카드 수신·재처리 안내](docs/card-event-inbox.md)에 검사 범위를 정리했습니다. 실제 iOS·Android 기기 검증은 아직 수행하지 않았습니다.
+2026-11-19 기준 서버 테스트 186개, 제품·클라이언트 로직 테스트 127개가 통과했습니다. CI는 서버 연결 브라우저 검사 28개도 함께 실행합니다. [리워드 서버 처리 안내](docs/rewards-server.md), [카드 수신·재처리 안내](docs/card-event-inbox.md), [발급사 요청·복구 안내](docs/issuer-command-outbox.md)에 검사 범위를 정리했습니다. 실제 iOS·Android 기기 검증은 아직 수행하지 않았습니다.
 
 공개 브라우저 데모는 2026-10-14 기준 브라우저 검사 57개, 320~430px 기기 프로필 5개를 통과했습니다. 기기 프로필은 Chromium에서 화면 크기와 터치를 **모사**한 것이며 실제 iOS Safari·Android 실기기 검증과 다릅니다. 자세한 절차는 [테스트 안내](docs/testing.md)에 있습니다.
 
@@ -100,6 +102,6 @@ KAST는 지원 자산마다 청산 주소를 두고 받은 코인을 거래 확�
 | 제품 | [기획서](docs/product-plan.md), [요금과 정책](docs/policy.md), [KAST 비교와 한국 적용](docs/kast-alignment.md), [KAST 공식 자료 확인](docs/kast-funding-model.md) |
 | 기능 | [카드 신청·발급·운영 흐름](docs/card-issuance-flow.md), [입출금 흐름](docs/funding-flows.md), [입출금과 백엔드 설계](docs/funding-architecture.md), [리저브·리워드 정책](docs/reserve-rewards.md), [화면 설계](docs/screen-design.md) |
 | 출시 준비 | [출시 준비 목록](docs/launch-readiness.md), [KYC·AML 규제와 법률 검토](docs/kyc-aml-review.md), [앱스토어·구글 플레이 심사 준비](docs/store-review.md), [모바일 앱 준비 (iOS·Android)](docs/mobile-app-plan.md) |
-| 개발 | [서버 실행·검증](docs/server-development.md), [카드 서버 처리](docs/card-payment-server.md), [리워드 서버 처리](docs/rewards-server.md), [카드 수신·재처리](docs/card-event-inbox.md), [기술 결정](docs/technology-decisions.md), [테스트 안내](docs/testing.md), [웹 배포](docs/deployment.md) |
+| 개발 | [서버 실행·검증](docs/server-development.md), [카드 서버 처리](docs/card-payment-server.md), [리워드 서버 처리](docs/rewards-server.md), [카드 수신·재처리](docs/card-event-inbox.md), [발급사 요청·복구](docs/issuer-command-outbox.md), [기술 결정](docs/technology-decisions.md), [테스트 안내](docs/testing.md), [웹 배포](docs/deployment.md) |
 
 실제 서비스를 위해서는 본인확인, 보관·전환 파트너, 카드 발급·정산, 원화 스테이블 발행·상환, 리저브 보상 재원과 한국 제공 가능 범위를 확정해야 합니다. 브라우저 장부는 실제 금융 장부나 인증 시스템으로 쓸 수 없습니다.

@@ -71,9 +71,12 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 | `MIGRATION_DATABASE_URL` | 별도 마이그레이션 연결을 사용할 때 지정한다. 없으면 `DATABASE_URL`을 사용한다. |
 | `DATABASE_RUNTIME_ROLE` | 마이그레이션에서 권한을 부여할 기존 애플리케이션 역할. 로컬 기본값은 `aqua_app`이다. 역할·운영 비밀번호를 자동으로 만들지 않는다. |
 | `DATABASE_WORKER_ROLE` | inbox 처리 전용 역할. 로컬 `aqua_worker`. API 역할과 달라야 한다. |
+| `DATABASE_DISPATCHER_ROLE` | 발급사 명령 발신 전용 역할. 로컬 `aqua_dispatcher`. 다른 런타임 역할과 달라야 한다. |
 | `DATABASE_INGRESS_ROLE` | 이벤트 접수 전용 역할. 로컬 `aqua_ingress`. 웹 API·작업자 역할과 달라야 한다. |
 | `INGRESS_DATABASE_URL` | 수신 서버·접수 CLI 전용 연결. 웹 API의 DB 연결로 대체하지 않는다. |
 | `WORKER_DATABASE_URL` | 별도 카드 작업자 연결. 처리·집계 함수 실행만 허용하며 API 관리자 연결을 대신 넣지 않는다. |
+| `DISPATCHER_DATABASE_URL` | 발신 명령 확보·결과 기록·집계 함수만 실행하는 별도 연결. 회원·명령 생성·장부 변경 권한을 주지 않는다. |
+| `AQUA_ISSUER_SANDBOX_URL`, `AQUA_ISSUER_KEY_ID`, `AQUA_ISSUER_SIGNING_KEY` | 로컬 sandbox 발신 URL과 명시적인 서명 키. [발급사 요청·복구](issuer-command-outbox.md)의 제한과 실행 방법을 따른다. |
 | `TEST_DATABASE_URL` | 서버 통합 테스트용 PostgreSQL 주소. 테스트는 고유 스키마를 만들고 자신이 만든 스키마만 정리한다. |
 | `AQUA_MAIL_DIR` | 기본 `data/mail`. 개발용 비밀번호 재설정 안내 파일 위치. |
 | `AQUA_HOST`, `AQUA_PORT` | 기본 `127.0.0.1`, `3001`. API 수신 주소와 포트. |
@@ -158,6 +161,8 @@ npm run server:reconcile
 
 [서버 CI](../.github/workflows/server-check.yml)는 PostgreSQL 18 서비스와 분리된 테스트 스키마를 사용한다. 타입·서버 통합 테스트·기존 로직·웹 빌드·서버 번들·Docker 이미지·연결 브라우저의 송금·카드·리워드 흐름과 내부 대사를 검사한다. 서명 수신·순서 보존·재시도와 제한된 작업자 프로세스도 검사하며 컴파일한 작업자를 읽기 전용 컨테이너에서 실행한다. 실제 iOS·Android 기기 테스트나 서버 배포를 수행하지 않는다.
 
+발신 outbox의 임대·기한·조회 복구, 카드 상태 API, 역할 전환 차단과 운영자 명령도 CI에 포함한다. 컴파일한 발신 작업자는 비밀값을 남기지 않는 임시 키로 빈 큐를 읽기 전용 컨테이너에서 확인하며, 실제 HTTP 전송은 격리된 통합 검사에서 검증한다. 2026-11-19 추가 검증 후 서버 검사 수는 186개, 제품 로직은 127개다. [발급사 요청·복구](issuer-command-outbox.md)에 상세 범위를 정리했다.
+
 2026-11-19 카드 수신·재처리 검증에서는 서버 테스트 139개와 제품·클라이언트 로직 127개가 통과했다. 컴파일한 작업자 실행과 회사 재원·리워드·원금의 내부 대사도 확인했다. 상세 범위는 [카드 수신·재처리](card-event-inbox.md)를 따른다. 같은 날 앞선 리워드 연결 검증에서는 서버 연결 브라우저 검사 28개도 통과했으며 CI에서 계속 실행한다.
 
 2026-11-16 검증 결과: 실제 PostgreSQL 서버 테스트 48개, 제품·클라이언트 로직 테스트 123개, 연결 브라우저 검사 12개를 통과했다. 컨테이너의 첫 화면 경로 수정 후 PostgreSQL HTTP 테스트 11개도 다시 통과했다. 최종 이미지는 운영 모드에서 인증서를 검증하는 DB TLS와 제한된 DB 역할로 시작했고, UID 1000·읽기 전용 파일시스템에서 API, 첫 화면 GET·HEAD, SPA 경로와 JS·CSS 제공을 확인했다. CI에서도 컴파일한 컨테이너의 첫 화면과 자산을 검사한다.
@@ -182,4 +187,4 @@ docker build --secret id=npm_ca,src=/path/to/trusted-proxy-ca.pem --tag aqua-car
 
 운영 이미지는 `NODE_ENV=production`이 기본이며 HTTPS origin과 검증 가능한 운영 DB 연결 없이 실행하지 않는다. 읽기 전용 루트 파일시스템에서 실행할 수 있도록 로컬 DB·개발 메일함에 의존하지 않는다. TLS 종료와 비밀값 주입은 배포 환경에서 구성한다.
 
-배포 대상은 AWS 서울 리전 ECS Fargate·RDS PostgreSQL로 정했다. S3·KMS를 포함한 세부 운영 구성은 후속 작업이다. AWS 리소스나 유료 인프라를 생성하지 않았으며 서버가 공개 배포됐다고 가정하지 않는다. 실제 카드 발급·발급사 이벤트 수신·KYC·실제 입출금·파트너·메일·outbox·외부 정산 대사·백업 복구와 관측도 후속 범위다. 내부 장부 대사는 실제 외부 자금 확인을 대신하지 않는다.
+배포 대상은 AWS 서울 리전 ECS Fargate·RDS PostgreSQL로 정했다. S3·KMS를 포함한 세부 운영 구성은 후속 작업이다. AWS 리소스나 유료 인프라를 생성하지 않았으며 서버가 공개 배포됐다고 가정하지 않는다. 실제 카드 발급·발급사 수신·발신 연결·KYC·실제 입출금·파트너·메일·외부 정산 대사·백업 복구와 관측도 후속 범위다. 로컬 sandbox outbox와 내부 장부 대사는 실제 외부 자금 확인을 대신하지 않는다.
