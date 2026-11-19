@@ -56,6 +56,8 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 
 리워드 우선 사용과 스탠다드 페이백은 별도 서버 장부로 처리한다. 마이그레이션 후 기본 비활성이며 회사 테스트 재원을 명시적으로 넣어야 신규 지급을 활성화할 수 있다. [리워드 서버 처리](rewards-server.md)에 정책, 운영자 명령, 환불 회수와 내부 대사 절차를 정리했다.
 
+이벤트를 먼저 접수하고 별도 작업자로 처리하려면 [카드 수신·재처리](card-event-inbox.md)를 따른다. `server:inbox enqueue`는 원장을 즉시 바꾸지 않는다. 서명한 sandbox HTTP와 별도 작업자 프로세스로 재시도·중복·중단 복구를 확인할 수 있으며, 실제 발급사의 실시간 승인 경로와 구분한다.
+
 ## DB 변경과 설정
 
 `npm run db:migrate`는 `server/migrations/`의 번호가 붙은 SQL을 적용한다. 체크섬으로 적용된 파일의 변경을 감지하고 PostgreSQL advisory lock으로 동시 실행을 조정한다. 적용한 SQL을 수정하지 말고 다음 번호의 마이그레이션을 추가한다. 애플리케이션 시작이 테이블을 자동 생성·변경하는 경로에 의존하지 않는다.
@@ -68,6 +70,10 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 | `DATABASE_CA_FILE` | DB 제공자의 CA가 필요할 때 신뢰할 PEM 파일 경로를 지정한다. 인증서 검증은 유지한다. |
 | `MIGRATION_DATABASE_URL` | 별도 마이그레이션 연결을 사용할 때 지정한다. 없으면 `DATABASE_URL`을 사용한다. |
 | `DATABASE_RUNTIME_ROLE` | 마이그레이션에서 권한을 부여할 기존 애플리케이션 역할. 로컬 기본값은 `aqua_app`이다. 역할·운영 비밀번호를 자동으로 만들지 않는다. |
+| `DATABASE_WORKER_ROLE` | inbox 처리 전용 역할. 로컬 `aqua_worker`. API 역할과 달라야 한다. |
+| `DATABASE_INGRESS_ROLE` | 이벤트 접수 전용 역할. 로컬 `aqua_ingress`. 웹 API·작업자 역할과 달라야 한다. |
+| `INGRESS_DATABASE_URL` | 수신 서버·접수 CLI 전용 연결. 웹 API의 DB 연결로 대체하지 않는다. |
+| `WORKER_DATABASE_URL` | 별도 카드 작업자 연결. 처리·집계 함수 실행만 허용하며 API 관리자 연결을 대신 넣지 않는다. |
 | `TEST_DATABASE_URL` | 서버 통합 테스트용 PostgreSQL 주소. 테스트는 고유 스키마를 만들고 자신이 만든 스키마만 정리한다. |
 | `AQUA_MAIL_DIR` | 기본 `data/mail`. 개발용 비밀번호 재설정 안내 파일 위치. |
 | `AQUA_HOST`, `AQUA_PORT` | 기본 `127.0.0.1`, `3001`. API 수신 주소와 포트. |
@@ -81,7 +87,7 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 
 운영 API는 DB 관리자나 스키마 소유자 역할로 실행하지 않는다. 런타임이 스키마를 만들거나 원장 이력을 수정·삭제·비우고 잔액을 직접 바꿀 수 있으면 시작을 거절한다. 마이그레이션은 소유자 역할로, API는 제한된 애플리케이션 역할로 실행한다.
 
-Compose의 역할 초기화 SQL은 **빈 볼륨의 첫 실행에만** 자동 적용된다. 기존 개발 볼륨에 역할이 없다면 다음 명령으로 로컬 bootstrap을 한 번 적용한 뒤 `db:migrate`를 실행한다. 기존 역할의 비밀번호는 덮어쓰지 않는다.
+Compose의 역할 초기화 SQL은 **빈 볼륨의 첫 실행에만** 자동 적용된다. 기존 개발 볼륨에 API 또는 작업자 역할이 없다면 다음 명령으로 로컬 bootstrap을 한 번 적용한 뒤 `db:migrate`를 실행한다. 기존 역할의 비밀번호는 덮어쓰지 않는다.
 
 ```bash
 docker compose exec -T postgres psql -U aqua -d aqua -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/010_aqua_app.sql
@@ -150,9 +156,9 @@ npm run server:reconcile
 
 브라우저 실행 파일은 `CHROMIUM_PATH`로 지정한다. 각 검사는 고유 계정과 CLI 적립을 사용하고 카드 검사는 실제 카드 테스트 CLI도 실행한다. 기존 데이터를 지우지 않으며 생성한 계정·내역은 개발 DB에 남는다. API·CLI·검사는 같은 DB·스키마를 사용해야 한다. 짧은 시간에 반복하면 가입 제한이 적용되므로 별도 개발 스키마로 API를 실행한다.
 
-[서버 CI](../.github/workflows/server-check.yml)는 PostgreSQL 18 서비스와 분리된 테스트 스키마를 사용한다. 타입·서버 통합 테스트·기존 로직·웹 빌드·서버 번들·Docker 이미지·연결 브라우저의 송금·카드·리워드 흐름과 내부 대사를 검사한다. 실제 iOS·Android 기기 테스트나 서버 배포를 수행하지 않는다.
+[서버 CI](../.github/workflows/server-check.yml)는 PostgreSQL 18 서비스와 분리된 테스트 스키마를 사용한다. 타입·서버 통합 테스트·기존 로직·웹 빌드·서버 번들·Docker 이미지·연결 브라우저의 송금·카드·리워드 흐름과 내부 대사를 검사한다. 서명 수신·순서 보존·재시도와 제한된 작업자 프로세스도 검사하며 컴파일한 작업자를 읽기 전용 컨테이너에서 실행한다. 실제 iOS·Android 기기 테스트나 서버 배포를 수행하지 않는다.
 
-2026-11-19 리워드 연결 검증에서는 서버 테스트 109개, 제품·클라이언트 로직 127개, 컴파일한 API와 연결 웹 화면의 브라우저 검사 28개가 통과했다. 회사 재원·리워드·원금의 내부 대사도 일치했다. 상세 범위는 [리워드 서버 처리](rewards-server.md)를 따른다.
+2026-11-19 카드 수신·재처리 검증에서는 서버 테스트 139개와 제품·클라이언트 로직 127개가 통과했다. 컴파일한 작업자 실행과 회사 재원·리워드·원금의 내부 대사도 확인했다. 상세 범위는 [카드 수신·재처리](card-event-inbox.md)를 따른다. 같은 날 앞선 리워드 연결 검증에서는 서버 연결 브라우저 검사 28개도 통과했으며 CI에서 계속 실행한다.
 
 2026-11-16 검증 결과: 실제 PostgreSQL 서버 테스트 48개, 제품·클라이언트 로직 테스트 123개, 연결 브라우저 검사 12개를 통과했다. 컨테이너의 첫 화면 경로 수정 후 PostgreSQL HTTP 테스트 11개도 다시 통과했다. 최종 이미지는 운영 모드에서 인증서를 검증하는 DB TLS와 제한된 DB 역할로 시작했고, UID 1000·읽기 전용 파일시스템에서 API, 첫 화면 GET·HEAD, SPA 경로와 JS·CSS 제공을 확인했다. CI에서도 컴파일한 컨테이너의 첫 화면과 자산을 검사한다.
 
