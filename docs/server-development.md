@@ -1,6 +1,6 @@
 # 서버 연결 개발
 
-서버 연결 모드는 가입·로그인, 세션, 회원 조회, 잔액과 회원 송금을 서버에서 처리한다. **Node.js 24 LTS·Fastify 5·PostgreSQL 18**을 사용하며 인증과 원장의 기준 데이터는 PostgreSQL에 저장한다. 기술 선택과 구현·계획의 구분은 [기술 결정](technology-decisions.md)에 정리했다.
+서버 연결 모드는 가입·로그인, 세션, 회원 조회, 잔액, 회원 송금과 카드 결제 내역을 서버에서 처리한다. **Node.js 24 LTS·Fastify 5·PostgreSQL 18**을 사용하며 인증과 원장의 기준 데이터는 PostgreSQL에 저장한다. 카드 승인·매입·취소·환불은 내부 테스트 CLI로 반영한다. 기술 선택과 구현·계획의 구분은 [기술 결정](technology-decisions.md)에 정리했다.
 
 신규 계정은 0원에서 시작한다. 금액은 테스트 원장의 숫자이며 실제 원화·발행된 스테이블·카드 정산과 연결되지 않았다. 브라우저 PoC 잔액이나 이전 SQLite 테스트 데이터를 가져오지 않는다. [공개 GitHub Pages](https://sohw400.github.io/aquacard/)는 기존 브라우저 데모를 유지한다.
 
@@ -48,6 +48,12 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 
 `server:credit`는 개발자용 CLI다. HTTP 충전 API가 아니며 `NODE_ENV=production`에서는 거절한다. 대상 계정은 먼저 가입해야 하고 API·CLI는 같은 `DATABASE_URL`과 `DATABASE_SCHEMA`를 사용해야 한다. 새 적립에는 새 키를 쓰며 기존 키를 다른 대상·금액에 재사용하지 않는다.
 
+## 카드 승인과 매입 확인
+
+`npm run server:card -- <event.json>`으로 테스트 승인·부분 매입·승인 취소·부분 환불을 처리한다. 기존 DB에도 `db:migrate`를 먼저 적용한다. [카드 결제 서버 처리](card-payment-server.md)의 JSON 예시를 따라 승인액 확보와 마지막 매입의 잔여액 해제, 중복 환불 방지를 확인할 수 있다.
+
+화면의 사용 가능 잔액은 승인 보류액을 제외한다. 보류액과 전체 잔액, 본인의 카드 결제 내역은 같은 계정 조회 응답으로 갱신된다. 카드 명령은 개발자 전용이며 일반 회원용 쓰기 API는 없다. `NODE_ENV=production`에서는 명령을 거절한다. 실제 카드사 이벤트나 리저브·리워드·페이백은 연결하지 않았다.
+
 ## DB 변경과 설정
 
 `npm run db:migrate`는 `server/migrations/`의 번호가 붙은 SQL을 적용한다. 체크섬으로 적용된 파일의 변경을 감지하고 PostgreSQL advisory lock으로 동시 실행을 조정한다. 적용한 SQL을 수정하지 말고 다음 번호의 마이그레이션을 추가한다. 애플리케이션 시작이 테이블을 자동 생성·변경하는 경로에 의존하지 않는다.
@@ -67,7 +73,7 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 | `AQUA_TRUSTED_PROXIES` | 신뢰하는 프록시 IP·CIDR만 쉼표로 지정한다. 기본은 전달 헤더를 신뢰하지 않는다. |
 | `AQUA_STATIC_DIR` | API에서 연결 웹 화면도 제공할 때 출력 `dist/`를 지정한다. 저장소 루트나 데이터 디렉터리를 지정하지 않는다. |
 | `VITE_DATA_MODE` | `server`이면 서버 연결 화면을 빌드·실행한다. `dev:server`와 `build:connected`가 지정한다. |
-| `NODE_ENV` | `production`이면 명시적인 HTTPS origin과 운영 DB TLS가 필요하고 쿠키는 `Secure`다. 개발 적립과 파일 메일함은 비활성화한다. |
+| `NODE_ENV` | `production`이면 명시적인 HTTPS origin과 운영 DB TLS가 필요하고 쿠키는 `Secure`다. 개발 적립·카드 테스트 명령과 파일 메일함은 비활성화한다. |
 
 원격·운영 PostgreSQL은 인증서를 검증하는 TLS를 사용한다. URL에 `sslmode=verify-full`을 지정할 수 있으며 제공자 CA가 필요하면 `DATABASE_CA_FILE`을 사용한다. 검증을 끄는 설정으로 연결 오류를 우회하지 않는다. DB 접속 정보·메일 파일은 Git이나 프런트엔드 환경 변수에 넣지 않는다. PostgreSQL 볼륨은 컨테이너를 재생성해도 유지된다. 개발을 멈출 때는 `docker compose stop postgres`를 사용한다.
 
@@ -102,13 +108,15 @@ Fastify JSON Schema로 HTTP 경계를 정의하고 OpenAPI를 생성한다. 인�
 | `POST /api/auth/logout` | 세션 폐기. 유효한 세션에는 `X-Aqua-Account` 헤더가 필요하다. |
 | `POST /api/auth/recovery/request` | 재설정 요청. |
 | `POST /api/auth/recovery/confirm` | 토큰 확인·비밀번호 변경. |
-| `GET /api/account` | 서버 잔액·거래 내역 조회. |
+| `GET /api/account` | 사용 가능·카드 보류·전체 잔액, 송금·카드 결제 내역을 함께 조회. |
 | `GET /api/members?tag=...` | 가입된 태그로 수신자 조회. |
 | `POST /api/transfers` | 회원 송금. `Idempotency-Key`, `X-Aqua-Account` 헤더가 필요하다. |
 
 송금 JSON 필드는 `recipientTag`와 최소 1,000원의 정수 `amountWon`이다. 보내는 계정과 권한은 서버 세션으로 결정한다. `X-Aqua-Account`는 화면·저장된 요청의 소유 계정이 세션과 같은지 확인하는 전제 조건이다. 다른 탭에서 계정이 바뀌면 일치하지 않는 송금·로그아웃은 `409 SESSION_CHANGED`로 거절한다.
 
 결과가 불확실한 송금은 원래 계정에서 같은 요청 키·내용으로 다시 확인한다. DB 트랜잭션과 계정 잠금으로 검증·차감·입금·기록을 함께 처리하며 같은 요청은 거래를 다시 만들지 않는다.
+
+`balanceWon`은 사용 가능 잔액을 유지한다. `heldBalanceWon`은 카드 승인 보류액이며 `totalBalanceWon`은 두 값의 합이다. `cardPayments`에는 현재 세션 회원의 결제만 포함된다. 카드 승인·매입·환불을 직접 수행하는 HTTP API나 공급업체 웹훅 엔드포인트는 제공하지 않는다.
 
 ## 빌드와 검증
 
@@ -132,11 +140,12 @@ API와 `dev:server`를 실행한 뒤 브라우저 검사를 수행한다.
 
 ```bash
 AQUA_BASE_URL=http://127.0.0.1:5173 npm run test:server:browser
+AQUA_BASE_URL=http://127.0.0.1:5173 npm run test:card:browser
 ```
 
-브라우저 실행 파일은 `CHROMIUM_PATH`로 지정한다. 검사는 고유 계정 두 개와 CLI 적립을 사용한다. 기존 데이터를 지우지 않으며 생성한 계정·내역은 개발 DB에 남는다. API·CLI·검사는 같은 DB·스키마를 사용해야 한다. 짧은 시간에 반복하면 가입 제한이 적용되므로 별도 개발 스키마로 API를 실행한다.
+브라우저 실행 파일은 `CHROMIUM_PATH`로 지정한다. 각 검사는 고유 계정과 CLI 적립을 사용하고 카드 검사는 실제 카드 테스트 CLI도 실행한다. 기존 데이터를 지우지 않으며 생성한 계정·내역은 개발 DB에 남는다. API·CLI·검사는 같은 DB·스키마를 사용해야 한다. 짧은 시간에 반복하면 가입 제한이 적용되므로 별도 개발 스키마로 API를 실행한다.
 
-[서버 CI](../.github/workflows/server-check.yml)는 PostgreSQL 18 서비스와 분리된 테스트 스키마를 사용한다. 타입·서버 통합 테스트·기존 로직·웹 빌드·서버 번들·Docker 이미지·연결 브라우저 흐름을 검사한다. 실제 iOS·Android 기기 테스트나 서버 배포를 수행하지 않는다.
+[서버 CI](../.github/workflows/server-check.yml)는 PostgreSQL 18 서비스와 분리된 테스트 스키마를 사용한다. 타입·서버 통합 테스트·기존 로직·웹 빌드·서버 번들·Docker 이미지·연결 브라우저의 송금과 카드 흐름을 검사한다. 실제 iOS·Android 기기 테스트나 서버 배포를 수행하지 않는다.
 
 2026-11-16 검증 결과: 실제 PostgreSQL 서버 테스트 48개, 제품·클라이언트 로직 테스트 123개, 연결 브라우저 검사 12개를 통과했다. 컨테이너의 첫 화면 경로 수정 후 PostgreSQL HTTP 테스트 11개도 다시 통과했다. 최종 이미지는 운영 모드에서 인증서를 검증하는 DB TLS와 제한된 DB 역할로 시작했고, UID 1000·읽기 전용 파일시스템에서 API, 첫 화면 GET·HEAD, SPA 경로와 JS·CSS 제공을 확인했다. CI에서도 컴파일한 컨테이너의 첫 화면과 자산을 검사한다.
 
@@ -160,4 +169,4 @@ docker build --secret id=npm_ca,src=/path/to/trusted-proxy-ca.pem --tag aqua-car
 
 운영 이미지는 `NODE_ENV=production`이 기본이며 HTTPS origin과 검증 가능한 운영 DB 연결 없이 실행하지 않는다. 읽기 전용 루트 파일시스템에서 실행할 수 있도록 로컬 DB·개발 메일함에 의존하지 않는다. TLS 종료와 비밀값 주입은 배포 환경에서 구성한다.
 
-배포 대상은 AWS 서울 리전 ECS Fargate·RDS PostgreSQL로 정했다. S3·KMS를 포함한 세부 운영 구성은 후속 작업이다. AWS 리소스나 유료 인프라를 생성하지 않았으며 서버가 공개 배포됐다고 가정하지 않는다. 카드·KYC·실제 입출금·파트너·메일·outbox·대사·백업 복구와 관측도 후속 범위다.
+배포 대상은 AWS 서울 리전 ECS Fargate·RDS PostgreSQL로 정했다. S3·KMS를 포함한 세부 운영 구성은 후속 작업이다. AWS 리소스나 유료 인프라를 생성하지 않았으며 서버가 공개 배포됐다고 가정하지 않는다. 실제 카드 발급·발급사 이벤트 수신·KYC·실제 입출금·파트너·메일·outbox·대사·백업 복구와 관측도 후속 범위다.

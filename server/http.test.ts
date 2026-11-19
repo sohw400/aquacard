@@ -7,6 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { createApiServer } from './http';
 import { Database } from './database';
 import { LedgerStore } from './ledger';
+import { CardPaymentStore } from './card-payments';
 import { createTestDatabase } from './test-support';
 import type { AccountSnapshot, MemberProfile, TransferResult } from '../shared/api';
 
@@ -139,6 +140,45 @@ test('Fastify sessions isolate accounts and ignore caller-selected sender IDs', 
     assert.equal((await f.request('/account', { cookie: alice.cookie })).status, 401);
     const relogin = await f.request('/auth/login', { method: 'POST', body: { email: 'alice@example.com', password: PASSWORD } });
     assert.equal((await f.request('/account', { cookie: relogin.cookie })).data.balanceWon, 18_000);
+  } finally { await f.close(); }
+});
+
+test('account responses expose owned card holds and prevent spending them through member transfers', async () => {
+  const f = await fixture();
+  try {
+    const alice = await f.signup('cardalice');
+    const bob = await f.signup('cardbobby');
+    await f.store.creditSandbox({ userId: alice.user.id, amountWon: 100_000, idempotencyKey: 'card-http-seed' });
+    const cards = new CardPaymentStore(f.database);
+    await cards.apply({ kind: 'authorize', eventId: 'http-auth-event', paymentId: 'http-payment', userId: alice.user.id, amountWon: 80_000, merchantName: '테스트 서점' });
+    const own = await f.request('/account', { cookie: alice.cookie });
+    assert.equal(own.status, 200);
+    assert.equal(own.data.balanceWon, 20_000);
+    assert.equal(own.data.heldBalanceWon, 80_000);
+    assert.equal(own.data.totalBalanceWon, 100_000);
+    assert.equal(own.data.limits.available, 20_000);
+    assert.equal(own.data.cardPayments.length, 1);
+    assert.equal(own.data.cardPayments[0].merchantName, '테스트 서점');
+    assert.equal(own.data.cardPayments[0].status, 'authorized');
+    assert.equal(own.body.includes('http-auth-event'), false);
+    assert.equal(own.body.includes('request_payload'), false);
+    const other = await f.request(`/account?userId=${alice.user.id}`, { cookie: bob.cookie });
+    assert.deepEqual(other.data.cardPayments, []);
+    assert.equal(other.data.heldBalanceWon, 0);
+    const sent = await f.request('/transfers', { method: 'POST', cookie: alice.cookie, headers: { 'Idempotency-Key': 'card-hold-transfer', 'X-Aqua-Account': alice.user.id }, body: { recipientTag: 'cardbobby', amountWon: 25_000 } });
+    assert.equal(sent.status, 409);
+    assert.equal(sent.data.error.code, 'INSUFFICIENT_FUNDS');
+    for (const path of ['/card-events', '/cards/authorize', '/cards/refund']) {
+      const response = await f.request(path, { method: 'POST', cookie: alice.cookie, body: { paymentId: 'http-payment', amountWon: 80_000 } });
+      assert.equal(response.status, 404);
+    }
+    await cards.apply({ kind: 'capture', eventId: 'http-capture-event', paymentId: 'http-payment', userId: alice.user.id, amountWon: 60_000, finalCapture: true });
+    const captured = await f.request('/account', { cookie: alice.cookie });
+    assert.equal(captured.data.balanceWon, 40_000);
+    assert.equal(captured.data.heldBalanceWon, 0);
+    assert.equal(captured.data.cardPayments[0].releasedWon, 20_000);
+    assert.equal(captured.data.cardPayments[0].status, 'captured');
+    assert.equal(captured.data.transactions.length, 1, 'card legs must not appear as member transfers');
   } finally { await f.close(); }
 });
 
