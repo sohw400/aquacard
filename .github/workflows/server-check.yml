@@ -38,6 +38,8 @@ jobs:
       DATABASE_WORKER_ROLE: aqua_worker
       DATABASE_INGRESS_ROLE: aqua_ingress
       DATABASE_DISPATCHER_ROLE: aqua_dispatcher
+      DATABASE_OPERATIONS_ROLE: aqua_operations
+      OPERATIONS_DATABASE_URL: postgresql://aqua_operations:aqua_operations_local_only@127.0.0.1:5432/aqua
       DISPATCHER_DATABASE_URL: postgresql://aqua_dispatcher:aqua_dispatcher_local_only@127.0.0.1:5432/aqua
       INGRESS_DATABASE_URL: postgresql://aqua_ingress:aqua_ingress_local_only@127.0.0.1:5432/aqua
       WORKER_DATABASE_URL: postgresql://aqua_worker:aqua_worker_local_only@127.0.0.1:5432/aqua
@@ -134,6 +136,23 @@ jobs:
           docker run --rm --network host --read-only --no-healthcheck --cap-drop ALL --security-opt no-new-privileges \
             -e NODE_ENV=development -e WORKER_DATABASE_URL -e DATABASE_SCHEMA \
             aqua-card-server:ci node dist-server/card-worker.js --once
+          aqua_report="$(docker run --rm --network host --read-only --no-healthcheck --cap-drop ALL --security-opt no-new-privileges \
+            -e NODE_ENV=development -e OPERATIONS_DATABASE_URL -e DATABASE_SCHEMA \
+            aqua-card-server:ci node dist-server/card-operations-operator.js \
+            trace-event ci-no-card-event 00000000-0000-4000-8000-000000000008 CI-OPS-SMOKE)"
+          printf '%s' "$aqua_report" | node --input-type=module -e '
+            import assert from "node:assert/strict";
+            let input = ""; for await (const chunk of process.stdin) input += chunk;
+            const report = JSON.parse(input);
+            assert.equal(report.found, false);
+            assert.equal(report.correlation, "not_found");
+            assert.equal(report.requestId, "00000000-0000-4000-8000-000000000008");
+          '
+          aqua_replayed_report="$(docker run --rm --network host --read-only --no-healthcheck --cap-drop ALL --security-opt no-new-privileges \
+            -e NODE_ENV=development -e OPERATIONS_DATABASE_URL -e DATABASE_SCHEMA \
+            aqua-card-server:ci node dist-server/card-operations-operator.js \
+            read 00000000-0000-4000-8000-000000000008)"
+          test "$aqua_report" = "$aqua_replayed_report"
           docker run --rm --network host --read-only --no-healthcheck --cap-drop ALL --security-opt no-new-privileges \
             -e NODE_ENV=development -e DISPATCHER_DATABASE_URL -e DATABASE_SCHEMA \
             aqua-card-server:ci node --input-type=module -e '
