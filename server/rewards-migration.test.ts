@@ -9,6 +9,7 @@ import { Database } from './database';
 import { applyMigrations, verifyMigrations } from './migrations';
 import { LedgerStore } from './ledger';
 import { CardPaymentStore } from './card-payments';
+import { IssuerOutboxStore } from './issuer-outbox';
 import { RewardsStore } from './rewards';
 
 test('reward upgrade preserves old card responses and funding, and supports older API signups after migration', async () => {
@@ -41,6 +42,7 @@ test('reward upgrade preserves old card responses and funding, and supports olde
     assert.equal(legacy.rewards.availableWon, 3_000, 'old authorization must neither use new rewards nor earn retroactive cashback');
     assert.equal(legacy.rewards.cashback.confirmedWon, 0);
     assert.deepEqual(await cards.apply(originalEvent), original);
+    await new IssuerOutboxStore(database).register({ userId: 'legacy', providerCardId: 'sandbox-card-legacy', initialStatus: 'active' });
     await cards.apply({ kind: 'authorize', eventId: 'new-reward-authorization', paymentId: 'new-reward-payment', userId: 'legacy', amountWon: 3_000, merchantName: '새 가맹점' });
     assert.equal((await ledger.snapshot('legacy')).balanceWon, 13_000);
     assert.equal((await ledger.snapshot('legacy')).rewards.heldWon, 3_000);

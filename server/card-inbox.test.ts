@@ -3,6 +3,7 @@ import test, { type TestContext } from 'node:test';
 import { Database } from './database';
 import { LedgerError, LedgerStore } from './ledger';
 import { CardPaymentStore } from './card-payments';
+import { IssuerOutboxStore } from './issuer-outbox';
 import { CardInboxStore } from './card-inbox';
 import { RewardsStore } from './rewards';
 import { reconcileRewards } from './reward-reconciliation';
@@ -22,8 +23,11 @@ async function fixture(t: TestContext, initial = NOW) {
     cards: new CardPaymentStore(database, options), inbox: new CardInboxStore(database, options), rewards: new RewardsStore(database, options) });
   const main = stores(base.database);
   t.after(async () => { try { await Promise.all(peers.map((database) => database.close())); } finally { await base.cleanup(); } });
-  for (const id of ['alice', 'bobby']) await main.ledger.createUser({ id, email: `${id}@example.test`, name: '카드 수신 테스트', tag: id,
-    passwordHash: 'test-only-hash', createdAt: NOW - 60 * DAY });
+  for (const id of ['alice', 'bobby']) {
+    await main.ledger.createUser({ id, email: `${id}@example.test`, name: '카드 수신 테스트', tag: id,
+      passwordHash: 'test-only-hash', createdAt: NOW - 60 * DAY });
+    await new IssuerOutboxStore(base.database, options).register({ userId: id, providerCardId: `sandbox-card-${id}`, initialStatus: 'active' });
+  }
   const key = (prefix: string) => `${prefix}-${++sequence}`;
   return {
     ...main, key, now: () => now, setTime(value: number) { now = value; }, advance(value: number) { now += value; },

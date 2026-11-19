@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import test, { type TestContext } from 'node:test';
 import { CardPaymentStore } from './card-payments';
+import { IssuerOutboxStore } from './issuer-outbox';
 import { LedgerStore } from './ledger';
 import { RewardsStore } from './rewards';
 import { reconcileRewards } from './reward-reconciliation';
@@ -17,6 +18,7 @@ async function fixture(t: TestContext) {
   const rewards = new RewardsStore(context.database, options);
   const cards = new CardPaymentStore(context.database, options);
   await ledger.createUser({ id: 'alice', email: 'alice@example.test', name: '대사 테스트', tag: 'alice', passwordHash: 'test-only-hash', createdAt: NOW - 90 * 86_400_000 });
+  await new IssuerOutboxStore(context.database, options).register({ userId: 'alice', providerCardId: 'sandbox-card-alice', initialStatus: 'active' });
   return { ...context, ledger, rewards, cards };
 }
 

@@ -2,6 +2,7 @@ import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { Database } from './database';
 import { CardPaymentStore } from './card-payments';
+import { IssuerOutboxStore } from './issuer-outbox';
 import { LedgerError, LedgerStore } from './ledger';
 import { createTestDatabase } from './test-support';
 import type { CardEventResult, SandboxCardEvent } from '../shared/api';
@@ -30,9 +31,11 @@ async function fixture(t: TestContext) {
   };
 }
 
-function member(ledger: LedgerStore, id: string) {
-  return ledger.createUser({ id, email: `${id}@example.test`, name: `${id} 회원`, tag: id,
+async function member(ledger: LedgerStore, id: string) {
+  const user = await ledger.createUser({ id, email: `${id}@example.test`, name: `${id} 회원`, tag: id,
     passwordHash: `test-only:${id}`, createdAt: NOW - 60 * DAY });
+  await new IssuerOutboxStore(ledger.database, { now: () => NOW }).register({ userId: id, providerCardId: `sandbox-card-${id}`, initialStatus: 'active' });
+  return user;
 }
 function fund(ledger: LedgerStore, userId: string, amountWon: number, idempotencyKey = `seed-${userId}`) {
   return ledger.creditSandbox({ userId, amountWon, idempotencyKey });

@@ -4,6 +4,7 @@ import test from 'node:test';
 import { Database } from './database';
 import { LedgerStore } from './ledger';
 import { CardPaymentStore } from './card-payments';
+import { IssuerOutboxStore } from './issuer-outbox';
 import { RewardsStore } from './rewards';
 import { AuthService } from './auth';
 import { grantApplicationRole, verifyApplicationRole } from './permissions';
@@ -28,6 +29,7 @@ test('a restricted runtime role can authenticate and post transfers but cannot e
     const auth = new AuthService(store);
     const alice = await auth.signup({ name: '테스트회원', tag: 'alice', email: 'alice@example.test', password: 'Runtime-password-42' }, 'test-ip');
     const bob = await auth.signup({ name: '받는회원', tag: 'bobby', email: 'bob@example.test', password: 'Runtime-password-42' }, 'test-ip');
+    await new IssuerOutboxStore(fixture.database).register({ userId: alice.user.id, providerCardId: 'sandbox-card-runtime-alice', initialStatus: 'active' });
     await new LedgerStore(fixture.database).creditSandbox({ userId: alice.user.id, amountWon: 20_000, idempotencyKey: 'restricted-role-seed' });
     const result = await store.transfer({ senderId: alice.user.id, recipientTag: 'bobby', amountWon: 7_000, idempotencyKey: 'restricted-role-transfer' });
     assert.equal(result.balanceWon, 13_000);
@@ -79,8 +81,12 @@ test('a restricted runtime role can authenticate and post transfers but cannot e
     const rewards = new RewardsStore(runtime);
     assert.equal((await rewards.snapshot(alice.user.id)).availableWon, 3_000);
     assert.deepEqual(await rewards.setPreference({ userId: alice.user.id, useFirst: false, expectedVersion: 0, idempotencyKey: 'restricted-preference' }), { useFirst: false, version: 1 });
-    for (const name of ['operator_fund_reward_budget', 'operator_set_reward_program', 'operator_grant_rewards', 'apply_sandbox_card_event_legacy_003']) {
+    for (const name of ['operator_fund_reward_budget', 'operator_set_reward_program', 'operator_grant_rewards', 'apply_sandbox_card_event_legacy_003', 'apply_sandbox_card_event_financial_004']) {
       await assert.rejects(runtime.query(`SELECT ${name}('{}'::jsonb, 1000::bigint)`), /permission denied/);
+    }
+    for (const statement of ['SELECT * FROM card_authorization_decisions', 'INSERT INTO card_authorization_decisions DEFAULT VALUES',
+      'UPDATE card_authorization_decisions SET event_id = event_id', 'DELETE FROM card_authorization_decisions', 'TRUNCATE card_authorization_decisions']) {
+      await assert.rejects(runtime.query(statement), /permission denied/);
     }
     for (const table of ['reward_wallets', 'reward_journals', 'reward_commands', 'reward_cash_plans', 'reward_cashback_months', 'card_reward_allocations', 'reward_program']) {
       await assert.rejects(runtime.query(`DELETE FROM ${table}`), /permission denied/);
@@ -104,6 +110,15 @@ test('a restricted runtime role can authenticate and post transfers but cannot e
     await fixture.database.query(`GRANT EXECUTE ON FUNCTION reward_post_cash(text,text,text,bigint,bigint) TO "${role}"`);
     await assert.rejects(verifyApplicationRole(runtime), /private ledger helper/);
     await fixture.database.query(`REVOKE EXECUTE ON FUNCTION reward_post_cash(text,text,text,bigint,bigint) FROM "${role}"`);
+    await fixture.database.query(`GRANT EXECUTE ON FUNCTION apply_sandbox_card_event_financial_004(jsonb,bigint) TO "${role}"`);
+    await assert.rejects(verifyApplicationRole(runtime), /private ledger helper/);
+    await fixture.database.query(`REVOKE EXECUTE ON FUNCTION apply_sandbox_card_event_financial_004(jsonb,bigint) FROM "${role}"`);
+    for (const privilege of ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
+      await fixture.database.query(`GRANT ${privilege} ON card_authorization_decisions TO "${role}"`);
+      await assert.rejects(verifyApplicationRole(runtime));
+      await fixture.database.query(`REVOKE ${privilege} ON card_authorization_decisions FROM "${role}"`);
+    }
+    await verifyApplicationRole(runtime);
     await auth.logout(alice.token);
     assert.equal(await auth.authenticate(alice.token), null);
   } finally {

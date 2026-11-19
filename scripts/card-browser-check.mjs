@@ -128,6 +128,7 @@ try {
   const ownerProfile = await signup(ownerPage, owner);
   const otherProfile = await signup(otherPage, other);
   assert.notEqual(ownerProfile.id, otherProfile.id);
+  command('server:issuer', ['register', ownerProfile.id, `sandbox-card-browser-${runId}`, 'active']);
   command('server:credit', [owner.email, '100000', `${runId}-fund-owner`]);
   command('server:credit', [other.email, '2000', `${runId}-fund-other`]);
   await ownerPage.bringToFront();

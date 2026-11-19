@@ -68,6 +68,36 @@ async function operator(args) {
   assert.equal(result.code, 0, `Issuer operator failed: ${result.stderr.slice(-1500)}`);
   return JSON.parse(result.stdout);
 }
+async function cardEvent(event) {
+  // Exercise the same application role and transaction boundary as the sandbox
+  // operator. A policy decline must commit its decision before surfacing an error.
+  const code = `
+    import { databaseFromEnvironment } from './server/database.ts';
+    import { CardPaymentStore } from './server/card-payments.ts';
+    import { LedgerError } from './server/ledger.ts';
+    const db = await databaseFromEnvironment();
+    try {
+      try {
+        const result = await new CardPaymentStore(db).apply(JSON.parse(process.env.AQUA_BROWSER_CARD_EVENT));
+        console.log(JSON.stringify({ accepted: true, result }));
+      } catch (error) {
+        if (!(error instanceof LedgerError)) throw error;
+        console.log(JSON.stringify({ accepted: false, code: error.code }));
+      }
+    } finally { await db.close(); }
+  `;
+  const result = await child('--input-type=module', ['-e', code], { AQUA_BROWSER_CARD_EVENT: JSON.stringify(event) });
+  assert.equal(result.code, 0, `Card policy command failed: ${result.stderr.slice(-1500)}`);
+  return JSON.parse(result.stdout);
+}
+const authorize = (suffix, amountWon = 1_000) => ({ kind: 'authorize', eventId: `${runId}-${suffix}-authorize`,
+  paymentId: `${runId}-${suffix}`, userId: ownerId, amountWon, merchantName: '카드 잠금 검증' });
+const paymentEvent = (authorization, kind, fields = {}) => ({ kind, eventId: `${authorization.paymentId}-${kind}`,
+  paymentId: authorization.paymentId, userId: ownerId, ...fields });
+async function approvalState(expected, target = page) {
+  await target.waitForFunction((expected) => document.querySelector('[data-testid="issuer-authorization-state"]')
+    ?.getAttribute('data-authorization') === expected, expected);
+}
 const dispatchEnv = () => ({ AQUA_ISSUER_SANDBOX_URL: providerOrigin, AQUA_ISSUER_KEY_ID: 'browser', AQUA_ISSUER_SIGNING_KEY: providerKey.toString('base64url') });
 async function dispatch() {
   providerClock = null;
@@ -232,6 +262,8 @@ try {
   await page.getByTestId('issuer-empty').waitFor();
   assert.equal(await page.getByTestId('issuer-lock').count(), 0);
   assert.equal((await snapshot()).card, null);
+  const noCardAuthorization = authorize('unmapped');
+  assert.deepEqual(await cardEvent(noCardAuthorization), { accepted: false, code: 'CARD_NOT_ISSUED' });
   pass('A newly registered account shows no linked card and cannot issue a fabricated card command.');
 
   cardId = (await operator(['register', ownerId, `sandbox-card-${runId}`, 'active'])).cardId;
@@ -239,7 +271,16 @@ try {
   assert.equal(await panel().getAttribute('data-card-id'), cardId);
   assert.match(await page.getByTestId('issuer-confirmed-state').innerText(), /잠금 해제/);
   assert.equal(await page.getByTestId('issuer-lock').isEnabled(), true);
-  const beforeMoney = await (await context.request.get(new URL('/api/account', base).href)).json();
+  await approvalState('allowed');
+  assert.deepEqual(await cardEvent(noCardAuthorization), { accepted: false, code: 'CARD_NOT_ISSUED' });
+  const funded = await child('server/credit.ts', [owner.email, '20000', `${runId}-card-policy-funds`]);
+  assert.equal(funded.code, 0, `Test funding failed: ${funded.stderr.slice(-1500)}`);
+  const originalAuthorization = authorize('before-lock', 4_000);
+  const originalApproval = await cardEvent(originalAuthorization);
+  assert.equal(originalApproval.accepted, true);
+  const reverseAuthorization = authorize('reverse-after-lock', 2_000);
+  assert.equal((await cardEvent(reverseAuthorization)).accepted, true);
+  let beforeMoney = await (await context.request.get(new URL('/api/account', base).href)).json();
   await page.screenshot({ path: new URL('issuer-active.png', artifacts).pathname, fullPage: true });
   pass('The connected card panel reads the registered owner card and displays only the server-confirmed status.');
 
@@ -248,11 +289,25 @@ try {
   assert.equal(await page.getByTestId('issuer-lock').isDisabled(), true);
   assert.equal(await page.getByTestId('issuer-unlock').count(), 0);
   assert.equal((await snapshot()).card.confirmedStatus, 'active');
+  await approvalState('blocked');
+  const lockedAuthorization = authorize('declined-while-lock-pending');
+  assert.deepEqual(await cardEvent(lockedAuthorization), { accepted: false, code: 'CARD_LOCKED' });
+  assert.deepEqual(await cardEvent(originalAuthorization), originalApproval);
+  const declinedMoney = await (await context.request.get(new URL('/api/account', base).href)).json();
+  assert.deepEqual([declinedMoney.balanceWon, declinedMoney.heldBalanceWon, declinedMoney.transactions],
+    [beforeMoney.balanceWon, beforeMoney.heldBalanceWon, beforeMoney.transactions]);
+  pass('A pending lock immediately stops new authorization, preserves the original approved replay and leaves funds untouched on decline.');
   await page.screenshot({ path: new URL('issuer-pending.png', artifacts).pathname, fullPage: true });
   await finishSuccess('locked');
   assert.match(await page.getByTestId('issuer-confirmed-state').innerText(), /^잠금$/);
   assert.equal(providerCalls.filter((call) => call.method === 'POST').length, 1);
+  await approvalState('blocked');
+  const capturedPayment = await cardEvent(paymentEvent(originalAuthorization, 'capture', { amountWon: 4_000, finalCapture: true }));
+  assert.equal(capturedPayment.accepted, true);
+  assert.equal((await cardEvent(paymentEvent(originalAuthorization, 'refund', { amountWon: 4_000 }))).accepted, true);
+  assert.equal((await cardEvent(paymentEvent(reverseAuthorization, 'reverse'))).accepted, true);
   pass('HTTP 202 leaves the last confirmed state unchanged; a real signed dispatcher response is required before the card appears locked.');
+  pass('A locked card still permits capture, refund and reversal of payments approved before the lock.');
 
   let requestStart = commandRequests.length;
   await page.getByTestId('issuer-unlock').click();
@@ -268,8 +323,22 @@ try {
   assert.equal(commandRequests.length, requestStart);
   await unlock(); await state('locked', 'pending');
   assert.equal(await page.getByTestId('issuer-unlock').isDisabled(), true);
+  await approvalState('blocked');
+  const unlockingAuthorization = authorize('declined-while-unlocking');
+  assert.deepEqual(await cardEvent(unlockingAuthorization), { accepted: false, code: 'CARD_LOCKED' });
   await finishSuccess('active');
+  await approvalState('allowed');
+  assert.deepEqual(await cardEvent(lockedAuthorization), { accepted: false, code: 'CARD_LOCKED' });
+  assert.deepEqual(await cardEvent(unlockingAuthorization), { accepted: false, code: 'CARD_LOCKED' });
+  const afterUnlockAuthorization = authorize('after-unlock');
+  assert.equal((await cardEvent(afterUnlockAuthorization)).accepted, true);
+  assert.equal((await cardEvent(paymentEvent(afterUnlockAuthorization, 'reverse'))).accepted, true);
+  // Subsequent checks only change card controls. Keep their monetary baseline
+  // after the completed policy lifecycle above, including its immutable history.
+  beforeMoney = await (await context.request.get(new URL('/api/account', base).href)).json();
+  assert.equal(beforeMoney.balanceWon, 20_000); assert.equal(beforeMoney.heldBalanceWon, 0);
   pass('Unlock requires an accessible confirmation; cancel and Escape send no request and restore focus.');
+  pass('Only confirmed unlock permits a new authorization ID; earlier declined IDs stay declined after unlock.');
 
   const beforeLost = await countCommands(); requestStart = commandRequests.length;
   let droppedReceipt, resolveDropped;
@@ -368,6 +437,7 @@ try {
   assert.equal(await page.getByTestId('issuer-unlock').isDisabled(), true);
   assert.equal(await panel().getAttribute('data-confirmed-status'), 'locked');
   assert.match(await page.getByTestId('issuer-request-state').innerText(), /확인|연결/);
+  await approvalState('unconfirmed');
   await context.setOffline(false); await state('locked', 'succeeded');
   pass('Offline state disables changes while retaining an explicitly last-confirmed status, then refreshes after reconnection.');
 
@@ -377,6 +447,8 @@ try {
   await refresh(); await state('active', 'failed');
   assert.equal(await page.getByTestId('issuer-lock').isEnabled(), true);
   assert.match(await page.getByTestId('issuer-request-state').innerText(), /반영|거절|완료|변경|처리/);
+  await approvalState('blocked');
+  assert.deepEqual(await cardEvent(authorize('failed-lock')), { accepted: false, code: 'CARD_LOCKED' });
   pass('An explicit provider rejection leaves the confirmed card unchanged and offers a fresh versioned request.');
 
   const secondPage = await context.newPage(); watch(secondPage);
@@ -411,6 +483,8 @@ try {
   await refresh(); await state('active', 'needs_review');
   assert.equal(await page.getByTestId('issuer-lock').isDisabled(), true);
   assert.equal(await page.getByTestId('issuer-retry').count(), 0, 'The user cannot requeue a provider review operation.');
+  await approvalState('blocked');
+  assert.deepEqual(await cardEvent(authorize('lock-under-review')), { accepted: false, code: 'CARD_LOCKED' });
   await page.screenshot({ path: new URL('issuer-review.png', artifacts).pathname, fullPage: true });
   pass('Pending provider responses remain unconfirmed and exhausted retries show review status without a customer-side requeue action.');
 
@@ -474,7 +548,7 @@ try {
   await writeFile(new URL('results.json', artifacts), JSON.stringify({ recordedAt: new Date().toISOString(), baseUrl: base.href,
     passed: checks.length, checks, backendMocked: false, database: 'PostgreSQL', accountsCreated: 2,
     engine: 'Chromium', realDeviceTested: false, provider: 'Loopback Aqua sandbox contract fixture',
-    mutationPaths: ['Authenticated issuer status API', 'Restricted dispatcher with signed HTTP', 'Local operator registration and audited recovery'],
+    mutationPaths: ['Authenticated issuer status API', 'Restricted dispatcher with signed HTTP', 'Restricted application role card authorization and settlement', 'Local operator registration and audited recovery'],
     faultInjection: ['Lost committed 202 response', 'Delayed pre-write GET', 'Storage write/removal failures', 'Offline browser', 'Cross-tab cookie replacement'],
     virtualClock: 'Only bounded provider-pending retry exhaustion uses an injected worker clock; stored states and HTTP outcomes are real.',
     screenshots: ['issuer-active.png', 'issuer-pending.png', 'issuer-review.png', 'issuer-desktop.png', 'issuer-320.png', 'issuer-390.png', 'issuer-430.png'],

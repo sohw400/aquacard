@@ -9,6 +9,7 @@ import { Database } from './database';
 import { applyMigrations, verifyMigrations } from './migrations';
 import { LedgerStore } from './ledger';
 import { CardPaymentStore } from './card-payments';
+import { IssuerOutboxStore } from './issuer-outbox';
 
 test('upgrading an existing transfer database preserves funded accounts and creates empty card hold accounts', async () => {
   if (!process.env.TEST_DATABASE_URL) throw new Error('TEST_DATABASE_URL is required.');
@@ -38,6 +39,8 @@ test('upgrading an existing transfer database preserves funded accounts and crea
     assert.deepEqual(before.cardPayments, []);
     assert.equal(before.transactions[0].id, 'legacy-credit');
     const cards = new CardPaymentStore(database);
+    const issuer = new IssuerOutboxStore(database);
+    await issuer.register({ userId: 'legacy', providerCardId: 'sandbox-card-legacy', initialStatus: 'active' });
     await cards.apply({ kind: 'authorize', eventId: 'legacy-authorization', paymentId: 'legacy-payment', userId: 'legacy', amountWon: 7_000, merchantName: '테스트 가맹점' });
     const after = await store.snapshot('legacy');
     assert.equal(after.balanceWon, 13_000);
@@ -52,6 +55,7 @@ test('upgrading an existing transfer database preserves funded accounts and crea
     });
     assert.equal((await store.snapshot('rollout')).heldBalanceWon, 0);
     await store.creditSandbox({ userId: 'rollout', amountWon: 5_000, idempotencyKey: 'rollout-credit' });
+    await issuer.register({ userId: 'rollout', providerCardId: 'sandbox-card-rollout', initialStatus: 'active' });
     await cards.apply({ kind: 'authorize', eventId: 'rollout-authorization', paymentId: 'rollout-payment', userId: 'rollout', amountWon: 2_000, merchantName: '테스트 가맹점' });
     assert.equal((await store.snapshot('rollout')).balanceWon, 3_000);
     assert.equal((await store.snapshot('rollout')).heldBalanceWon, 2_000);

@@ -51,7 +51,7 @@ function UnlockConfirmation({ onCancel, onConfirm }: { onCancel: () => void; onC
       <button className="sa-issuer-dialog-close" aria-label="닫기" onClick={onCancel}><X size={21} /></button>
       <span className="sa-issuer-dialog-symbol" aria-hidden="true"><UnlockKeyhole size={24} strokeWidth={1.6} /></span>
       <h2 id={title}>잠금을 해제할까요?</h2>
-      <p id={description}>잠금 해제 요청을 보냅니다. 처리 결과가 확인되면 화면에 반영됩니다.</p>
+      <p id={description}>잠금 해제가 확인되면 새 결제를 승인할 수 있어요. 이미 승인된 결제의 취소와 환불은 계속 처리됩니다.</p>
       <div className="sa-issuer-dialog-actions">
         <button ref={cancel} className="sa-issuer-button secondary" data-testid="issuer-unlock-cancel" onClick={onCancel}>취소</button>
         <button className="sa-issuer-button" data-testid="issuer-unlock-confirm" onClick={onConfirm}>잠금 해제 요청</button>
@@ -77,6 +77,11 @@ export default function IssuerCardPanel({ ownerId, onSessionExpired }: IssuerCar
     && !(model.awaitingConfirmation && model.refreshing);
   const readonly = model.snapshot?.canRequestStatus === false;
   const rejected = card?.command?.status === 'failed';
+  const authorizationKnown = model.fresh && !model.submitting && !model.awaitingConfirmation && !outstanding && !model.storageError;
+  const authorizationAllowed = card?.desiredStatus === 'active' && card.confirmedStatus === 'active'
+    && (!card.command || card.command.status === 'succeeded');
+  const authorizationState = !authorizationKnown ? 'unconfirmed' : authorizationAllowed ? 'allowed' : 'blocked';
+  const authorizationLabel = authorizationState === 'unconfirmed' ? '확인 필요' : authorizationState === 'allowed' ? '승인 가능' : '승인 중단';
   const closeUnlock = useCallback(() => setUnlockOpen(null), []);
 
   useEffect(() => {
@@ -85,7 +90,7 @@ export default function IssuerCardPanel({ ownerId, onSessionExpired }: IssuerCar
 
   let stage = locked ? 'locked' : 'active';
   let title = locked ? '카드가 잠겨 있어요' : '잠금이 해제되어 있어요';
-  let description = locked ? '원할 때 잠금 해제를 요청할 수 있어요.' : '필요할 때 아래 버튼으로 카드를 잠글 수 있어요.';
+  let description = locked ? '새 결제는 승인되지 않아요. 이미 승인된 결제의 취소와 환불은 계속 처리돼요.' : '새 결제를 승인할 수 있어요. 필요할 때 아래 버튼으로 카드를 잠글 수 있어요.';
   if (model.loading && !model.snapshot) {
     stage = 'loading'; title = '카드 상태를 확인하고 있어요'; description = '잠시만 기다려 주세요.';
   } else if (model.submitting) {
@@ -95,13 +100,15 @@ export default function IssuerCardPanel({ ownerId, onSessionExpired }: IssuerCar
   } else if (unavailable) {
     stage = 'unavailable'; title = '상태를 확인할 수 없어요'; description = '연결이 확인되면 현재 상태를 다시 불러올게요.';
   } else if (needsReview) {
-    stage = 'review'; title = '카드 상태를 확인하고 있어요'; description = '요청 결과를 확인하는 데 시간이 걸리고 있어요. 확인이 끝날 때까지 다른 변경은 잠시 기다려 주세요.';
+    stage = 'review'; title = '카드 상태를 확인하고 있어요'; description = '새 결제 승인은 중단된 상태예요. 요청 결과가 확인되면 알려드릴게요.';
   } else if (model.awaitingConfirmation && !queued) {
     stage = 'pending'; title = '카드 상태를 다시 확인하고 있어요'; description = '요청 결과에 맞춰 최신 상태를 불러오고 있어요.';
   } else if (processing) {
-    stage = 'pending'; title = target === 'active' ? '잠금 해제 확인 중' : '잠금 처리 확인 중'; description = '요청을 받았어요. 확인이 끝나면 여기에서 알려드릴게요.';
+    stage = 'pending'; title = target === 'active' ? '잠금 해제 확인 중' : '잠금 처리 확인 중'; description = target === 'active'
+      ? '잠금 해제가 확인될 때까지 새 결제는 승인되지 않아요.'
+      : '새 결제 승인은 중단됐어요. 카드 잠금 결과를 확인하고 있어요.';
   } else if (card && rejected) {
-    stage = 'rejected'; title = `${targetLabel} 요청이 반영되지 않았어요`; description = '마지막으로 확인된 카드 상태를 유지하고 있어요. 아래에서 다시 요청할 수 있어요.';
+    stage = 'rejected'; title = `${targetLabel} 요청이 반영되지 않았어요`; description = '새 결제 승인은 중단된 상태예요. 아래에서 다시 요청할 수 있어요.';
   } else if (model.snapshot && !card) {
     stage = 'empty'; title = '연결된 카드가 없어요'; description = '카드가 연결되면 여기에서 상태를 확인하고 잠금을 설정할 수 있어요.';
   }
@@ -129,7 +136,12 @@ export default function IssuerCardPanel({ ownerId, onSessionExpired }: IssuerCar
           <h3 ref={statusHeading} tabIndex={-1} data-testid="issuer-request-state">{title}</h3>
           <p {...(stage === 'empty' ? { 'data-testid': 'issuer-empty' } : {})}>{description}</p>
         </div>
-        {card && <dl className="sa-issuer-confirmed"><div><dt>{lastConfirmed ? '마지막으로 확인한 상태' : '확인된 카드 상태'}</dt><dd data-testid="issuer-confirmed-state"><span className={locked ? 'is-locked' : ''} aria-hidden="true" />{locked ? '잠금' : '잠금 해제'}</dd></div><div><dt>최근 변경 기록</dt><dd><time dateTime={new Date(card.updatedAt).toISOString()}>{checkedAt(card.updatedAt)}</time></dd></div></dl>}
+        {card && <dl className="sa-issuer-confirmed">
+          <div><dt>새 결제 승인</dt><dd data-testid="issuer-authorization-state" data-authorization={authorizationState}>{authorizationLabel}</dd></div>
+          <div><dt>{lastConfirmed ? '마지막으로 확인한 상태' : '확인된 카드 상태'}</dt>
+            <dd data-testid="issuer-confirmed-state"><span className={locked ? 'is-locked' : ''} aria-hidden="true" />{locked ? '잠금' : '잠금 해제'}</dd></div>
+          <div><dt>최근 변경 기록</dt><dd><time dateTime={new Date(card.updatedAt).toISOString()}>{checkedAt(card.updatedAt)}</time></dd></div>
+        </dl>}
         {readonly && <p className="sa-issuer-readonly" data-testid="issuer-readonly">현재는 카드 상태만 확인할 수 있어요.</p>}
         {card && !readonly && <div className="sa-issuer-actions">
           {locked ? <button className="sa-issuer-button" data-testid="issuer-unlock" disabled={!model.canChange} onClick={() => { if (model.canChange) setUnlockOpen({ cardId: card.id, version: card.version }); }}><UnlockKeyhole size={18} />잠금 해제</button>
@@ -141,7 +153,7 @@ export default function IssuerCardPanel({ ownerId, onSessionExpired }: IssuerCar
         <button className="sa-issuer-refresh" data-testid="issuer-refresh" disabled={model.refreshing || model.submitting} onClick={model.refresh} aria-label="카드 상태 다시 확인"><RefreshCw size={15} aria-hidden="true" />{model.refreshing ? '상태 확인 중' : '상태 다시 확인'}</button>
       </div>
     </div>
-    <p className="sa-issuer-footnote">테스트 카드 설정입니다. 실제 카드 결제에는 적용되지 않습니다.</p>
+    <p className="sa-issuer-footnote">테스트 거래에 적용되는 설정입니다. 실제 카드 결제는 연결되어 있지 않습니다.</p>
     {unlockOpen && model.canChange && locked && unlockOpen.cardId === card?.id && unlockOpen.version === card.version && <UnlockConfirmation onCancel={closeUnlock} onConfirm={confirmUnlock} />}
   </section>;
 }

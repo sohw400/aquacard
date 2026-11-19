@@ -6,6 +6,7 @@ import test from 'node:test';
 import { Database } from './database';
 import { LedgerStore } from './ledger';
 import { CardInboxStore } from './card-inbox';
+import { IssuerOutboxStore } from './issuer-outbox';
 import { createCardIngress } from './card-ingress-http';
 import { runCardWorker } from './card-worker-loop';
 import { createTestDatabase } from './test-support';
@@ -37,6 +38,7 @@ async function roles() {
     connections.push(producer, worker);
     const ledger = new LedgerStore(f.database);
     await ledger.createUser({ id: 'alice', email: 'alice@example.test', name: '작업자 테스트', tag: 'alice', passwordHash: 'test-only-hash', createdAt: 1000 });
+    await new IssuerOutboxStore(f.database).register({ userId: 'alice', providerCardId: 'sandbox-card-alice', initialStatus: 'active' });
     await ledger.creditSandbox({ userId: 'alice', amountWon: 10_000, idempotencyKey: 'worker-credit' });
     return { ...f, producerRole, workerRole, producer, worker, ledger, close, workerUrl: url(workerRole) };
   } catch (error) { await close(); throw error; }

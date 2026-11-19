@@ -160,6 +160,7 @@ try {
   assert.equal(initial.rewards.policy.monthlyCapWon, 10_000);
   originalProgramActive = initial.rewards.programActive;
   const userId = initial.user.id;
+  command('server:issuer', ['register', userId, `sandbox-card-rewards-${runId}`, 'active']);
   command('server:credit', [owner.email, '100000', `${runId}-principal`]);
   command('server:rewards', ['budget', '1000000', `${runId}-budget`]);
   command('server:rewards', ['program', 'on', `${runId}-program-on`]);
