@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -49,6 +50,7 @@ async function fixture(t: TestContext) {
   for (const id of ['alice', 'bobby']) {
     await ledger.createUser({ id, email: `${id}-private@example.test`, name: `${id} private name`, tag: id,
       passwordHash: 'private-password-hash', createdAt: NOW - 86_400_000 });
+    await approveTestCustomer(ledger.database, id);
     await ledger.creditSandbox({ userId: id, amountWon: 50_000, idempotencyKey: `fund-${id}` });
     await issuer.register({ userId: id, providerCardId: `sandbox-card-private-${id}`, initialStatus: 'active' });
   }

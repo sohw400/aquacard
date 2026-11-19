@@ -39,6 +39,28 @@ const recordSchema = {
   properties: { id: { type: 'string' }, direction: { type: 'string', enum: ['sent', 'received', 'funded'] }, amountWon: { type: 'integer', minimum: 1 }, counterpartyName: { type: 'string' }, counterpartyTag: { type: 'string' }, createdAt: { type: 'integer', minimum: 0 } },
 };
 const amount = { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER };
+const customerAccessSchema = {
+  $id: 'AquaCustomerAccess', type: 'object', additionalProperties: false,
+  required: ['status', 'version', 'updatedAt', 'canTransact'],
+  properties: {
+    status: { type: 'string', enum: ['unverified', 'pending_review', 'active', 'restricted', 'frozen', 'closed'] },
+    version: amount, updatedAt: amount, canTransact: { type: 'boolean' },
+  },
+};
+const sessionSecuritySchema = {
+  type: 'object', additionalProperties: false, required: ['sessions', 'reauthenticatedUntil'],
+  properties: {
+    reauthenticatedUntil: { anyOf: [amount, { type: 'null' }] },
+    sessions: { type: 'array', maxItems: 20, items: {
+      type: 'object', additionalProperties: false,
+      required: ['id', 'deviceLabel', 'createdAt', 'lastSeenAt', 'expiresAt', 'current'],
+      properties: {
+        id: { type: 'string', format: 'uuid' }, deviceLabel: { type: 'string', maxLength: 80 },
+        createdAt: amount, lastSeenAt: amount, expiresAt: amount, current: { type: 'boolean' },
+      },
+    } },
+  },
+};
 const amountProperties = (names: string[]) => Object.fromEntries(names.map((key) => [key, amount]));
 const fundingFields = ['authorizedWon', 'heldWon', 'capturedWon', 'releasedWon', 'refundedWon'];
 const fundingSchema = { type: 'object', additionalProperties: false, required: fundingFields, properties: amountProperties(fundingFields) };
@@ -194,11 +216,11 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
     await api.register(swagger, {
       openapi: {
         openapi: '3.0.3',
-        info: { title: 'Aqua sandbox API', version: '0.5.0', description: '계정, 인증, 원장, 송금, 카드 결제, 결제 전용 리워드와 테스트 발급사 상태 동기화 API. 실제 자금 이동이나 카드 발급은 제공하지 않습니다.' },
+        info: { title: 'Aqua sandbox API', version: '0.6.0', description: '계정, 거래 자격, 세션 보안, 원장, 송금, 카드 결제, 결제 전용 리워드와 테스트 발급사 상태 동기화 API. 실제 고객확인, 자금 이동이나 카드 발급은 제공하지 않습니다.' },
         components: { securitySchemes: { aquaSession: { type: 'apiKey', in: 'cookie', name: COOKIE } } },
       },
     });
-    api.addSchema(errorSchema); api.addSchema(profileSchema); api.addSchema(recordSchema); api.addSchema(cardPaymentSchema); api.addSchema(rewardsSchema); api.addSchema(issuerCardSchema);
+    api.addSchema(errorSchema); api.addSchema(profileSchema); api.addSchema(recordSchema); api.addSchema(cardPaymentSchema); api.addSchema(rewardsSchema); api.addSchema(issuerCardSchema); api.addSchema(customerAccessSchema);
 
     const sessionCookie = (reply: FastifyReply, token: string, clear = false) => {
       reply.setCookie(COOKIE, token, { path: '/api', httpOnly: true, sameSite: 'strict', secure: options.secureCookies ?? false, maxAge: clear ? 0 : SESSION_SECONDS });
@@ -224,13 +246,13 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
     api.post<{ Body: { email: string; name: string; tag: string; password: string } }>('/api/auth/signup', { schema: {
       tags: ['authentication'], summary: '테스트 계정 생성', body: objectBody({ email: { type: 'string', maxLength: 254 }, name: { type: 'string', maxLength: 160 }, tag: { type: 'string', maxLength: 64 }, password: { type: 'string', minLength: 12, maxLength: 128, writeOnly: true } }), response: { 201: userSchema, ...errorResponses },
     } }, async (request, reply) => {
-      const result = await auth.signup(request.body, request.ip);
+      const result = await auth.signup(request.body, request.ip, { userAgent: request.headers['user-agent'] });
       sessionCookie(reply, result.token); return reply.code(201).send({ user: result.user });
     });
     api.post<{ Body: { email: string; password: string } }>('/api/auth/login', { schema: {
       tags: ['authentication'], summary: '로그인', body: objectBody({ email: text, password: { type: 'string', maxLength: 128, writeOnly: true } }), response: { 200: userSchema, ...errorResponses },
     } }, async (request, reply) => {
-      const result = await auth.login(request.body, request.ip);
+      const result = await auth.login(request.body, request.ip, { userAgent: request.headers['user-agent'] });
       await auth.logout(tokenOf(request)); sessionCookie(reply, result.token); return { user: result.user };
     });
     api.post('/api/auth/logout', { schema: { tags: ['authentication'], summary: '로그아웃', body: objectBody({}), response: { 200: okaySchema, ...errorResponses } } }, async (request, reply) => {
@@ -238,6 +260,33 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
       if (user) accountMatches(request, user);
       await auth.logout(tokenOf(request)); sessionCookie(reply, '', true); return { ok: true };
     });
+    const securityAccount = async (request: FastifyRequest) => {
+      await signedIn(request);
+      accountMatches(request, request.aquaUser!);
+    };
+    const securityHeaders = { type: 'object', required: ['x-aqua-account'], properties: { 'x-aqua-account': { type: 'string', minLength: 1, maxLength: 128 } } };
+    api.get('/api/auth/sessions', { preValidation: securityAccount, schema: {
+      tags: ['authentication'], summary: '내 로그인 기기와 최근 인증 상태', security: secured, headers: securityHeaders,
+      response: { 200: sessionSecuritySchema, ...errorResponses },
+    } }, async (request) => auth.listSessions(tokenOf(request), request.aquaUser!.id));
+    api.post<{ Body: { password: string } }>('/api/auth/reauthenticate', { preValidation: securityAccount, schema: {
+      tags: ['authentication'], summary: '현재 세션의 비밀번호 재확인', security: secured, headers: securityHeaders,
+      body: objectBody({ password: { type: 'string', minLength: 1, maxLength: 128, writeOnly: true } }),
+      response: { 200: objectBody({ reauthenticatedUntil: amount }), ...errorResponses },
+    } }, async (request) => auth.reauthenticate(tokenOf(request), request.aquaUser!.id, request.body.password, request.ip));
+    api.post<{ Body: { sessionId: string } }>('/api/auth/sessions/revoke', { preValidation: securityAccount, schema: {
+      tags: ['authentication'], summary: '선택한 로그인 기기 해제', security: secured, headers: securityHeaders,
+      body: objectBody({ sessionId: { type: 'string', format: 'uuid' } }),
+      response: { 200: objectBody({ revokedCurrent: { type: 'boolean' } }), ...errorResponses },
+    } }, async (request, reply) => {
+      const result = await auth.revokeSession(tokenOf(request), request.aquaUser!.id, request.body.sessionId);
+      if (result.revokedCurrent) sessionCookie(reply, '', true);
+      return result;
+    });
+    api.post('/api/auth/sessions/revoke-others', { preValidation: securityAccount, schema: {
+      tags: ['authentication'], summary: '현재 기기를 제외한 로그인 해제', security: secured, headers: securityHeaders,
+      body: objectBody({}), response: { 200: objectBody({ revokedCount: amount }), ...errorResponses },
+    } }, async (request) => auth.revokeOtherSessions(tokenOf(request), request.aquaUser!.id));
     api.post<{ Body: { email: string } }>('/api/auth/recovery/request', { schema: { tags: ['authentication'], summary: '복구 안내 요청', body: objectBody({ email: text }), response: { 202: okaySchema, ...errorResponses } } }, async (request, reply) => {
       if (!options.deliverRecovery) throw new LedgerError(503, 'RECOVERY_UNAVAILABLE', '계정 복구를 준비하고 있어요. 잠시 뒤 다시 시도해 주세요.');
       await auth.requestRecovery(request.body.email, request.ip); return reply.code(202).send({ ok: true });
@@ -247,7 +296,7 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
       await auth.resetPassword(request.body.token, request.body.password, request.ip); sessionCookie(reply, '', true); return { ok: true };
     });
     api.get('/api/account', { preValidation: signedIn, schema: { tags: ['ledger'], summary: '내 잔액과 거래 내역', security: secured,
-      response: { 200: { type: 'object', additionalProperties: false, required: ['user', 'balanceWon', 'heldBalanceWon', 'totalBalanceWon', 'rewards', 'cardPayments', 'transactions', 'limits'], properties: { user: { $ref: 'AquaMember#' }, balanceWon: { type: 'integer', minimum: 0 }, heldBalanceWon: { type: 'integer', minimum: 0 }, totalBalanceWon: { type: 'integer', minimum: 0 }, rewards: { $ref: 'AquaRewards#' }, cardPayments: { type: 'array', items: { $ref: 'AquaCardPayment#' } }, transactions: { type: 'array', items: { $ref: 'AquaTransfer#' } }, limits: { type: 'object', additionalProperties: false, required: ['perTransfer', 'daily', 'monthly', 'sentToday', 'sentMonth', 'available'], properties: Object.fromEntries(['perTransfer', 'daily', 'monthly', 'sentToday', 'sentMonth', 'available'].map((key) => [key, { type: 'integer', minimum: 0 }])) } } }, ...errorResponses },
+      response: { 200: { type: 'object', additionalProperties: false, required: ['user', 'access', 'balanceWon', 'heldBalanceWon', 'totalBalanceWon', 'rewards', 'cardPayments', 'transactions', 'limits'], properties: { user: { $ref: 'AquaMember#' }, access: { $ref: 'AquaCustomerAccess#' }, balanceWon: { type: 'integer', minimum: 0 }, heldBalanceWon: { type: 'integer', minimum: 0 }, totalBalanceWon: { type: 'integer', minimum: 0 }, rewards: { $ref: 'AquaRewards#' }, cardPayments: { type: 'array', items: { $ref: 'AquaCardPayment#' } }, transactions: { type: 'array', items: { $ref: 'AquaTransfer#' } }, limits: { type: 'object', additionalProperties: false, required: ['perTransfer', 'daily', 'monthly', 'sentToday', 'sentMonth', 'available'], properties: Object.fromEntries(['perTransfer', 'daily', 'monthly', 'sentToday', 'sentMonth', 'available'].map((key) => [key, { type: 'integer', minimum: 0 }])) } } }, ...errorResponses },
     } }, async (request) => store.snapshot(request.aquaUser!.id));
     api.post<{ Body: { useFirst: boolean; expectedVersion: number } }>('/api/rewards/preference', {
       preValidation: async (request) => { await signedIn(request); accountMatches(request, request.aquaUser!); await auth.enforceRewardPreference(request.aquaUser!.id); },

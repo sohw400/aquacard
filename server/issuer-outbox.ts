@@ -39,6 +39,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const key = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const maxClock = 8.64e15 - 86_400_000;
 const failures: Record<string, { status: number; message: string }> = {
+  CUSTOMER_ACCESS_REQUIRED: { status: 403, message: '현재 계정 상태에서는 카드 잠금을 해제할 수 없습니다.' },
   INVALID_OUTBOX_COMMAND: { status: 400, message: '카드 상태 요청 내용을 확인해 주세요.' },
   IDEMPOTENCY_CONFLICT: { status: 409, message: '같은 요청 번호에 다른 내용이 있습니다.' },
   OUTBOX_CARD_NOT_FOUND: { status: 404, message: '카드 상태 기록을 찾을 수 없습니다.' },

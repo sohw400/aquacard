@@ -43,12 +43,15 @@ npm run dev:server
 npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 ```
 
-4. 첫 계정으로 로그인해 두 번째 계정을 태그로 찾고 10,000원을 보낸다. 양쪽 잔액 90,000원·10,000원과 거래 내역을 확인한다.
-5. 같은 적립 명령을 다시 실행해도 추가 적립되지 않는지 확인한다. API를 재시작한 뒤 계정·잔액·같은 요청의 결과가 유지되는지도 확인한다.
+4. 두 계정은 기본 `unverified` 상태다. 각 계정의 `GET /api/account`에서 `user.id`와 `access.version`을 확인한 뒤, 테스트 운영자가 `server:customer:access -- set USER_ID active VERSION REQUEST_KEY 'Disposable sandbox account approved for testing'`으로 각각 명시적으로 허용한다. [고객 거래 자격·로그인 기기 관리](customer-access-security.md)에 권한과 명령을 정리했다. 실제 본인확인이 완료된 것은 아니다.
+5. 첫 계정으로 로그인해 두 번째 계정을 태그로 찾고 10,000원을 보낸다. 양쪽 잔액 90,000원·10,000원과 거래 내역을 확인한다.
+6. 같은 적립 명령을 다시 실행해도 추가 적립되지 않는지 확인한다. API를 재시작한 뒤 계정·잔액·같은 요청의 결과가 유지되는지도 확인한다.
 
 `server:credit`는 개발자용 CLI다. HTTP 충전 API가 아니며 `NODE_ENV=production`에서는 거절한다. 대상 계정은 먼저 가입해야 하고 API·CLI는 같은 `DATABASE_URL`과 `DATABASE_SCHEMA`를 사용해야 한다. 새 적립에는 새 키를 쓰며 기존 키를 다른 대상·금액에 재사용하지 않는다.
 
 ## 카드 승인과 매입 확인
+
+009 이후 새 카드 승인에는 고객 상태 `active`도 필요하다. 기존 계정도 자동 승인하지 않는다. 기존 승인 건의 매입·취소·환불과 원래 요청의 재조회는 고객 상태가 제한돼도 유지된다.
 
 `npm run server:card -- <event.json>`으로 테스트 승인·부분 매입·승인 취소·부분 환불을 처리한다. 기존 DB에도 `db:migrate`를 먼저 적용한다. 새 승인 전에는 `npm run server:issuer -- register USER_ID sandbox-card-local active`로 회원의 테스트 카드를 연결한다. [카드 결제 서버 처리](card-payment-server.md)의 JSON 예시를 따라 승인액 확보와 마지막 매입의 잔여액 해제, 중복 환불 방지를 확인할 수 있다. [카드 승인 정책](card-authorization-policy.md)은 잠금 이후 새 승인을 차단하고 거절 재전송을 보존한다.
 

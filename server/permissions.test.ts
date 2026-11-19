@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import test from 'node:test';
@@ -29,6 +30,8 @@ test('a restricted runtime role can authenticate and post transfers but cannot e
     const auth = new AuthService(store);
     const alice = await auth.signup({ name: '테스트회원', tag: 'alice', email: 'alice@example.test', password: 'Runtime-password-42' }, 'test-ip');
     const bob = await auth.signup({ name: '받는회원', tag: 'bobby', email: 'bob@example.test', password: 'Runtime-password-42' }, 'test-ip');
+    await approveTestCustomer(fixture.database, alice.user.id);
+    await approveTestCustomer(fixture.database, bob.user.id);
     await new IssuerOutboxStore(fixture.database).register({ userId: alice.user.id, providerCardId: 'sandbox-card-runtime-alice', initialStatus: 'active' });
     await new LedgerStore(fixture.database).creditSandbox({ userId: alice.user.id, amountWon: 20_000, idempotencyKey: 'restricted-role-seed' });
     const result = await store.transfer({ senderId: alice.user.id, recipientTag: 'bobby', amountWon: 7_000, idempotencyKey: 'restricted-role-transfer' });
@@ -118,6 +121,14 @@ test('a restricted runtime role can authenticate and post transfers but cannot e
       await assert.rejects(verifyApplicationRole(runtime));
       await fixture.database.query(`REVOKE ${privilege} ON card_authorization_decisions FROM "${role}"`);
     }
+    // Startup rejects the expiry-write privilege from the old release, and
+    // applying the current grant policy removes it before the API can run.
+    await fixture.database.query(`GRANT UPDATE(expires_at) ON auth_sessions TO "${role}"`);
+    assert.equal((await runtime.query("SELECT has_column_privilege(current_user, 'auth_sessions', 'expires_at', 'UPDATE') AS allowed")).rows[0].allowed, true);
+    await assert.rejects(verifyApplicationRole(runtime), /session identity|fixed expiry/);
+    await grantApplicationRole(fixture.database, role);
+    assert.equal((await runtime.query("SELECT has_column_privilege(current_user, 'auth_sessions', 'expires_at', 'UPDATE') AS allowed")).rows[0].allowed, false);
+    await assert.rejects(runtime.query('UPDATE auth_sessions SET expires_at = expires_at + 1'), /permission denied/);
     await verifyApplicationRole(runtime);
     await auth.logout(alice.token);
     assert.equal(await auth.authenticate(alice.token), null);

@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import { createHmac, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -43,6 +44,7 @@ async function fixture(t: TestContext, now?: number) {
   for (const userId of ['alice', 'bobby']) {
     await ledger.createUser({ id: userId, email: `${userId}@example.test`, name: '발신 작업자 검증', tag: userId,
       passwordHash: 'test-only-hash', createdAt: 1000 });
+    await approveTestCustomer(ledger.database, userId);
   }
   const clock = now === undefined ? undefined : () => now;
   const owner = new IssuerOutboxStore(base.database, { now: clock });
@@ -294,6 +296,7 @@ test('once reports review work and exits two when an expired unsent command cann
 test('operator CLI registers, submits through the API role and inspects safe audit history', { timeout: 20_000 }, async (t) => {
   const f = await fixture(t);
   await f.ledger.createUser({ id: 'carol', email: 'carol@example.test', name: '운영자 명령 검증', tag: 'carol', passwordHash: 'test-only-hash', createdAt: 1000 });
+  await approveTestCustomer(f.ledger.database, 'carol');
   const env = { ...process.env, NODE_ENV: 'development', DATABASE_SCHEMA: f.schema, MIGRATION_DATABASE_URL: f.connectionString, DATABASE_URL: f.apiUrl };
   const run = (args: string[], settings: NodeJS.ProcessEnv = env) => child(t, settings, args, 'server/issuer-operator.ts').finished;
   const registered = await run(['register', 'carol', 'sandbox-card-carol', 'active']);

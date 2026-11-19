@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
@@ -45,6 +46,9 @@ test('authorization policy upgrade preserves pre-policy responses and settles ol
     await cards.apply({ kind: 'capture', eventId: 'legacy-final', paymentId: event.paymentId, userId: 'legacy', amountWon: 6_000, finalCapture: true });
     await cards.apply({ kind: 'refund', eventId: 'legacy-refund', paymentId: event.paymentId, userId: 'legacy', amountWon: 2_000 });
     assert.deepEqual(await cards.apply(event), approved);
+    // The upgraded customer remains blocked until the trusted test fixture explicitly approves it.
+    assert.equal((await ledger.snapshot('legacy')).access.status, 'unverified');
+    await approveTestCustomer(database, 'legacy');
     await assert.rejects(cards.apply({ ...event, eventId: 'new-after-upgrade', paymentId: 'new-after-upgrade-payment' }),
       (error: unknown) => error instanceof LedgerError && error.code === 'CARD_NOT_ISSUED');
     const processed = await inbox.processNext(); assert.ok(processed);

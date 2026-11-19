@@ -209,3 +209,5 @@ jobs:
           npm run server:reconcile
       - name: Check connected issuer controls in an isolated schema
         run: npm run test:issuer:browser
+      - name: Check customer access and session security in an isolated schema
+        run: npm run test:security:browser

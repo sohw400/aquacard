@@ -10,13 +10,15 @@ export async function grantApplicationRole(database: Database, role: string): Pr
     await client.query(`GRANT USAGE ON SCHEMA "${database.schema}" TO ${quoted}`);
     await client.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA "${database.schema}" FROM ${quoted}`);
     await client.query(`REVOKE ALL ON schema_migrations, users, ledger_accounts, journals, journal_entries, auth_sessions, auth_recovery, auth_rate_limits FROM ${quoted}`);
+    // Explicitly reset the previous release's writable columns before granting the new set.
+    await client.query(`REVOKE UPDATE(token_hash, user_id, created_at, expires_at, session_id, device_label, last_seen_at, reauthenticated_at) ON auth_sessions FROM ${quoted}`);
     await client.query(`GRANT SELECT ON schema_migrations, users, ledger_accounts, journals, journal_entries, auth_sessions, auth_recovery, auth_rate_limits TO ${quoted}`);
     await client.query(`GRANT INSERT ON users, ledger_accounts, journals, auth_sessions, auth_recovery, auth_rate_limits TO ${quoted}`);
     await client.query(`GRANT UPDATE(password_hash) ON users TO ${quoted}`);
     // PostgreSQL row locks require UPDATE on at least one column. Identity updates themselves
     // remain forbidden by the immutable-identity trigger; balance_won is never granted.
     await client.query(`GRANT UPDATE(id) ON ledger_accounts TO ${quoted}`);
-    await client.query(`GRANT UPDATE(expires_at) ON auth_sessions TO ${quoted}`);
+    await client.query(`GRANT UPDATE(last_seen_at, reauthenticated_at) ON auth_sessions TO ${quoted}`);
     await client.query(`GRANT UPDATE(used_at) ON auth_recovery TO ${quoted}`);
     await client.query(`GRANT UPDATE ON auth_rate_limits TO ${quoted}`);
     await client.query(`GRANT DELETE ON auth_sessions, auth_recovery, auth_rate_limits TO ${quoted}`);
@@ -31,6 +33,8 @@ export async function grantApplicationRole(database: Database, role: string): Pr
     await client.query(`REVOKE ALL ON card_event_inbox, card_inbox_attempts, card_inbox_requeues, card_inbox_lanes FROM ${quoted}`);
     await client.query(`REVOKE ALL ON issuer_cards, issuer_outbox, issuer_outbox_audit, issuer_outbox_completions, issuer_outbox_requeues FROM ${quoted}`);
     await client.query(`REVOKE ALL ON card_authorization_decisions, card_operations_reports FROM ${quoted}`);
+    await client.query(`REVOKE ALL ON customer_access, customer_access_events FROM ${quoted}`);
+    await client.query(`GRANT EXECUTE ON FUNCTION customer_access_snapshot(text), customer_require_active(text[]) TO ${quoted}`);
     await client.query(`GRANT EXECUTE ON FUNCTION issuer_card_snapshot(text), request_issuer_card_status(jsonb,bigint) TO ${quoted}`);
     await client.query(`REVOKE ALL ON FUNCTION operator_fund_reward_budget(jsonb, bigint), operator_set_reward_program(jsonb, bigint), operator_grant_rewards(jsonb, bigint) FROM ${quoted}`);
     await client.query(`REVOKE ALL ON FUNCTION apply_sandbox_card_event_legacy_003(jsonb, bigint) FROM ${quoted}`);
@@ -39,7 +43,8 @@ export async function grantApplicationRole(database: Database, role: string): Pr
       WHERE n.nspname = $1 AND p.prosecdef
       AND p.oid NOT IN ('apply_sandbox_card_event(jsonb,bigint)'::regprocedure,
         'rewards_snapshot(text,bigint)'::regprocedure, 'apply_reward_preference(jsonb,bigint)'::regprocedure,
-        'issuer_card_snapshot(text)'::regprocedure, 'request_issuer_card_status(jsonb,bigint)'::regprocedure)`, [database.schema]);
+        'issuer_card_snapshot(text)'::regprocedure, 'request_issuer_card_status(jsonb,bigint)'::regprocedure,
+        'customer_access_snapshot(text)'::regprocedure, 'customer_require_active(text[])'::regprocedure)`, [database.schema]);
     for (const { signature } of internalFunctions.rows) await client.query(`REVOKE ALL ON FUNCTION ${signature} FROM ${quoted}`);
   });
 }
@@ -66,7 +71,12 @@ export async function verifyApplicationRole(database: Database): Promise<void> {
   if (result.rows.length !== 1 || result.rows[0].unsafe) {
     throw new Error('The API requires a restricted application database role. Keep migration and administrator credentials out of the running API.');
   }
-  const protectedTables = ['reward_wallets', 'reward_journals', 'reward_commands', 'reward_cash_plans', 'reward_cashback_months', 'card_reward_allocations', 'reward_program', 'reward_history', 'card_event_inbox', 'card_inbox_attempts', 'card_inbox_requeues', 'card_inbox_lanes', 'issuer_cards', 'issuer_outbox', 'issuer_outbox_audit', 'issuer_outbox_completions', 'issuer_outbox_requeues', 'card_authorization_decisions', 'card_operations_reports'].map((table) => `${database.schema}.${table}`);
+  const sessionAccess = await database.query<{ unsafe: boolean }>(`SELECT EXISTS (
+    SELECT 1 FROM unnest(ARRAY['token_hash','user_id','created_at','expires_at','session_id','device_label']) AS c(name)
+    WHERE has_column_privilege(current_user, 'auth_sessions', name, 'UPDATE')
+  ) AS unsafe`);
+  if (sessionAccess.rows[0]?.unsafe !== false) throw new Error('The API cannot change session identity or extend its fixed expiry.');
+  const protectedTables = ['reward_wallets', 'reward_journals', 'reward_commands', 'reward_cash_plans', 'reward_cashback_months', 'card_reward_allocations', 'reward_program', 'reward_history', 'card_event_inbox', 'card_inbox_attempts', 'card_inbox_requeues', 'card_inbox_lanes', 'issuer_cards', 'issuer_outbox', 'issuer_outbox_audit', 'issuer_outbox_completions', 'issuer_outbox_requeues', 'card_authorization_decisions', 'card_operations_reports', 'customer_access', 'customer_access_events'].map((table) => `${database.schema}.${table}`);
   const rewardAccess = await database.query<{ unsafe: boolean }>(`SELECT EXISTS (
     SELECT 1 FROM unnest($1::text[]) AS t(name) WHERE has_table_privilege(current_user, name, 'INSERT,UPDATE,DELETE,TRUNCATE')
       OR has_any_column_privilege(current_user, name, 'INSERT,UPDATE')
@@ -79,7 +89,8 @@ export async function verifyApplicationRole(database: Database): Promise<void> {
     WHERE n.nspname = $1 AND p.prosecdef AND p.prorettype <> 'trigger'::regtype
       AND p.oid NOT IN ('apply_sandbox_card_event(jsonb,bigint)'::regprocedure,
         'rewards_snapshot(text,bigint)'::regprocedure, 'apply_reward_preference(jsonb,bigint)'::regprocedure,
-        'issuer_card_snapshot(text)'::regprocedure, 'request_issuer_card_status(jsonb,bigint)'::regprocedure)
+        'issuer_card_snapshot(text)'::regprocedure, 'request_issuer_card_status(jsonb,bigint)'::regprocedure,
+        'customer_access_snapshot(text)'::regprocedure, 'customer_require_active(text[])'::regprocedure)
       AND has_function_privilege(current_user, p.oid, 'EXECUTE')
   ) AS unsafe`, [database.schema]);
   if (internalAccess.rows[0]?.unsafe !== false) throw new Error('The API cannot execute private ledger helper functions.');
@@ -87,8 +98,10 @@ export async function verifyApplicationRole(database: Database): Promise<void> {
     SELECT 1 FROM unnest($1::text[]) t(name)
     WHERE has_table_privilege(current_user,name,'SELECT') OR has_any_column_privilege(current_user,name,'SELECT')
   ) OR NOT has_function_privilege(current_user,'issuer_card_snapshot(text)','EXECUTE')
-    OR NOT has_function_privilege(current_user,'request_issuer_card_status(jsonb,bigint)','EXECUTE') AS unsafe`,
-  [['issuer_cards', 'issuer_outbox', 'issuer_outbox_audit', 'issuer_outbox_completions', 'issuer_outbox_requeues', 'card_authorization_decisions', 'card_operations_reports'].map((table) => `${database.schema}.${table}`)]);
+    OR NOT has_function_privilege(current_user,'request_issuer_card_status(jsonb,bigint)','EXECUTE')
+    OR NOT has_function_privilege(current_user,'customer_access_snapshot(text)','EXECUTE')
+    OR NOT has_function_privilege(current_user,'customer_require_active(text[])','EXECUTE') AS unsafe`,
+  [['issuer_cards', 'issuer_outbox', 'issuer_outbox_audit', 'issuer_outbox_completions', 'issuer_outbox_requeues', 'card_authorization_decisions', 'card_operations_reports', 'customer_access', 'customer_access_events'].map((table) => `${database.schema}.${table}`)]);
   if (issuerAccess.rows[0]?.unsafe !== false) throw new Error('The API requires the issuer command functions without direct issuer table access.');
 }
 

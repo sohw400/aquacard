@@ -204,7 +204,9 @@ export function useIssuerCard(ownerId: string, onSessionExpired: () => void) {
         try { clearIssuerIntent(ownerId, intent); }
         catch { cleanupError = '이전 요청 기록을 정리하지 못했습니다. 같은 요청으로 다시 확인해 주세요.'; }
         syncSaved();
-        setWriteError(cleanupError || '카드 상태가 변경됐거나 다른 요청을 처리 중입니다. 최신 상태를 확인한 뒤 다시 선택해 주세요.');
+        setWriteError(cleanupError || (issue instanceof ApiError && issue.code === 'CUSTOMER_ACCESS_REQUIRED'
+          ? '계정의 거래가 제한되어 카드 잠금을 해제할 수 없습니다. 계정 상태를 확인해 주세요.'
+          : '카드 상태가 변경됐거나 다른 요청을 처리 중입니다. 최신 상태를 확인한 뒤 다시 선택해 주세요.'));
       } else {
         setWriteError(issue instanceof ApiError && issue.status === 429
           ? '요청이 많습니다. 잠시 뒤 같은 요청으로 다시 확인해 주세요.'

@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { Database } from './database';
@@ -34,6 +35,7 @@ async function fixture(t: TestContext) {
 async function member(ledger: LedgerStore, id: string) {
   const user = await ledger.createUser({ id, email: `${id}@example.test`, name: `${id} 회원`, tag: id,
     passwordHash: `test-only:${id}`, createdAt: NOW - 60 * DAY });
+  await approveTestCustomer(ledger.database, id);
   await new IssuerOutboxStore(ledger.database, { now: () => NOW }).register({ userId: id, providerCardId: `sandbox-card-${id}`, initialStatus: 'active' });
   return user;
 }

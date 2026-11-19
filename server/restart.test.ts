@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
@@ -50,6 +51,8 @@ test('API process restart preserves sessions, balances and the result of a repea
     await start();
     const sender = await request('/auth/signup', '', { email: 'restart.sender@example.com', tag: 'restart.sender', name: '보내는회원', password: 'Restart-password-42' });
     const receiver = await request('/auth/signup', '', { email: 'restart.receiver@example.com', tag: 'restart.receiver', name: '받는회원', password: 'Restart-password-42' });
+    await approveTestCustomer(fixture.database, sender.data.user.id);
+    await approveTestCustomer(fixture.database, receiver.data.user.id);
     const funding = spawn(process.execPath, ['--import', 'tsx', 'server/credit.ts', 'restart.sender@example.com', '20000', 'restart-funding-0001'], { env, stdio: 'ignore' });
     assert.equal((await once(funding, 'exit'))[0], 0);
     const original = await request('/transfers', sender.cookie, { recipientTag: 'restart.receiver', amountWon: 7_000 }, 'restart-transfer-0001', sender.data.user.id);

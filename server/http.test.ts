@@ -1,3 +1,5 @@
+import { approveTestCustomer } from './test-customer-access';
+import { CustomerAccessStore } from './customer-access';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -79,18 +81,70 @@ async function fixture(options: { secureCookies?: boolean; recovery?: boolean; s
   }
   return {
     ...context, store, server, signup, mail,
+    async signupForTransactions(tag: string) {
+      const session = await signup(tag);
+      await approveTestCustomer(context.database, session.user.id);
+      return session;
+    },
     request: (path: string, options?: RequestOptions) => request(server, path, options),
     async close() { try { await server.close(); } finally { await context.cleanup(); } },
   };
 }
+
+test('customer access is enforced for both transfer participants and a freeze preserves receipts and account reads', async () => {
+  const f = await fixture();
+  try {
+    const sender = await f.signup('accesssender');
+    const receiver = await f.signup('accessreceiver');
+    await f.store.creditSandbox({ userId: sender.user.id, amountWon: 10_000, idempotencyKey: 'access-test-funding' });
+    const initial = await f.request('/account', { cookie: sender.cookie });
+    assert.equal(initial.data.access.status, 'unverified');
+    assert.equal(initial.data.access.canTransact, false);
+    const send = (key: string) => f.request('/transfers', {
+      method: 'POST', cookie: sender.cookie,
+      headers: { 'Idempotency-Key': key, 'X-Aqua-Account': sender.user.id },
+      body: { recipientTag: receiver.user.tag, amountWon: 1_000, access: { status: 'active' } },
+    });
+    const denied = await send('access-before-approval');
+    assert.equal(denied.status, 403);
+    assert.equal(denied.data.error.code, 'CUSTOMER_ACCESS_REQUIRED');
+    assert.equal((await f.request('/api/customer/access', {
+      method: 'POST', cookie: sender.cookie, body: { status: 'active' },
+      headers: { 'X-Aqua-Account': sender.user.id },
+    })).status, 404, 'there is no public account approval endpoint');
+    await approveTestCustomer(f.database, sender.user.id);
+    const recipientDenied = await send('access-recipient-unverified');
+    assert.equal(recipientDenied.status, 403);
+    assert.equal(recipientDenied.data.error.code, 'CUSTOMER_ACCESS_REQUIRED');
+    assert.equal((await f.store.snapshot(receiver.user.id)).balanceWon, 0);
+    await approveTestCustomer(f.database, receiver.user.id);
+    const accepted = await send('access-approved-transfer');
+    assert.equal(accepted.status, 200);
+    await new CustomerAccessStore(f.database).transition({
+      userId: sender.user.id, status: 'frozen', expectedVersion: 2,
+      idempotencyKey: 'access-test-freeze', reason: 'Sandbox policy regression fixture',
+    });
+    const frozen = await f.request('/account', { cookie: sender.cookie });
+    assert.equal(frozen.status, 200);
+    assert.equal(frozen.data.access.status, 'frozen');
+    assert.equal(frozen.data.access.canTransact, false);
+    const blocked = await send('access-new-after-freeze');
+    assert.equal(blocked.status, 403);
+    assert.equal(blocked.data.error.code, 'CUSTOMER_ACCESS_REQUIRED');
+    const replay = await send('access-approved-transfer');
+    assert.equal(replay.status, 200);
+    assert.deepEqual(replay.data, accepted.data);
+    assert.equal((await f.store.snapshot(receiver.user.id)).balanceWon, 1_000);
+  } finally { await f.close(); }
+});
 
 test('Fastify sessions isolate accounts and ignore caller-selected sender IDs', async () => {
   const f = await fixture();
   try {
     assert.equal((await f.request('/account')).status, 401);
     assert.deepEqual((await f.request('/session')).data, { user: null });
-    const alice = await f.signup('alice');
-    const bob = await f.signup('bobby');
+    const alice = await f.signupForTransactions('alice');
+    const bob = await f.signupForTransactions('bobby');
     const cookie = alice.headers.get('set-cookie') ?? '';
     assert.match(cookie, /HttpOnly/i);
     assert.match(cookie, /SameSite=Strict/i);
@@ -150,8 +204,8 @@ test('Fastify sessions isolate accounts and ignore caller-selected sender IDs', 
 test('account responses expose owned card holds and prevent spending them through member transfers', async () => {
   const f = await fixture();
   try {
-    const alice = await f.signup('cardalice');
-    const bob = await f.signup('cardbobby');
+    const alice = await f.signupForTransactions('cardalice');
+    const bob = await f.signupForTransactions('cardbobby');
     await new IssuerOutboxStore(f.database).register({ userId: alice.user.id, providerCardId: 'sandbox-card-http-alice', initialStatus: 'active' });
     await f.store.creditSandbox({ userId: alice.user.id, amountWon: 100_000, idempotencyKey: 'card-http-seed' });
     const cards = new CardPaymentStore(f.database);
@@ -217,7 +271,7 @@ test('reward preferences require the session owner, version and immutable retry 
 test('funded rewards remain card-only and the API exposes the original funding split and cashback separately', async () => {
   const f = await fixture();
   try {
-    const alice = await f.signup('rewardowner'); const bob = await f.signup('rewardother');
+    const alice = await f.signupForTransactions('rewardowner'); const bob = await f.signupForTransactions('rewardother');
     await new IssuerOutboxStore(f.database).register({ userId: alice.user.id, providerCardId: 'sandbox-card-http-reward', initialStatus: 'active' });
     const rewards = new RewardsStore(f.database);
     await rewards.fundBudget({ amountWon: 100_000, idempotencyKey: 'http-company-budget' });
@@ -328,8 +382,8 @@ test('recovery is explicitly unavailable when no delivery provider is configured
 test('concurrent HTTP sends cannot spend the same PostgreSQL balance twice', async () => {
   const f = await fixture();
   try {
-    const alice = await f.signup('sender');
-    const bob = await f.signup('target');
+    const alice = await f.signupForTransactions('sender');
+    const bob = await f.signupForTransactions('target');
     await f.store.creditSandbox({ userId: alice.user.id, amountWon: 15_000, idempotencyKey: 'http-race-funding' });
     const results = await Promise.all(['http-race-one', 'http-race-two'].map((key) => f.request('/transfers', {
       method: 'POST', cookie: alice.cookie,

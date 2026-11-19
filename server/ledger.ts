@@ -70,7 +70,8 @@ function checkRequestKey(value: string): void {
 }
 
 function domainError(error: unknown): never {
-  const pg = error as { code?: string; constraint?: string };
+  const pg = error as { code?: string; constraint?: string; message?: string };
+  if (pg.message === 'CUSTOMER_ACCESS_REQUIRED') throw new LedgerError(403, 'CUSTOMER_ACCESS_REQUIRED', '현재 고객 상태에서는 이 거래를 진행할 수 없습니다.');
   if (pg.code === '23505') {
     if (pg.constraint === 'users_email_key') throw new LedgerError(409, 'EMAIL_TAKEN', '이미 가입한 이메일입니다.');
     if (pg.constraint === 'users_tag_key') throw new LedgerError(409, 'TAG_TAKEN', '이미 사용하는 태그입니다.');
@@ -210,7 +211,8 @@ export class LedgerStore {
         a.cashback_pending_won, a.cashback_awarded_won, a.cashback_reversed_won, a.cashback_offset_won, a.closed_at
         FROM card_payments p LEFT JOIN card_reward_allocations a ON a.payment_id = p.id
         WHERE p.user_id = $1 ORDER BY p.created_at DESC, p.id DESC`, [userId]);
-      return { user: profile(user), balanceWon, heldBalanceWon, totalBalanceWon, rewards: await readRewardsSnapshot(client, userId, now), cardPayments: payments.rows.map((row) => this.cardRecord(row)),
+      const access = (await client.query<{ result: AccountSnapshot['access'] }>('SELECT customer_access_snapshot($1::text) AS result', [userId])).rows[0].result;
+      return { user: profile(user), access, balanceWon, heldBalanceWon, totalBalanceWon, rewards: await readRewardsSnapshot(client, userId, now), cardPayments: payments.rows.map((row) => this.cardRecord(row)),
         transactions: history.rows.map((row) => this.record(row, userId)), limits: await this.limits(client, user, balanceWon, now) };
     }, { isolation: 'repeatable read' });
   }
@@ -230,8 +232,12 @@ export class LedgerStore {
       if (!recipient) throw new LedgerError(404, 'RECIPIENT_NOT_FOUND', '받는 회원을 찾을 수 없습니다.');
       if (recipient.id === sender.id) throw new LedgerError(400, 'SELF_TRANSFER', '자신에게는 보낼 수 없습니다.');
       const payload = JSON.stringify({ kind: 'member_transfer', recipientId: recipient.id, amountWon: input.amountWon });
+      // Resolve repeated requests before applying a newer access restriction.
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':aqua:transfer:' || $1 || ':' || $2, 0))", [sender.id, input.idempotencyKey]);
       const prior = await this.replay(client, sender.id, input.idempotencyKey, payload);
       if (prior) return prior;
+      // Policy locks precede monetary account locks and are retained through commit.
+      await client.query('SELECT customer_require_active($1::text[])', [[sender.id, recipient.id]]);
       const accounts = await this.accountRows(client, [userAccountId(sender.id), userAccountId(recipient.id)], true);
       const repeated = await this.replay(client, sender.id, input.idempotencyKey, payload);
       if (repeated) return repeated;

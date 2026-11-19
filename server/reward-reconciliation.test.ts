@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import test, { type TestContext } from 'node:test';
@@ -18,6 +19,7 @@ async function fixture(t: TestContext) {
   const rewards = new RewardsStore(context.database, options);
   const cards = new CardPaymentStore(context.database, options);
   await ledger.createUser({ id: 'alice', email: 'alice@example.test', name: '대사 테스트', tag: 'alice', passwordHash: 'test-only-hash', createdAt: NOW - 90 * 86_400_000 });
+  await approveTestCustomer(ledger.database, 'alice');
   await new IssuerOutboxStore(context.database, options).register({ userId: 'alice', providerCardId: 'sandbox-card-alice', initialStatus: 'active' });
   return { ...context, ledger, rewards, cards };
 }
@@ -123,6 +125,7 @@ test('reconciliation detects damaged reward and quota projections without repair
 test('monetary discrepancies retain exact decimal amounts beyond JavaScript integer precision', async (t) => {
   const f = await fixture(t);
   await f.ledger.createUser({ id: 'bob', email: 'bob@example.test', name: '정밀도 테스트', tag: 'bob', passwordHash: 'test-only-hash', createdAt: NOW });
+  await approveTestCustomer(f.ledger.database, 'bob');
   await f.ledger.creditSandbox({ userId: 'alice', amountWon: Number.MAX_SAFE_INTEGER, idempotencyKey: 'audit-large-alice' });
   await f.ledger.creditSandbox({ userId: 'bob', amountWon: Number.MAX_SAFE_INTEGER, idempotencyKey: 'audit-large-bob' });
   assert.equal((await reconcileRewards(f.database)).ok, true);

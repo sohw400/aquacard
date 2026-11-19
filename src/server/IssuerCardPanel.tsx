@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowRight, Check, Clock3, LockKeyhole, RefreshCw, ShieldCheck, UnlockKeyhole, X } from 'lucide-react';
+import type { CustomerAccessSnapshot } from '../../shared/api';
 import { Wordmark } from '../components/Logo';
 import { useModal } from '../components/useModal';
 import { useIssuerCard } from './useIssuerCard';
@@ -8,6 +9,7 @@ import './IssuerCardPanel.css';
 
 interface IssuerCardPanelProps {
   ownerId: string;
+  access: CustomerAccessSnapshot | null;
   onSessionExpired: () => void;
 }
 
@@ -60,7 +62,7 @@ function UnlockConfirmation({ onCancel, onConfirm }: { onCancel: () => void; onC
   </div>, document.body);
 }
 
-export default function IssuerCardPanel({ ownerId, onSessionExpired }: IssuerCardPanelProps) {
+export default function IssuerCardPanel({ ownerId, access, onSessionExpired }: IssuerCardPanelProps) {
   const model = useIssuerCard(ownerId, onSessionExpired);
   const [unlockOpen, setUnlockOpen] = useState<{ cardId: string; version: number } | null>(null);
   const headingId = useId();
@@ -77,16 +79,16 @@ export default function IssuerCardPanel({ ownerId, onSessionExpired }: IssuerCar
     && !(model.awaitingConfirmation && model.refreshing);
   const readonly = model.snapshot?.canRequestStatus === false;
   const rejected = card?.command?.status === 'failed';
-  const authorizationKnown = model.fresh && !model.submitting && !model.awaitingConfirmation && !outstanding && !model.storageError;
-  const authorizationAllowed = card?.desiredStatus === 'active' && card.confirmedStatus === 'active'
+  const authorizationKnown = access !== null && model.fresh && !model.submitting && !model.awaitingConfirmation && !outstanding && !model.storageError;
+  const authorizationAllowed = access?.canTransact === true && card?.desiredStatus === 'active' && card.confirmedStatus === 'active'
     && (!card.command || card.command.status === 'succeeded');
   const authorizationState = !authorizationKnown ? 'unconfirmed' : authorizationAllowed ? 'allowed' : 'blocked';
   const authorizationLabel = authorizationState === 'unconfirmed' ? '확인 필요' : authorizationState === 'allowed' ? '승인 가능' : '승인 중단';
   const closeUnlock = useCallback(() => setUnlockOpen(null), []);
 
   useEffect(() => {
-    if (unlockOpen && (!model.canChange || !locked || unlockOpen.cardId !== card?.id || unlockOpen.version !== card.version)) setUnlockOpen(null);
-  }, [model.canChange, locked, card?.id, card?.version, unlockOpen]);
+    if (unlockOpen && (!access?.canTransact || !model.canChange || !locked || unlockOpen.cardId !== card?.id || unlockOpen.version !== card.version)) setUnlockOpen(null);
+  }, [access?.canTransact, model.canChange, locked, card?.id, card?.version, unlockOpen]);
 
   let stage = locked ? 'locked' : 'active';
   let title = locked ? '카드가 잠겨 있어요' : '잠금이 해제되어 있어요';
@@ -111,6 +113,9 @@ export default function IssuerCardPanel({ ownerId, onSessionExpired }: IssuerCar
     stage = 'rejected'; title = `${targetLabel} 요청이 반영되지 않았어요`; description = '새 결제 승인은 중단된 상태예요. 아래에서 다시 요청할 수 있어요.';
   } else if (model.snapshot && !card) {
     stage = 'empty'; title = '연결된 카드가 없어요'; description = '카드가 연결되면 여기에서 상태를 확인하고 잠금을 설정할 수 있어요.';
+  } else if (card && !access?.canTransact) {
+    description = access ? '계정의 거래가 제한되어 새 결제를 승인할 수 없어요. 카드 잠금과 기존 결제의 취소·환불은 계속 이용할 수 있어요.'
+      : '계정 상태를 확인하고 있어요. 확인이 끝나면 새 결제 승인 가능 여부를 알려드릴게요.';
   }
   const inProgress = ['confirming', 'pending', 'review'].includes(stage);
   const feedback = model.storageError || model.error;
@@ -118,7 +123,7 @@ export default function IssuerCardPanel({ ownerId, onSessionExpired }: IssuerCar
   const retryDisabled = !model.fresh || !model.snapshot?.canRequestStatus || model.submitting || model.awaitingConfirmation || Boolean(model.storageError);
 
   function confirmUnlock() {
-    if (!model.canChange || !locked || !unlockOpen || unlockOpen.cardId !== card?.id || unlockOpen.version !== card.version) { setUnlockOpen(null); return; }
+    if (!access?.canTransact || !model.canChange || !locked || !unlockOpen || unlockOpen.cardId !== card?.id || unlockOpen.version !== card.version) { setUnlockOpen(null); return; }
     setUnlockOpen(null);
     model.requestStatus('active');
     requestAnimationFrame(() => statusHeading.current?.focus({ preventScroll: true }));
@@ -144,7 +149,7 @@ export default function IssuerCardPanel({ ownerId, onSessionExpired }: IssuerCar
         </dl>}
         {readonly && <p className="sa-issuer-readonly" data-testid="issuer-readonly">현재는 카드 상태만 확인할 수 있어요.</p>}
         {card && !readonly && <div className="sa-issuer-actions">
-          {locked ? <button className="sa-issuer-button" data-testid="issuer-unlock" disabled={!model.canChange} onClick={() => { if (model.canChange) setUnlockOpen({ cardId: card.id, version: card.version }); }}><UnlockKeyhole size={18} />잠금 해제</button>
+          {locked ? <button className="sa-issuer-button" data-testid="issuer-unlock" disabled={!access?.canTransact || !model.canChange} onClick={() => { if (access?.canTransact && model.canChange) setUnlockOpen({ cardId: card.id, version: card.version }); }}><UnlockKeyhole size={18} />잠금 해제</button>
             : <button className="sa-issuer-button secondary" data-testid="issuer-lock" disabled={!model.canChange} onClick={() => model.requestStatus('locked')}><LockKeyhole size={18} />카드 잠그기</button>}
         </div>}
         {outstanding && <button className="sa-issuer-retry" data-testid="issuer-retry" disabled={retryDisabled} onClick={model.retryIntent}>이전 요청 확인<ArrowRight size={16} /></button>}
@@ -154,6 +159,6 @@ export default function IssuerCardPanel({ ownerId, onSessionExpired }: IssuerCar
       </div>
     </div>
     <p className="sa-issuer-footnote">테스트 거래에 적용되는 설정입니다. 실제 카드 결제는 연결되어 있지 않습니다.</p>
-    {unlockOpen && model.canChange && locked && unlockOpen.cardId === card?.id && unlockOpen.version === card.version && <UnlockConfirmation onCancel={closeUnlock} onConfirm={confirmUnlock} />}
+    {unlockOpen && access?.canTransact && model.canChange && locked && unlockOpen.cardId === card?.id && unlockOpen.version === card.version && <UnlockConfirmation onCancel={closeUnlock} onConfirm={confirmUnlock} />}
   </section>;
 }

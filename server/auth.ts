@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
 import type { PoolClient, QueryResultRow } from 'pg';
-import type { MemberProfile } from '../shared/api';
+import type { AuthSessionRecord, MemberProfile, SessionSecuritySnapshot } from '../shared/api';
 import { LedgerError, type LedgerStore } from './ledger';
 
 interface SignupInput { email: string; name: string; tag: string; password: string }
@@ -9,10 +9,15 @@ export interface AuthOptions {
   now?: () => number;
   deliverRecovery?: (email: string, token: string) => Promise<void>;
 }
+/** Only the derived family label is retained. User agents are not trusted device identity. */
+export interface SessionMetadata { userAgent?: string }
 
 const MINUTE = 60_000;
 const SESSION_TTL = 7 * 24 * 60 * MINUTE;
 const RECOVERY_TTL = 15 * MINUTE;
+const REAUTHENTICATION_TTL = 5 * MINUTE;
+const SESSION_ACTIVITY_INTERVAL = 5 * MINUTE;
+const MAX_SESSIONS = 20;
 const SCRYPT = { N: 65_536, r: 8, p: 2, maxmem: 128 * 1024 * 1024 } as const;
 const KEY_BYTES = 64;
 const DUMMY_HASH = `scrypt$1$65536$8$2$${'00'.repeat(16)}$${'00'.repeat(KEY_BYTES)}`;
@@ -27,6 +32,11 @@ interface RateRule { scope: string; value: string; limit: number; duration: numb
 interface RateRow extends QueryResultRow { attempts: number; expires_at: string | number }
 interface RecoveryRow extends QueryResultRow { user_id: string; expires_at: string | number; used_at: string | number | null }
 interface UserRow extends QueryResultRow { id: string; email: string; name: string; tag: string; password_hash: string; created_at: string | number }
+interface SessionRow extends QueryResultRow {
+  session_id: string; token_hash: string; user_id: string; device_label: string;
+  created_at: string | number; expires_at: string | number; last_seen_at: string | number;
+  reauthenticated_at: string | number | null;
+}
 type AuthResult = { user: MemberProfile; token: string };
 
 const digest = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
@@ -34,6 +44,19 @@ const invalidCredentials = () => new LedgerError(401, 'INVALID_CREDENTIALS', '�
 const invalidRecovery = () => new LedgerError(400, 'INVALID_RECOVERY', '복구 정보가 유효하지 않거나 만료되었습니다. 다시 요청해 주세요.');
 const invalidSignup = () => new LedgerError(409, 'ACCOUNT_UNAVAILABLE', '입력한 이메일 또는 태그로 가입할 수 없습니다.');
 const validToken = (token: unknown): token is string => typeof token === 'string' && /^[a-f0-9]{64}$/.test(token);
+const authenticationRequired = () => new LedgerError(401, 'AUTH_REQUIRED', '다시 로그인해 주세요.');
+const reauthenticationRequired = () => new LedgerError(403, 'REAUTHENTICATION_REQUIRED', '보안을 위해 비밀번호를 다시 입력해 주세요.');
+
+function deviceLabel(metadata?: SessionMetadata): string {
+  const agent = typeof metadata?.userAgent === 'string' ? metadata.userAgent.slice(0, 1024) : '';
+  const device = /iPad/i.test(agent) ? 'iPad' : /iPhone/i.test(agent) ? 'iPhone'
+    : /Android/i.test(agent) ? 'Android' : /Windows/i.test(agent) ? 'Windows'
+    : /Macintosh|Mac OS X/i.test(agent) ? 'Mac' : /Linux/i.test(agent) ? 'Linux' : '알 수 없는 기기';
+  const browser = /Edg(?:e|A|iOS)?\//i.test(agent) ? 'Edge' : /SamsungBrowser\//i.test(agent) ? 'Samsung Internet'
+    : /Firefox\/|FxiOS\//i.test(agent) ? 'Firefox' : /Chrome\/|CriOS\//i.test(agent) ? 'Chrome'
+    : /Safari\//i.test(agent) ? 'Safari' : '';
+  return browser ? `${device} · ${browser}` : device;
+}
 
 function epoch(value: unknown): number {
   const number = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
@@ -159,7 +182,7 @@ export class AuthService {
     return typeof rateKey === 'string' && rateKey.trim().length > 0 && rateKey.length <= 256 ? rateKey.trim() : 'unknown';
   }
 
-  private async issueSession(userId: string, expectedHash: string, transactionClient?: PoolClient): Promise<AuthResult> {
+  private async issueSession(userId: string, expectedHash: string, metadata?: SessionMetadata, transactionClient?: PoolClient): Promise<AuthResult> {
     const token = randomBytes(32).toString('hex');
     const issue = async (client: PoolClient): Promise<AuthResult> => {
       // Every credential writer locks users first, then its token/session rows.
@@ -167,14 +190,23 @@ export class AuthService {
       const current = rows[0];
       if (!current || current.password_hash !== expectedHash) throw invalidCredentials();
       const time = this.time();
-      await client.query('INSERT INTO auth_sessions (token_hash, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)',
-        [digest(token), userId, time, epoch(time + SESSION_TTL)]);
+      // A finite list also bounds the account-management response. Issuance and revocation
+      // share the user lock, so sessions created before revoke-others cannot escape it.
+      await client.query('DELETE FROM auth_sessions WHERE user_id = $1 AND expires_at <= $2', [userId, time]);
+      await client.query(`DELETE FROM auth_sessions WHERE token_hash IN (
+        SELECT token_hash FROM auth_sessions WHERE user_id = $1
+        ORDER BY created_at DESC, session_id DESC OFFSET $2
+      )`, [userId, MAX_SESSIONS - 1]);
+      await client.query(`INSERT INTO auth_sessions
+        (token_hash, user_id, created_at, expires_at, device_label, last_seen_at, reauthenticated_at)
+        VALUES ($1, $2, $3, $4, $5, $3, $3)`,
+      [digest(token), userId, time, epoch(time + SESSION_TTL), deviceLabel(metadata)]);
       return { user: rowProfile(current), token };
     };
     return transactionClient ? issue(transactionClient) : this.store.database.transaction(issue);
   }
 
-  async signup(input: SignupInput, rateKey: string): Promise<AuthResult> {
+  async signup(input: SignupInput, rateKey: string, metadata?: SessionMetadata): Promise<AuthResult> {
     await this.rateLimit([{ scope: 'signup:ip', value: this.ip(rateKey), limit: 5, duration: 10 * MINUTE }]);
     if (!input || typeof input !== 'object') throw new LedgerError(400, 'INVALID_SIGNUP', '가입 정보를 확인해 주세요.');
     const email = emailInput(input.email);
@@ -188,7 +220,7 @@ export class AuthService {
     try {
       return await this.store.database.transaction(async (client) => {
         await this.store.createUser({ id, email, name, tag, passwordHash, createdAt: this.time() }, client);
-        return this.issueSession(id, passwordHash, client);
+        return this.issueSession(id, passwordHash, metadata, client);
       });
     } catch (error) {
       if (error instanceof LedgerError && error.status === 409) throw invalidSignup();
@@ -196,7 +228,7 @@ export class AuthService {
     }
   }
 
-  async login(input: LoginInput, rateKey: string): Promise<AuthResult> {
+  async login(input: LoginInput, rateKey: string, metadata?: SessionMetadata): Promise<AuthResult> {
     let email: string | null = null;
     try { email = emailInput(input?.email); } catch { /* Keep malformed credentials generic. */ }
     await this.rateLimit([
@@ -208,7 +240,7 @@ export class AuthService {
     const user = email ? await this.store.getUserByEmail(email) : undefined;
     const verified = await verifyPassword(password, usablePassword ? user?.passwordHash : undefined);
     if (!user || !usablePassword || !verified) throw invalidCredentials();
-    return this.issueSession(user.id, user.passwordHash);
+    return this.issueSession(user.id, user.passwordHash, metadata);
   }
 
   async authenticate(token: string | undefined): Promise<MemberProfile | null> {
@@ -217,11 +249,120 @@ export class AuthService {
     const { rows } = await this.store.database.query<UserRow>(`SELECT u.id, u.email, u.name, u.tag, u.password_hash, u.created_at
       FROM auth_sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.expires_at > $2`, [digest(token), this.time()]);
+    if (rows[0]) {
+      const time = this.time();
+      await this.store.database.query(`UPDATE auth_sessions SET last_seen_at = $2
+        WHERE token_hash = $1 AND expires_at > $2 AND created_at <= $2 AND last_seen_at <= $3`,
+      [digest(token), time, time - SESSION_ACTIVITY_INTERVAL]);
+    }
     return rows[0] ? rowProfile(rows[0]) : null;
   }
 
   async logout(token: string | undefined): Promise<void> {
-    if (validToken(token)) await this.store.database.query('DELETE FROM auth_sessions WHERE token_hash = $1', [digest(token)]);
+    if (!validToken(token)) return;
+    const tokenHash = digest(token);
+    const { rows } = await this.store.database.query<{ user_id: string }>('SELECT user_id FROM auth_sessions WHERE token_hash = $1', [tokenHash]);
+    if (!rows[0]) return;
+    await this.store.database.transaction(async (client) => {
+      await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [rows[0].user_id]);
+      await client.query('DELETE FROM auth_sessions WHERE token_hash = $1 AND user_id = $2', [tokenHash, rows[0].user_id]);
+    });
+  }
+
+  /** Every security mutation rechecks the caller after taking the shared user lock. */
+  private async lockedSession(client: PoolClient, token: string | undefined, userId: string): Promise<SessionRow> {
+    if (!validToken(token) || typeof userId !== 'string') throw authenticationRequired();
+    await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    const { rows } = await client.query<SessionRow>(`SELECT * FROM auth_sessions
+      WHERE token_hash = $1 AND user_id = $2 FOR UPDATE`, [digest(token), userId]);
+    const row = rows[0];
+    if (!row || epoch(row.created_at) > this.time() || epoch(row.expires_at) <= this.time()) throw authenticationRequired();
+    return row;
+  }
+
+  private reauthenticatedUntil(session: SessionRow): number | null {
+    if (session.reauthenticated_at === null) return null;
+    const verified = epoch(session.reauthenticated_at);
+    const until = Math.min(epoch(verified + REAUTHENTICATION_TTL), epoch(session.expires_at));
+    return verified <= this.time() && until > this.time() ? until : null;
+  }
+
+  async listSessions(token: string | undefined, userId: string): Promise<SessionSecuritySnapshot> {
+    return this.store.database.transaction(async (client) => {
+      const current = await this.lockedSession(client, token, userId);
+      const { rows } = await client.query<SessionRow>(`SELECT * FROM auth_sessions
+        WHERE user_id = $1 AND expires_at > $2
+        ORDER BY (session_id = $3) DESC, last_seen_at DESC, session_id LIMIT $4`,
+      [userId, this.time(), current.session_id, MAX_SESSIONS]);
+      const sessions: AuthSessionRecord[] = rows.map((row) => ({
+        id: row.session_id, deviceLabel: row.device_label,
+        createdAt: epoch(row.created_at), lastSeenAt: epoch(row.last_seen_at), expiresAt: epoch(row.expires_at),
+        current: row.session_id === current.session_id,
+      }));
+      return { sessions, reauthenticatedUntil: this.reauthenticatedUntil(current) };
+    });
+  }
+
+  async reauthenticate(token: string | undefined, userId: string, rawPassword: string, rateKey: string): Promise<{ reauthenticatedUntil: number }> {
+    await this.rateLimit([
+      { scope: 'reauth:ip', value: this.ip(rateKey), limit: 10, duration: 5 * MINUTE },
+      { scope: 'reauth:account', value: userId, limit: 5, duration: 5 * MINUTE },
+    ]);
+    if (!validToken(token)) throw authenticationRequired();
+    const { rows } = await this.store.database.query<UserRow>(`SELECT u.id, u.email, u.name, u.tag, u.password_hash, u.created_at
+      FROM auth_sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.token_hash = $1 AND s.user_id = $2 AND s.expires_at > $3`, [digest(token), userId, this.time()]);
+    const expected = rows[0];
+    if (!expected) throw authenticationRequired();
+    const usable = typeof rawPassword === 'string' && rawPassword.length > 0 && rawPassword.length <= 128;
+    const verified = await verifyPassword(usable ? rawPassword : 'Invalid-Reauthentication-1!', usable ? expected.password_hash : undefined);
+    if (!verified) throw new LedgerError(401, 'INVALID_PASSWORD', '비밀번호를 확인해 주세요.');
+    return this.store.database.transaction(async (client) => {
+      const session = await this.lockedSession(client, token, userId);
+      const current = await client.query<{ password_hash: string }>('SELECT password_hash FROM users WHERE id = $1', [userId]);
+      // A reset/password replacement while scrypt was running cannot bless an old credential.
+      if (current.rows[0]?.password_hash !== expected.password_hash) throw authenticationRequired();
+      const time = this.time();
+      if (time < epoch(session.created_at) || time >= epoch(session.expires_at)) throw authenticationRequired();
+      await client.query('UPDATE auth_sessions SET reauthenticated_at = $2 WHERE token_hash = $1', [digest(token), time]);
+      return { reauthenticatedUntil: Math.min(epoch(time + REAUTHENTICATION_TTL), epoch(session.expires_at)) };
+    });
+  }
+
+  /** Session management helper. Financial integration must first reconcile user/recipient lock ordering. */
+  async requireRecentAuthentication(token: string | undefined, userId: string, transactionClient?: PoolClient): Promise<void> {
+    const check = async (client: PoolClient) => {
+      const session = await this.lockedSession(client, token, userId);
+      if (this.reauthenticatedUntil(session) === null) throw reauthenticationRequired();
+    };
+    if (transactionClient) await check(transactionClient);
+    else await this.store.database.transaction(check);
+  }
+
+  async revokeSession(token: string | undefined, userId: string, sessionId: string): Promise<{ revokedCurrent: boolean }> {
+    if (typeof sessionId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(sessionId)) {
+      throw new LedgerError(400, 'INVALID_SESSION', '로그인 정보를 확인해 주세요.');
+    }
+    await this.rateLimit([{ scope: 'sessions:manage', value: userId, limit: 30, duration: MINUTE }]);
+    return this.store.database.transaction(async (client) => {
+      const current = await this.lockedSession(client, token, userId);
+      if (this.reauthenticatedUntil(current) === null) throw reauthenticationRequired();
+      const result = await client.query('DELETE FROM auth_sessions WHERE session_id = $1 AND user_id = $2 AND expires_at > $3',
+        [sessionId, userId, this.time()]);
+      if (result.rowCount !== 1) throw new LedgerError(404, 'SESSION_NOT_FOUND', '로그인 정보를 찾지 못했어요. 목록을 새로 확인해 주세요.');
+      return { revokedCurrent: current.session_id === sessionId.toLowerCase() };
+    });
+  }
+
+  async revokeOtherSessions(token: string | undefined, userId: string): Promise<{ revokedCount: number }> {
+    await this.rateLimit([{ scope: 'sessions:manage', value: userId, limit: 30, duration: MINUTE }]);
+    return this.store.database.transaction(async (client) => {
+      const current = await this.lockedSession(client, token, userId);
+      if (this.reauthenticatedUntil(current) === null) throw reauthenticationRequired();
+      const result = await client.query('DELETE FROM auth_sessions WHERE user_id = $1 AND session_id <> $2 AND expires_at > $3',
+        [userId, current.session_id, this.time()]);
+      return { revokedCount: result.rowCount ?? 0 };
+    });
   }
 
   async enforceMemberLookup(userId: string): Promise<void> {

@@ -1,0 +1,52 @@
+.sa-access-panel { grid-column:1/-1; display:flex; align-items:flex-start; justify-content:space-between; gap:20px; min-width:0; padding:20px 24px; border:1px solid #e2dfd9; border-radius:12px; background:#faf9f6; }
+.sa-access-panel h2 { font-size:15px; font-weight:600; line-height:1.6; }
+.sa-access-panel p { margin-top:5px; color:#697582; font-size:12px; line-height:1.8; }
+.sa-access-panel.is-active { border-color:#dce5eb; background:#f2f6f9; }
+.sa-access-label { flex-shrink:0; margin-top:2px; color:#697582; font-size:11px; line-height:1.8; }
+.sa-security-panel { grid-column:1/-1; min-width:0; padding:28px; border:1px solid var(--sa-line); border-radius:14px; background:#fff; }
+.sa-security-panel .sa-section-heading .sa-icon-button { margin:-8px -8px -5px 0; }
+.sa-security-loading { padding:22px 0; color:var(--sa-muted); font-size:13px; }
+.sa-security-sessions { margin:0; padding:0; list-style:none; }
+.sa-security-sessions > li { display:flex; align-items:flex-start; gap:14px; padding:21px 0; border-top:1px solid var(--sa-line); }
+.sa-security-device-icon { display:grid; place-items:center; width:36px; height:36px; flex-shrink:0; border-radius:8px; background:#f1f4f6; color:var(--sa-muted); }
+.sa-security-device { flex:1; min-width:0; }
+.sa-security-device-title { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.sa-security-device-title strong { font-size:14px; font-weight:550; overflow-wrap:anywhere; }
+.sa-security-device-title > span { padding:1px 6px; border-radius:4px; background:#edf3f7; color:var(--sa-accent); font-size:10px; }
+.sa-security-device dl { display:flex; flex-wrap:wrap; column-gap:23px; row-gap:4px; margin:8px 0 0; color:var(--sa-muted); font-size:11px; }
+.sa-security-device dl > div { display:flex; flex-wrap:wrap; column-gap:6px; }
+.sa-security-device dd { margin:0; font-variant-numeric:tabular-nums; }
+.sa-security-sessions .sa-text-button { flex-shrink:0; margin-top:-5px; }
+.sa-security-footer { display:flex; align-items:center; justify-content:space-between; gap:20px; padding-top:19px; border-top:1px solid var(--sa-line); }
+.sa-security-footer p { color:var(--sa-muted); font-size:11px; line-height:1.8; }
+.sa-security-footer .sa-secondary { flex-shrink:0; font-size:13px; padding:10px 15px; }
+.sa-security-backdrop { position:fixed; inset:0; z-index:140; display:flex; align-items:center; justify-content:center; padding:24px; background:rgba(15,24,33,.3); color:#17232e; font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic','Noto Sans CJK KR','Segoe UI',sans-serif; }
+.sa-security-backdrop * { box-sizing:border-box; }
+.sa-security-dialog { position:relative; width:440px; max-width:100%; max-height:calc(100dvh - 48px); padding:31px 28px 26px; overflow-y:auto; border:1px solid #e6e9ec; border-radius:14px; background:#fff; font-size:14px; line-height:1.7; }
+.sa-security-dialog h2 { margin:0 25px 10px 0; font-size:20px; line-height:1.5; font-weight:600; }
+.sa-security-dialog > p { margin:0; color:#697582; font-size:13px; }
+.sa-security-dialog button,.sa-security-dialog input { font:inherit; }
+.sa-security-dialog :focus-visible { outline:2px solid #194b75; outline-offset:3px; }
+.sa-security-close { position:absolute; top:13px; right:12px; display:grid; place-items:center; width:44px; height:44px; padding:0; border:0; border-radius:8px; background:none; color:#697582; cursor:pointer; }
+.sa-security-dialog-actions { display:flex; gap:10px; margin-top:26px; }
+.sa-security-dialog-actions > button { flex:1; }
+.sa-security-field { margin-top:24px; }
+.sa-security-field label { display:block; margin-bottom:8px; font-size:13px; }
+.sa-security-field input { width:100%; min-height:48px; padding:11px 13px; border:1px solid #c7d1d9; border-radius:8px; background:#fff; color:#17232e; font-size:16px; }
+.sa-security-field p { margin:8px 0 0; color:#697582; font-size:11px; }
+.sa-security-error { margin:16px 0 0; padding:11px 13px; border:1px solid #ead6d1; border-radius:8px; background:#fff8f6; color:#9f4a41; font-size:12px; }
+.sa-security-dialog .sa-primary { background:#194b75; }
+.sa-security-dialog .sa-secondary { color:#194b75; }
+.sa-security-dialog button:disabled { cursor:not-allowed; opacity:.48; }
+@media(max-width:600px) {
+  .sa-access-panel { padding:18px 20px; gap:12px; }
+  .sa-access-label { display:none; }
+  .sa-security-panel { padding:22px 20px; }
+  .sa-security-sessions > li { gap:10px; }
+  .sa-security-device-icon { display:none; }
+  .sa-security-device dl { display:grid; gap:3px; }
+  .sa-security-footer { align-items:stretch; flex-direction:column; gap:16px; }
+  .sa-security-footer .sa-secondary { align-self:flex-start; }
+  .sa-security-backdrop { padding:16px; }
+  .sa-security-dialog { padding:29px 22px 23px; max-height:calc(100dvh - 32px); }
+}

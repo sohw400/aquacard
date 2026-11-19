@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
@@ -51,6 +52,7 @@ async function inboxCount(database: Database): Promise<number> {
 test('authenticated receipt is durable but does not approve or debit the card before the worker commits', async (t) => {
   const f = await fixture(t);
   await f.ledger.createUser({ id: 'alice', email: 'alice@example.test', name: '수신 테스트 회원', tag: 'alice', passwordHash: 'test-only-hash', createdAt: NOW });
+  await approveTestCustomer(f.ledger.database, 'alice');
   await new IssuerOutboxStore(f.database, { now: () => NOW }).register({ userId: 'alice', providerCardId: 'sandbox-card-alice', initialStatus: 'active' });
   await f.ledger.creditSandbox({ userId: 'alice', amountWon: 10_000, idempotencyKey: 'ingress-principal' });
   const body = JSON.stringify(EVENT);

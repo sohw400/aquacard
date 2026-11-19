@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { Database } from './database';
@@ -21,6 +22,7 @@ async function fixture(t: TestContext, initial = NOW) {
   const main = stores(base.database);
   for (const id of ['alice', 'bobby']) {
     await main.ledger.createUser({ id, email: `${id}@example.test`, name: `${id} 회원`, tag: id, passwordHash: 'test-only', createdAt: NOW - 60 * DAY });
+    await approveTestCustomer(main.ledger.database, id);
     await new IssuerOutboxStore(base.database, options).register({ userId: id, providerCardId: `sandbox-card-${id}`, initialStatus: 'active' });
   }
   t.after(async () => { try { await Promise.all(peers.map((database) => database.close())); } finally { await base.cleanup(); } });
