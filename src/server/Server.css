@@ -118,6 +118,16 @@
 .sa-card-metadata > div { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
 .sa-card-metadata dt { flex-shrink:0; color:var(--sa-muted); font-size:11px; line-height:1.7; }
 .sa-card-metadata dd { min-width:0; margin:0; color:var(--sa-muted); font-size:11px; line-height:1.7; text-align:right; overflow-wrap:anywhere; }
+.sa-card-funding-detail,.sa-card-cashback-detail { margin-top:21px; padding-top:18px; border-top:1px solid var(--sa-line); }
+.sa-card-funding-detail h3,.sa-card-cashback-detail h3 { color:var(--sa-ink); font-size:14px; font-weight:550; line-height:1.6; }
+.sa-card-funding-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:26px; margin-top:15px; }
+.sa-card-funding-columns > div + div { border-left:1px solid var(--sa-line); padding-left:26px; }
+.sa-card-funding-columns h4 { margin:0 0 11px; color:var(--sa-ink); font-size:13px; font-weight:550; line-height:1.6; }
+.sa-card-funding-columns dl,.sa-card-cashback-detail dl { display:grid; gap:10px; margin:0; }
+.sa-card-funding-columns dl > div,.sa-card-cashback-detail dl > div { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:var(--sa-muted); font-size:12px; line-height:1.7; }
+.sa-card-funding-columns dd,.sa-card-cashback-detail dd { min-width:0; margin:0; color:var(--sa-ink); text-align:right; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.sa-card-cashback-detail dl { margin-top:14px; }
+.sa-shell .sa-card-cashback-policy { color:var(--sa-muted); font-size:11px; line-height:1.7; margin-top:10px; }
 .sa-service-note { grid-column:1/-1; color:var(--sa-muted); font-size:12px; line-height:1.8; text-align:center; }
 .sa-dashboard-message { grid-column:1/-1; margin:0 !important; }
 .sa-modal-backdrop { position:fixed; inset:0; z-index:120; display:flex; align-items:center; justify-content:center; padding:24px; color:var(--sa-ink); background:rgba(15,24,33,.28); font-family:inherit; }
@@ -204,6 +214,8 @@
  .sa-card-summary-copy > strong { font-size:13px; }
  .sa-card-summary-amount > strong { font-size:14px; }
  .sa-card-summary-copy > span:not(.sa-card-status) { font-size:11px; }
+ .sa-card-funding-columns { grid-template-columns:minmax(0,1fr); gap:19px; }
+ .sa-card-funding-columns > div + div { border-left:0; border-top:1px solid var(--sa-line); padding-left:0; padding-top:16px; }
  .sa-modal-backdrop { align-items:stretch; padding:0; }
  .sa-modal { width:100%; height:100dvh; max-height:100dvh; min-height:0; border:0; border-radius:0; }
  .sa-modal-header { padding:max(21px,env(safe-area-inset-top)) 22px 19px; }

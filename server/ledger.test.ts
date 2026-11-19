@@ -123,7 +123,9 @@ test('모든 충전·송금은 TEST_KRW로 균형을 맞춰 기록하고 기존 
   const recipient = await store.snapshot('bob');
   await assert.rejects(() => database.query('UPDATE journals SET amount_won = amount_won + 1 WHERE id = $1', [sent.transfer.id]));
   await assert.rejects(() => database.query('DELETE FROM journals WHERE id = $1', [sent.transfer.id]));
-  await assert.rejects(() => database.query('TRUNCATE journals'), (error: unknown) => (error as { code?: string }).code === '55000');
+  // Include dependent private cash plans so the immutable-history trigger is
+  // exercised even after the reward migration adds a foreign key to journals.
+  await assert.rejects(() => database.query('TRUNCATE journals CASCADE'), (error: unknown) => (error as { code?: string }).code === '55000');
   assert.equal(Number((await database.query('SELECT COUNT(*) AS count FROM journals')).rows[0].count), 3);
   assert.deepEqual(await store.snapshot('alice'), sender);
   assert.deepEqual(await store.snapshot('bob'), recipient);

@@ -22,6 +22,7 @@ export interface AccountSnapshot {
   balanceWon: number;
   heldBalanceWon: number;
   totalBalanceWon: number;
+  rewards: RewardsSnapshot;
   cardPayments: CardPaymentRecord[];
   transactions: TransferRecord[];
   limits: {
@@ -47,7 +48,56 @@ export interface CardPaymentRecord {
   refundedWon: number;
   createdAt: number;
   updatedAt: number;
+  /** Absent on historical event responses; those immutable responses are never rewritten. */
+  funding?: { principal: CardFundingAmounts; rewards: CardFundingAmounts };
+  cashback?: CardCashbackRecord;
 }
+
+export interface CardFundingAmounts {
+  authorizedWon: number;
+  heldWon: number;
+  capturedWon: number;
+  releasedWon: number;
+  refundedWon: number;
+}
+
+export interface CardCashbackRecord {
+  policyVersion: string;
+  month: string;
+  rateBps: number;
+  pendingWon: number;
+  awardedWon: number;
+  reversedWon: number;
+  offsetWon: number;
+  closedAt: number | null;
+}
+
+export interface RewardRecord {
+  id: string;
+  kind: 'grant' | 'cashback' | 'card_authorize' | 'card_capture' | 'card_release' | 'card_refund' | 'cashback_reversal' | 'adjustment_offset';
+  amountWon: number;
+  paymentId: string | null;
+  createdAt: number;
+  availableDeltaWon: number;
+  heldDeltaWon: number;
+  adjustmentDeltaWon: number;
+}
+
+/** Card-only reward units. They are excluded from principal balances and member transfer limits. */
+export interface RewardsSnapshot {
+  availableWon: number;
+  heldWon: number;
+  adjustmentDueWon: number;
+  useFirst: boolean;
+  preferenceVersion: number;
+  programActive: boolean;
+  policy: { version: string; rateBps: number; monthlyCapWon: number };
+  cashback: { month: string; confirmedWon: number; pendingWon: number; reversedWon: number; remainingWon: number };
+  history: RewardRecord[];
+}
+
+export interface RewardPreferenceResult { useFirst: boolean; version: number }
+export interface RewardGrantResult { amountWon: number; availableWon: number; adjustmentDueWon: number; offsetWon: number }
 
 /** Internal sandbox command, not an issuer webhook contract or a public write API. */
 export type SandboxCardEvent = {

@@ -3,6 +3,7 @@ import type { CardEventResult, SandboxCardEvent } from '../shared/api';
 import { parseSandboxCardEvent } from './card-command';
 import type { Database } from './database';
 import { LedgerError } from './ledger';
+import { throwRewardError } from './reward-errors';
 
 const failures: Record<string, { status: number; message: string }> = {
   INVALID_CARD_EVENT: { status: 400, message: '카드 테스트 이벤트 형식을 확인해 주세요.' },
@@ -44,7 +45,7 @@ export class CardPaymentStore {
       if (pg?.code === '23505') throw new LedgerError(409, 'IDEMPOTENCY_CONFLICT', failures.IDEMPOTENCY_CONFLICT.message);
       if (pg?.code === '22003') throw new LedgerError(409, 'LEDGER_CAPACITY', failures.LEDGER_CAPACITY.message);
       if (pg?.code === '55P03' || pg?.code === '40P01' || pg?.code === '40001') throw new LedgerError(503, 'DATABASE_BUSY', '다른 요청을 처리하고 있습니다. 같은 이벤트 번호로 다시 시도해 주세요.');
-      throw error;
+      return throwRewardError(error);
     }
   }
 }

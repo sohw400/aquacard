@@ -6,6 +6,7 @@ import { extname, resolve } from 'node:path';
 import type { MemberProfile } from '../shared/api';
 import { AuthService } from './auth';
 import { LedgerError, LedgerStore } from './ledger';
+import { RewardsStore } from './rewards';
 
 declare module 'fastify' {
   interface FastifyRequest { aquaUser: MemberProfile | null }
@@ -36,6 +37,33 @@ const recordSchema = {
   $id: 'AquaTransfer', type: 'object', additionalProperties: false, required: ['id', 'direction', 'amountWon', 'counterpartyName', 'counterpartyTag', 'createdAt'],
   properties: { id: { type: 'string' }, direction: { type: 'string', enum: ['sent', 'received', 'funded'] }, amountWon: { type: 'integer', minimum: 1 }, counterpartyName: { type: 'string' }, counterpartyTag: { type: 'string' }, createdAt: { type: 'integer', minimum: 0 } },
 };
+const amount = { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER };
+const amountProperties = (names: string[]) => Object.fromEntries(names.map((key) => [key, amount]));
+const fundingFields = ['authorizedWon', 'heldWon', 'capturedWon', 'releasedWon', 'refundedWon'];
+const fundingSchema = { type: 'object', additionalProperties: false, required: fundingFields, properties: amountProperties(fundingFields) };
+const cashbackSchema = {
+  type: 'object', additionalProperties: false,
+  required: ['policyVersion', 'month', 'rateBps', 'pendingWon', 'awardedWon', 'reversedWon', 'offsetWon', 'closedAt'],
+  properties: { policyVersion: { type: 'string' }, month: { type: 'string' },
+    ...amountProperties(['rateBps', 'pendingWon', 'awardedWon', 'reversedWon', 'offsetWon']),
+    closedAt: { anyOf: [amount, { type: 'null' }] } },
+};
+const rewardsSchema = {
+  $id: 'AquaRewards', type: 'object', additionalProperties: false,
+  required: ['availableWon', 'heldWon', 'adjustmentDueWon', 'useFirst', 'preferenceVersion', 'programActive', 'policy', 'cashback', 'history'],
+  properties: {
+    ...amountProperties(['availableWon', 'heldWon', 'adjustmentDueWon', 'preferenceVersion']),
+    useFirst: { type: 'boolean' }, programActive: { type: 'boolean' },
+    policy: { type: 'object', additionalProperties: false, required: ['version', 'rateBps', 'monthlyCapWon'], properties: { version: { type: 'string' }, ...amountProperties(['rateBps', 'monthlyCapWon']) } },
+    cashback: { type: 'object', additionalProperties: false, required: ['month', 'confirmedWon', 'pendingWon', 'reversedWon', 'remainingWon'], properties: { month: { type: 'string' }, ...amountProperties(['confirmedWon', 'pendingWon', 'reversedWon', 'remainingWon']) } },
+    history: { type: 'array', maxItems: 50, items: { type: 'object', additionalProperties: false,
+      required: ['id', 'kind', 'amountWon', 'paymentId', 'createdAt', 'availableDeltaWon', 'heldDeltaWon', 'adjustmentDeltaWon'], properties: {
+        id: { type: 'string' }, kind: { type: 'string', enum: ['grant', 'cashback', 'card_authorize', 'card_capture', 'card_release', 'card_refund', 'cashback_reversal', 'adjustment_offset'] },
+        paymentId: { anyOf: [{ type: 'string' }, { type: 'null' }] }, ...amountProperties(['amountWon', 'createdAt']),
+        ...Object.fromEntries(['availableDeltaWon', 'heldDeltaWon', 'adjustmentDeltaWon'].map((key) => [key, { type: 'integer', minimum: -Number.MAX_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER }])),
+      } } },
+  },
+};
 const cardPaymentSchema = {
   $id: 'AquaCardPayment', type: 'object', additionalProperties: false,
   required: ['id', 'merchantName', 'status', 'authorizedWon', 'heldWon', 'capturedWon', 'releasedWon', 'refundedWon', 'createdAt', 'updatedAt'],
@@ -43,6 +71,8 @@ const cardPaymentSchema = {
     id: { type: 'string' }, merchantName: { type: 'string' },
     status: { type: 'string', enum: ['authorized', 'partially_captured', 'captured', 'cancelled', 'partially_refunded', 'refunded'] },
     ...Object.fromEntries(['authorizedWon', 'heldWon', 'capturedWon', 'releasedWon', 'refundedWon', 'createdAt', 'updatedAt'].map((key) => [key, { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER }])),
+    funding: { type: 'object', additionalProperties: false, required: ['principal', 'rewards'], properties: { principal: fundingSchema, rewards: fundingSchema } },
+    cashback: cashbackSchema,
   },
 };
 const okaySchema = { type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'boolean', enum: [true] } } };
@@ -64,6 +94,7 @@ function tokenOf(request: FastifyRequest): string | undefined {
 /** Plugins and routes are registered synchronously; callers await ready/listen and close their own database. */
 export function createApiServer(store: LedgerStore, options: ServerOptions): FastifyInstance {
   const auth = new AuthService(store, { deliverRecovery: options.deliverRecovery });
+  const rewards = new RewardsStore(store.database);
   const allowedOrigins = new Set(options.allowedOrigins);
   const logger = options.logger === false ? false : {
     level: 'info',
@@ -131,11 +162,11 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
     await api.register(swagger, {
       openapi: {
         openapi: '3.0.3',
-        info: { title: 'Aqua sandbox API', version: '0.3.0', description: '테스트 계정, 인증, 원장, 회원 송금과 카드 결제 내역 API. 실제 자금 이동은 제공하지 않습니다.' },
+        info: { title: 'Aqua sandbox API', version: '0.4.0', description: '계정, 인증, 원장, 송금, 카드 결제와 결제 전용 리워드 API. 실제 자금 이동은 제공하지 않습니다.' },
         components: { securitySchemes: { aquaSession: { type: 'apiKey', in: 'cookie', name: COOKIE } } },
       },
     });
-    api.addSchema(errorSchema); api.addSchema(profileSchema); api.addSchema(recordSchema); api.addSchema(cardPaymentSchema);
+    api.addSchema(errorSchema); api.addSchema(profileSchema); api.addSchema(recordSchema); api.addSchema(cardPaymentSchema); api.addSchema(rewardsSchema);
 
     const sessionCookie = (reply: FastifyReply, token: string, clear = false) => {
       reply.setCookie(COOKIE, token, { path: '/api', httpOnly: true, sameSite: 'strict', secure: options.secureCookies ?? false, maxAge: clear ? 0 : SESSION_SECONDS });
@@ -184,8 +215,17 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
       await auth.resetPassword(request.body.token, request.body.password, request.ip); sessionCookie(reply, '', true); return { ok: true };
     });
     api.get('/api/account', { preValidation: signedIn, schema: { tags: ['ledger'], summary: '내 잔액과 거래 내역', security: secured,
-      response: { 200: { type: 'object', additionalProperties: false, required: ['user', 'balanceWon', 'heldBalanceWon', 'totalBalanceWon', 'cardPayments', 'transactions', 'limits'], properties: { user: { $ref: 'AquaMember#' }, balanceWon: { type: 'integer', minimum: 0 }, heldBalanceWon: { type: 'integer', minimum: 0 }, totalBalanceWon: { type: 'integer', minimum: 0 }, cardPayments: { type: 'array', items: { $ref: 'AquaCardPayment#' } }, transactions: { type: 'array', items: { $ref: 'AquaTransfer#' } }, limits: { type: 'object', additionalProperties: false, required: ['perTransfer', 'daily', 'monthly', 'sentToday', 'sentMonth', 'available'], properties: Object.fromEntries(['perTransfer', 'daily', 'monthly', 'sentToday', 'sentMonth', 'available'].map((key) => [key, { type: 'integer', minimum: 0 }])) } } }, ...errorResponses },
+      response: { 200: { type: 'object', additionalProperties: false, required: ['user', 'balanceWon', 'heldBalanceWon', 'totalBalanceWon', 'rewards', 'cardPayments', 'transactions', 'limits'], properties: { user: { $ref: 'AquaMember#' }, balanceWon: { type: 'integer', minimum: 0 }, heldBalanceWon: { type: 'integer', minimum: 0 }, totalBalanceWon: { type: 'integer', minimum: 0 }, rewards: { $ref: 'AquaRewards#' }, cardPayments: { type: 'array', items: { $ref: 'AquaCardPayment#' } }, transactions: { type: 'array', items: { $ref: 'AquaTransfer#' } }, limits: { type: 'object', additionalProperties: false, required: ['perTransfer', 'daily', 'monthly', 'sentToday', 'sentMonth', 'available'], properties: Object.fromEntries(['perTransfer', 'daily', 'monthly', 'sentToday', 'sentMonth', 'available'].map((key) => [key, { type: 'integer', minimum: 0 }])) } } }, ...errorResponses },
     } }, async (request) => store.snapshot(request.aquaUser!.id));
+    api.post<{ Body: { useFirst: boolean; expectedVersion: number } }>('/api/rewards/preference', {
+      preValidation: async (request) => { await signedIn(request); accountMatches(request, request.aquaUser!); await auth.enforceRewardPreference(request.aquaUser!.id); },
+      schema: {
+        tags: ['rewards'], summary: '다음 카드 승인부터 적용할 리워드 우선 사용 설정', security: secured,
+        headers: { type: 'object', required: ['idempotency-key', 'x-aqua-account'], properties: { 'idempotency-key': { type: 'string', minLength: 8, maxLength: 128, pattern: '^[a-zA-Z0-9_-]+$' }, 'x-aqua-account': { type: 'string', minLength: 1 } } },
+        body: objectBody({ useFirst: { type: 'boolean' }, expectedVersion: amount }),
+        response: { 200: { type: 'object', additionalProperties: false, required: ['useFirst', 'version'], properties: { useFirst: { type: 'boolean' }, version: amount } }, ...errorResponses },
+      },
+    }, async (request) => rewards.setPreference({ userId: request.aquaUser!.id, useFirst: request.body.useFirst, expectedVersion: request.body.expectedVersion, idempotencyKey: request.headers['idempotency-key'] as string }));
     api.get<{ Querystring: { tag: string } }>('/api/members', { preValidation: signedIn, schema: { tags: ['members'], summary: '태그로 회원 찾기', security: secured, querystring: objectBody({ tag: { type: 'string', minLength: 3, maxLength: 21 } }), response: { 200: { type: 'object', additionalProperties: false, required: ['member'], properties: { member: { type: 'object', additionalProperties: false, required: ['id', 'tag', 'name'], properties: { id: text, tag: text, name: text } } } }, ...errorResponses } } }, async (request) => {
       await auth.enforceMemberLookup(request.aquaUser!.id);
       const tag = request.query.tag.trim().replace(/^@/, '').toLowerCase();
