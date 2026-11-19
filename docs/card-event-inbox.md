@@ -66,6 +66,8 @@ npm run server:inbox -- retry INBOX_UUID CURRENT_VERSION RETRY_KEY '선행 승�
 
 `server:card:worker`를 인자 없이 실행하면 계속 처리한다. SIGTERM·SIGINT에는 새 처리를 멈추고 현재 트랜잭션을 마친 뒤 종료한다. `--once`는 한 건 또는 유휴 결과를 출력한다. 종료 코드는 0이 정상 처리·예약·유휴, 2가 검토 전환, 1이 실행 실패다. 운영 이미지에서는 `node dist-server/card-worker.js`를 별도 프로세스로 실행하며 검증된 DB TLS와 제한된 작업자 역할이 필요하다.
 
+공통 Docker 이미지의 기본 `HEALTHCHECK`는 API의 `/api/health`를 호출한다. 작업자는 HTTP 서버를 열지 않으므로 전용 컨테이너는 `docker run --no-healthcheck` 또는 Compose의 `healthcheck: { disable: true }`로 이 검사를 끈다. 배포 환경에서도 API 검사를 그대로 상속하지 않는다. 대신 프로세스 종료와 `card_inbox_health` 로그의 지속 수신·대기 시간·검토 건수를 감시해야 한다. 이 감시와 알림의 운영 연결은 아직 구성하지 않았다.
+
 ## 서명한 HTTP 테스트
 
 `server:card:ingress`는 기본 `127.0.0.1:3004`에서 수신한다. 명시적인 `AQUA_CARD_WEBHOOK_KEYS`가 없으면 시작하지 않으며 운영 환경에서는 실행을 거절한다. 설정은 `{"local":"BASE64URL_SECRET"}` 형태의 JSON이다. 비밀값은 난수 32바이트를 패딩 없는 base64url로 인코딩한다. 기본 키는 없으며 Git·로그에 넣지 않는다. 최대 두 키를 함께 설정해 발신자를 새 키로 전환한 후 이전 키를 제거할 수 있다.
