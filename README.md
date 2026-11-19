@@ -2,7 +2,7 @@
 
 한국 사용자를 위한 카드 서비스 **Aqua Card**의 인터랙티브 PoC입니다. 코인을 보내면 받는 즉시 원화 스테이블로 바뀌어 잔액이 되고, 카드로 쓰면 페이백을, 리저브에 두면 1초마다 보상을 받습니다. KAST의 구조(받은 코인 자동 매도, 세 멤버십, 회원 간 무료 송금)를 한국 원화 스테이블에 맞춰 옮겼고, 멤버십 요금과 요율은 한국 카드 시장에 맞췄습니다.
 
-React·TypeScript·Vite로 만든 웹 앱이며 모든 자금·카드·본인확인은 브라우저 안의 모의 처리입니다. 실제 입금, 카드 발급, 개인정보 확인, 외부 송금이나 과금은 하지 않습니다.
+React·TypeScript·Vite로 만든 웹 앱입니다. 기본 웹 데모의 자금·카드·본인확인은 브라우저 안의 모의 처리이고, 별도 서버 연결 모드는 PostgreSQL 테스트 원장을 사용합니다. 실제 입금, 카드 발급, 개인정보 확인, 외부 송금이나 과금은 하지 않습니다.
 
 ## 실행
 
@@ -17,7 +17,9 @@ npm run dev
 
 ## 서버 연결 개발
 
-서버 기반은 **Node.js 24 LTS·Fastify 5·PostgreSQL 18**입니다. `docker compose up -d --wait postgres`로 로컬 DB를 실행하고 `.env.example`을 참고해 접속 정보를 설정한 뒤 `npm run db:migrate`, `npm run server:dev`를 실행합니다. 별도 터미널의 `npm run dev:server`에서 가입·로그인·회원 간 송금을 확인합니다. 신규 계정은 0원에서 시작하며 브라우저 체험 잔액을 가져오지 않습니다. CLI 적립은 테스트 금액이며 실제 자금·카드·본인확인과 연결되지 않습니다.
+서버 기반은 **Node.js 24 LTS·Fastify 5·PostgreSQL 18**입니다. `docker compose up -d --wait postgres`로 로컬 DB를 실행하고 `.env.example`을 참고해 접속 정보를 설정한 뒤 `npm run db:migrate`, `npm run server:dev`를 실행합니다. 별도 터미널의 `npm run dev:server`에서 가입·로그인·회원 간 송금과 카드 결제 내역을 확인합니다. 신규 계정은 0원에서 시작하며 브라우저 체험 잔액을 가져오지 않습니다. CLI 적립은 테스트 금액이며 실제 자금·카드·본인확인과 연결되지 않습니다.
+
+카드 승인·부분 매입·취소·환불은 내부 테스트 명령 `npm run server:card -- <event.json>`으로 처리합니다. 승인액은 별도 보류 계정에 확보해 송금에 다시 쓰지 못하며 화면에서 사용 가능·보류·전체 잔액과 결제 상태를 확인합니다. [카드 서버 처리 안내](docs/card-payment-server.md)에 JSON 예시와 확인 순서가 있습니다. 실제 발급사 API나 일반 회원용 결제 실행 API는 연결하지 않았습니다.
 
 [서버 실행·검증 안내](docs/server-development.md)와 [기술 선택·배포 방향](docs/technology-decisions.md)에 재현 절차와 구현·계획을 구분했습니다. 운영 대상은 AWS 서울 리전 ECS Fargate·RDS PostgreSQL이며 아직 AWS 리소스나 유료 인프라를 생성하지 않았습니다. 공개 GitHub Pages는 기존 데모 모드를 유지합니다.
 
@@ -37,7 +39,9 @@ npm run test:devices
 
 Chromium 경로는 `CHROMIUM_PATH`, 서버 주소는 `AQUA_BASE_URL`로 바꿀 수 있습니다(기본 `/usr/bin/chromium`, `http://127.0.0.1:5173`).
 
-2026-10-14 기준 로직 테스트 121개, 데스크톱·모바일 브라우저 검사 57개, 320~430px 기기 프로필 5개가 통과했습니다. 기기 프로필은 Chromium에서 화면 크기와 터치를 **모사**한 것이며 실제 iOS Safari·Android 실기기 검증과 다릅니다. 자세한 절차는 [테스트 안내](docs/testing.md)에 있습니다.
+2026-11-19 기준 서버 테스트 72개, 제품·클라이언트 로직 테스트 123개, 서버 연결 브라우저 검사 20개가 통과했습니다. [카드 서버 처리 안내](docs/card-payment-server.md)에 검사 범위를 정리했습니다.
+
+공개 브라우저 데모는 2026-10-14 기준 브라우저 검사 57개, 320~430px 기기 프로필 5개를 통과했습니다. 기기 프로필은 Chromium에서 화면 크기와 터치를 **모사**한 것이며 실제 iOS Safari·Android 실기기 검증과 다릅니다. 자세한 절차는 [테스트 안내](docs/testing.md)에 있습니다.
 
 ## 둘러보기
 
@@ -92,6 +96,6 @@ KAST는 지원 자산마다 청산 주소를 두고 받은 코인을 거래 확�
 | 제품 | [기획서](docs/product-plan.md), [요금과 정책](docs/policy.md), [KAST 비교와 한국 적용](docs/kast-alignment.md), [KAST 공식 자료 확인](docs/kast-funding-model.md) |
 | 기능 | [카드 신청·발급·운영 흐름](docs/card-issuance-flow.md), [입출금 흐름](docs/funding-flows.md), [입출금과 백엔드 설계](docs/funding-architecture.md), [리저브·리워드 정책](docs/reserve-rewards.md), [화면 설계](docs/screen-design.md) |
 | 출시 준비 | [출시 준비 목록](docs/launch-readiness.md), [KYC·AML 규제와 법률 검토](docs/kyc-aml-review.md), [앱스토어·구글 플레이 심사 준비](docs/store-review.md), [모바일 앱 준비 (iOS·Android)](docs/mobile-app-plan.md) |
-| 개발 | [테스트 안내](docs/testing.md), [웹 배포](docs/deployment.md) |
+| 개발 | [서버 실행·검증](docs/server-development.md), [카드 서버 처리](docs/card-payment-server.md), [기술 결정](docs/technology-decisions.md), [테스트 안내](docs/testing.md), [웹 배포](docs/deployment.md) |
 
 실제 서비스를 위해서는 본인확인, 보관·전환 파트너, 카드 발급·정산, 원화 스테이블 발행·상환, 리저브 보상 재원과 한국 제공 가능 범위를 확정해야 합니다. 브라우저 장부는 실제 금융 장부나 인증 시스템으로 쓸 수 없습니다.

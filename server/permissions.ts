@@ -19,6 +19,10 @@ export async function grantApplicationRole(database: Database, role: string): Pr
     await client.query(`GRANT UPDATE(used_at) ON auth_recovery TO ${quoted}`);
     await client.query(`GRANT UPDATE ON auth_rate_limits TO ${quoted}`);
     await client.query(`GRANT DELETE ON auth_sessions, auth_recovery, auth_rate_limits TO ${quoted}`);
+    await client.query(`REVOKE ALL ON card_payments, card_payment_events FROM ${quoted}`);
+    await client.query(`GRANT SELECT ON card_payments, card_payment_events TO ${quoted}`);
+    await client.query(`REVOKE ALL ON FUNCTION apply_sandbox_card_event(jsonb, bigint) FROM ${quoted}`);
+    await client.query(`GRANT EXECUTE ON FUNCTION apply_sandbox_card_event(jsonb, bigint) TO ${quoted}`);
   });
 }
 
@@ -30,8 +34,10 @@ export async function verifyApplicationRole(database: Database): Promise<void> {
     OR has_table_privilege(current_user, $2, 'UPDATE,DELETE,TRUNCATE')
     OR has_table_privilege(current_user, $3, 'UPDATE,DELETE,TRUNCATE')
     OR has_column_privilege(current_user, $3, 'balance_won', 'UPDATE')
-    OR has_table_privilege(current_user, $4, 'INSERT,UPDATE,DELETE,TRUNCATE') AS unsafe
-    FROM pg_roles r WHERE r.rolname = current_user`, [database.schema, `${database.schema}.journals`, `${database.schema}.ledger_accounts`, `${database.schema}.schema_migrations`]);
+    OR has_table_privilege(current_user, $4, 'INSERT,UPDATE,DELETE,TRUNCATE')
+    OR has_table_privilege(current_user, $5, 'INSERT,UPDATE,DELETE,TRUNCATE')
+    OR has_table_privilege(current_user, $6, 'INSERT,UPDATE,DELETE,TRUNCATE') AS unsafe
+    FROM pg_roles r WHERE r.rolname = current_user`, [database.schema, `${database.schema}.journals`, `${database.schema}.ledger_accounts`, `${database.schema}.schema_migrations`, `${database.schema}.card_payments`, `${database.schema}.card_payment_events`]);
   if (result.rows.length !== 1 || result.rows[0].unsafe) {
     throw new Error('The API requires a restricted application database role. Keep migration and administrator credentials out of the running API.');
   }

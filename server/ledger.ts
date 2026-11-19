@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { PoolClient, QueryResultRow } from 'pg';
-import type { AccountSnapshot, MemberProfile, TransferRecord, TransferResult } from '../shared/api';
+import type { AccountSnapshot, CardPaymentRecord, MemberProfile, TransferRecord, TransferResult } from '../shared/api';
 import type { Database } from './database';
 
 export interface UserRecord extends MemberProfile { passwordHash: string }
@@ -22,6 +22,10 @@ interface JournalRow extends QueryResultRow {
   sender_name: string; sender_tag: string; recipient_name: string; recipient_tag: string;
   request_payload: string; balance_after_won: string; created_at: string;
 }
+interface CardRow extends QueryResultRow {
+  id: string; merchant_name: string; status: CardPaymentRecord['status']; authorized_won: string; held_won: string;
+  captured_won: string; released_won: string; refunded_won: string; created_at: string; updated_at: string;
+}
 interface NewUser { id: string; email: string; name: string; tag: string; passwordHash: string; createdAt: number }
 
 const MAX_WON = Number.MAX_SAFE_INTEGER;
@@ -32,6 +36,7 @@ const CONTROL_ACCOUNT = 'system:sandbox';
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const normalizeTag = (value: string) => value.trim().replace(/^@/, '').toLowerCase();
 const userAccountId = (id: string) => `user:${id}`;
+const holdAccountId = (id: string) => `hold:${id}`;
 const profile = ({ passwordHash: _hash, ...user }: UserRecord): MemberProfile => user;
 
 /** PostgreSQL BIGINT stays decimal text until this checked HTTP/domain boundary. */
@@ -145,6 +150,13 @@ export class LedgerStore {
     return result.rows;
   }
 
+  private cardRecord(row: CardRow): CardPaymentRecord {
+    return { id: row.id, merchantName: row.merchant_name, status: row.status,
+      authorizedWon: safeInteger(row.authorized_won), heldWon: safeInteger(row.held_won), capturedWon: safeInteger(row.captured_won),
+      releasedWon: safeInteger(row.released_won), refundedWon: safeInteger(row.refunded_won),
+      createdAt: safeInteger(row.created_at), updatedAt: safeInteger(row.updated_at) };
+  }
+
   private async limits(client: PoolClient, user: UserRecord, balanceWon: number, now: number): Promise<AccountSnapshot['limits']> {
     const shifted = new Date(now + KST_OFFSET_MS);
     const year = shifted.getUTCFullYear(), month = shifted.getUTCMonth(), day = shifted.getUTCDate();
@@ -170,10 +182,15 @@ export class LedgerStore {
   async snapshot(userId: string): Promise<AccountSnapshot> {
     return this.database.transaction(async (client) => {
       const user = await this.requireUser(client, userId);
-      const [account] = await this.accountRows(client, [userAccountId(userId)]);
-      const balanceWon = safeInteger(account.balance_won);
-      const history = await client.query<JournalRow>('SELECT * FROM journals WHERE sender_id = $1 OR recipient_id = $1 ORDER BY created_at DESC, id DESC', [userId]);
-      return { user: profile(user), balanceWon, transactions: history.rows.map((row) => this.record(row, userId)), limits: await this.limits(client, user, balanceWon, this.now()) };
+      const accounts = await this.accountRows(client, [userAccountId(userId), holdAccountId(userId)]);
+      const balanceWon = safeInteger(accounts.find((row) => row.id === userAccountId(userId))!.balance_won);
+      const heldBalanceWon = safeInteger(accounts.find((row) => row.id === holdAccountId(userId))!.balance_won);
+      const totalBalanceWon = safeInteger(String(BigInt(balanceWon) + BigInt(heldBalanceWon)));
+      const history = await client.query<JournalRow>(`SELECT * FROM journals WHERE kind IN ('member_transfer', 'sandbox_credit')
+        AND (sender_id = $1 OR recipient_id = $1) ORDER BY created_at DESC, id DESC`, [userId]);
+      const payments = await client.query<CardRow>('SELECT * FROM card_payments WHERE user_id = $1 ORDER BY created_at DESC, id DESC', [userId]);
+      return { user: profile(user), balanceWon, heldBalanceWon, totalBalanceWon, cardPayments: payments.rows.map((row) => this.cardRecord(row)),
+        transactions: history.rows.map((row) => this.record(row, userId)), limits: await this.limits(client, user, balanceWon, this.now()) };
     }, { isolation: 'repeatable read' });
   }
 
@@ -197,12 +214,15 @@ export class LedgerStore {
       const accounts = await this.accountRows(client, [userAccountId(sender.id), userAccountId(recipient.id)], true);
       const repeated = await this.replay(client, sender.id, input.idempotencyKey, payload);
       if (repeated) return repeated;
-      const balanceWon = safeInteger(accounts.find((account) => account.user_id === sender.id)!.balance_won);
-      const recipientBalance = safeInteger(accounts.find((account) => account.user_id === recipient.id)!.balance_won);
+      const balanceWon = safeInteger(accounts.find((account) => account.id === userAccountId(sender.id))!.balance_won);
+      const recipientBalance = safeInteger(accounts.find((account) => account.id === userAccountId(recipient.id))!.balance_won);
+      // Every card command also owns this spend row before changing holds, so it is the aggregate-balance mutex.
+      const [recipientHold] = await this.accountRows(client, [holdAccountId(recipient.id)]);
+      const recipientHeld = safeInteger(recipientHold.balance_won);
       const now = this.now(), limits = await this.limits(client, sender, balanceWon, now);
       if (input.amountWon > balanceWon) throw new LedgerError(409, 'INSUFFICIENT_FUNDS', '보낼 수 있는 잔액이 부족합니다.');
       if (input.amountWon > limits.perTransfer || input.amountWon + limits.sentToday > limits.daily || input.amountWon + limits.sentMonth > limits.monthly) throw new LedgerError(409, 'LIMIT_EXCEEDED', '한 번 또는 이번 기간에 보낼 수 있는 한도를 초과했습니다.');
-      if (input.amountWon > MAX_WON - recipientBalance) throw new LedgerError(409, 'RECIPIENT_BALANCE_LIMIT', '받는 회원의 잔액 한도를 초과합니다.');
+      if (BigInt(input.amountWon) + BigInt(recipientBalance) + BigInt(recipientHeld) > MAX_INTEGER) throw new LedgerError(409, 'RECIPIENT_BALANCE_LIMIT', '받는 회원의 잔액 한도를 초과합니다.');
       const result = await client.query<JournalRow>(`INSERT INTO journals(id, kind, from_account_id, to_account_id, amount_won, sender_id, recipient_id,
         sender_name, sender_tag, recipient_name, recipient_tag, request_owner_id, idempotency_key, request_payload, balance_after_won, created_at)
         VALUES ($1, 'member_transfer', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
@@ -223,8 +243,9 @@ export class LedgerStore {
       const accounts = await this.accountRows(client, [CONTROL_ACCOUNT, userAccountId(user.id)], true);
       const repeated = await this.replay(client, user.id, input.idempotencyKey, payload);
       if (repeated) return repeated;
-      const balance = safeInteger(accounts.find((account) => account.user_id === user.id)!.balance_won);
-      if (input.amountWon > MAX_WON - balance) throw new LedgerError(409, 'RECIPIENT_BALANCE_LIMIT', '충전 후 잔액이 처리 범위를 초과합니다.');
+      const balance = safeInteger(accounts.find((account) => account.id === userAccountId(user.id))!.balance_won);
+      const [hold] = await this.accountRows(client, [holdAccountId(user.id)]);
+      if (BigInt(input.amountWon) + BigInt(balance) + BigInt(safeInteger(hold.balance_won)) > MAX_INTEGER) throw new LedgerError(409, 'RECIPIENT_BALANCE_LIMIT', '충전 후 잔액이 처리 범위를 초과합니다.');
       const result = await client.query<JournalRow>(`INSERT INTO journals(id, kind, from_account_id, to_account_id, amount_won, sender_id, recipient_id,
         sender_name, sender_tag, recipient_name, recipient_tag, request_owner_id, idempotency_key, request_payload, balance_after_won, created_at)
         VALUES ($1, 'sandbox_credit', $2, $3, $4, NULL, $5, '테스트 충전', 'sandbox', $6, $7, $8, $9, $10, $11, $12) RETURNING *`,

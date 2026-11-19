@@ -61,6 +61,11 @@
 .sa-balance-heading .sa-icon-button { margin:-7px -8px -7px 0; }
 .sa-balance-number { display:block; color:var(--sa-ink); font-size:42px; font-weight:650; line-height:1.4; letter-spacing:-1px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .sa-balance-panel > p { color:var(--sa-muted); font-size:12px; line-height:1.8; margin-top:12px; }
+.sa-balance-breakdown { display:grid; gap:11px; margin:22px 0 0; padding-top:18px; border-top:1px solid var(--sa-line); }
+.sa-balance-breakdown > div { display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.sa-balance-breakdown dt { color:var(--sa-muted); font-size:13px; line-height:1.6; }
+.sa-balance-breakdown dt span { display:block; font-size:11px; margin-top:2px; }
+.sa-balance-breakdown dd { margin:0; color:var(--sa-ink); font-size:14px; font-weight:500; line-height:1.6; text-align:right; font-variant-numeric:tabular-nums; }
 .sa-balance-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:27px; }
 .sa-balance-actions > .sa-primary { min-width:140px; }
 .sa-balance-panel > .sa-balance-warning { color:#775b33; padding-top:15px; border-top:1px solid var(--sa-line); }
@@ -88,6 +93,31 @@
 .sa-transaction-copy span { display:block; color:var(--sa-muted); font-size:12px; line-height:1.7; margin-top:4px; overflow-wrap:anywhere; }
 .sa-transaction-amount { flex-shrink:0; color:var(--sa-ink); font-size:15px; font-weight:550; font-variant-numeric:tabular-nums; text-align:right; }
 .sa-transaction-amount.received { color:var(--sa-accent); }
+.sa-card-payment { border-top:1px solid var(--sa-line); }
+.sa-card-summary { display:flex; align-items:center; gap:14px; min-height:86px; padding:18px 0; list-style:none; cursor:pointer; }
+.sa-card-summary::-webkit-details-marker { display:none; }
+.sa-card-summary-copy { min-width:0; flex:1; }
+.sa-card-summary-copy > strong { display:block; color:var(--sa-ink); font-size:14px; font-weight:550; line-height:1.6; overflow-wrap:anywhere; }
+.sa-card-summary-copy > span:not(.sa-card-status) { display:block; margin-top:3px; color:var(--sa-muted); font-size:12px; line-height:1.7; }
+.sa-card-status { display:inline-block; margin-top:7px; padding:2px 7px; border-radius:4px; color:var(--sa-accent); background:#f0f4f7; font-size:11px; line-height:1.7; }
+.sa-card-status.cancelled { color:var(--sa-muted); background:#f3f4f5; }
+.sa-card-summary-amount { min-width:0; text-align:right; }
+.sa-card-summary-amount > span { display:block; color:var(--sa-muted); font-size:11px; line-height:1.5; }
+.sa-card-summary-amount > strong { display:block; margin-top:3px; color:var(--sa-ink); font-size:15px; font-weight:550; line-height:1.6; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.sa-card-chevron { color:var(--sa-muted); flex-shrink:0; }
+.sa-card-payment[open] .sa-card-chevron { transform:rotate(90deg); }
+.sa-card-detail { padding:0 0 22px; }
+.sa-card-amounts { display:grid; gap:11px; margin:0; padding:18px 0; border-top:1px solid var(--sa-line); border-bottom:1px solid var(--sa-line); }
+.sa-card-amounts > div { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.sa-card-amounts dt { color:var(--sa-muted); font-size:13px; line-height:1.7; }
+.sa-card-amounts dd { margin:0; color:var(--sa-ink); font-size:13px; font-weight:500; line-height:1.7; font-variant-numeric:tabular-nums; text-align:right; }
+.sa-card-amounts .sa-card-net { margin-top:3px; padding-top:12px; border-top:1px solid var(--sa-line); }
+.sa-card-net dd { color:var(--sa-accent); font-weight:600; }
+.sa-shell .sa-card-detail-note { margin-top:13px; color:var(--sa-muted); font-size:12px; line-height:1.9; }
+.sa-card-metadata { display:grid; gap:8px; margin:16px 0 0; }
+.sa-card-metadata > div { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
+.sa-card-metadata dt { flex-shrink:0; color:var(--sa-muted); font-size:11px; line-height:1.7; }
+.sa-card-metadata dd { min-width:0; margin:0; color:var(--sa-muted); font-size:11px; line-height:1.7; text-align:right; overflow-wrap:anywhere; }
 .sa-service-note { grid-column:1/-1; color:var(--sa-muted); font-size:12px; line-height:1.8; text-align:center; }
 .sa-dashboard-message { grid-column:1/-1; margin:0 !important; }
 .sa-modal-backdrop { position:fixed; inset:0; z-index:120; display:flex; align-items:center; justify-content:center; padding:24px; color:var(--sa-ink); background:rgba(15,24,33,.28); font-family:inherit; }
@@ -170,6 +200,10 @@
  .sa-transaction-copy strong { font-size:13px; }
  .sa-transaction-copy span { font-size:11px; }
  .sa-transaction-amount { font-size:13px; }
+ .sa-card-summary { gap:10px; }
+ .sa-card-summary-copy > strong { font-size:13px; }
+ .sa-card-summary-amount > strong { font-size:14px; }
+ .sa-card-summary-copy > span:not(.sa-card-status) { font-size:11px; }
  .sa-modal-backdrop { align-items:stretch; padding:0; }
  .sa-modal { width:100%; height:100dvh; max-height:100dvh; min-height:0; border:0; border-radius:0; }
  .sa-modal-header { padding:max(21px,env(safe-area-inset-top)) 22px 19px; }
