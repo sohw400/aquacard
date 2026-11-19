@@ -37,6 +37,8 @@ jobs:
       DATABASE_RUNTIME_ROLE: aqua_app
       DATABASE_WORKER_ROLE: aqua_worker
       DATABASE_INGRESS_ROLE: aqua_ingress
+      DATABASE_DISPATCHER_ROLE: aqua_dispatcher
+      DISPATCHER_DATABASE_URL: postgresql://aqua_dispatcher:aqua_dispatcher_local_only@127.0.0.1:5432/aqua
       INGRESS_DATABASE_URL: postgresql://aqua_ingress:aqua_ingress_local_only@127.0.0.1:5432/aqua
       WORKER_DATABASE_URL: postgresql://aqua_worker:aqua_worker_local_only@127.0.0.1:5432/aqua
       DATABASE_SCHEMA: aqua_browser_ci
@@ -132,6 +134,16 @@ jobs:
           docker run --rm --network host --read-only --no-healthcheck --cap-drop ALL --security-opt no-new-privileges \
             -e NODE_ENV=development -e WORKER_DATABASE_URL -e DATABASE_SCHEMA \
             aqua-card-server:ci node dist-server/card-worker.js --once
+          docker run --rm --network host --read-only --no-healthcheck --cap-drop ALL --security-opt no-new-privileges \
+            -e NODE_ENV=development -e DISPATCHER_DATABASE_URL -e DATABASE_SCHEMA \
+            aqua-card-server:ci node --input-type=module -e '
+              import { randomBytes } from "node:crypto";
+              process.env.AQUA_ISSUER_SANDBOX_URL = "http://127.0.0.1:1";
+              process.env.AQUA_ISSUER_KEY_ID = "ci";
+              process.env.AQUA_ISSUER_SIGNING_KEY = randomBytes(32).toString("base64url");
+              process.argv = [process.execPath, "dist-server/issuer-dispatcher.js", "--once"];
+              await import("./dist-server/issuer-dispatcher.js");
+            '
       - name: Locate a browser for the connected flow
         shell: bash
         run: |

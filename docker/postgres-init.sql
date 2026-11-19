@@ -14,5 +14,9 @@ BEGIN
     CREATE ROLE aqua_ingress LOGIN PASSWORD 'aqua_ingress_local_only'
       NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aqua_dispatcher') THEN
+    CREATE ROLE aqua_dispatcher LOGIN PASSWORD 'aqua_dispatcher_local_only'
+      NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  END IF;
 END;
 $bootstrap$;

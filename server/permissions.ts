@@ -28,13 +28,16 @@ export async function grantApplicationRole(database: Database, role: string): Pr
     await client.query(`GRANT SELECT ON reward_wallets, reward_journals, reward_entries, reward_commands, reward_cashback_months, card_reward_allocations, reward_program, reward_history TO ${quoted}`);
     await client.query(`GRANT EXECUTE ON FUNCTION rewards_snapshot(text, bigint), apply_reward_preference(jsonb, bigint) TO ${quoted}`);
     await client.query(`REVOKE ALL ON card_event_inbox, card_inbox_attempts, card_inbox_requeues, card_inbox_lanes FROM ${quoted}`);
+    await client.query(`REVOKE ALL ON issuer_cards, issuer_outbox, issuer_outbox_audit, issuer_outbox_completions, issuer_outbox_requeues FROM ${quoted}`);
+    await client.query(`GRANT EXECUTE ON FUNCTION issuer_card_snapshot(text), request_issuer_card_status(jsonb,bigint) TO ${quoted}`);
     await client.query(`REVOKE ALL ON FUNCTION operator_fund_reward_budget(jsonb, bigint), operator_set_reward_program(jsonb, bigint), operator_grant_rewards(jsonb, bigint) FROM ${quoted}`);
     await client.query(`REVOKE ALL ON FUNCTION apply_sandbox_card_event_legacy_003(jsonb, bigint) FROM ${quoted}`);
     const internalFunctions = await client.query<{ signature: string }>(`SELECT p.oid::regprocedure::text AS signature
       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = $1 AND p.prosecdef
       AND p.oid NOT IN ('apply_sandbox_card_event(jsonb,bigint)'::regprocedure,
-        'rewards_snapshot(text,bigint)'::regprocedure, 'apply_reward_preference(jsonb,bigint)'::regprocedure)`, [database.schema]);
+        'rewards_snapshot(text,bigint)'::regprocedure, 'apply_reward_preference(jsonb,bigint)'::regprocedure,
+        'issuer_card_snapshot(text)'::regprocedure, 'request_issuer_card_status(jsonb,bigint)'::regprocedure)`, [database.schema]);
     for (const { signature } of internalFunctions.rows) await client.query(`REVOKE ALL ON FUNCTION ${signature} FROM ${quoted}`);
   });
 }
@@ -43,6 +46,8 @@ export async function grantApplicationRole(database: Database, role: string): Pr
 export async function verifyApplicationRole(database: Database): Promise<void> {
   const result = await database.query<{ unsafe: boolean }>(`SELECT
     r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls
+    OR EXISTS (SELECT 1 FROM pg_roles delegated WHERE delegated.oid<>r.oid AND pg_has_role(current_user,delegated.oid,'SET'))
+    OR EXISTS (SELECT 1 FROM pg_auth_members membership WHERE membership.member=r.oid)
     OR has_schema_privilege(current_user, $1, 'CREATE')
     OR has_table_privilege(current_user, $2, 'UPDATE,DELETE,TRUNCATE')
     OR has_table_privilege(current_user, $3, 'UPDATE,DELETE,TRUNCATE')
@@ -54,7 +59,7 @@ export async function verifyApplicationRole(database: Database): Promise<void> {
   if (result.rows.length !== 1 || result.rows[0].unsafe) {
     throw new Error('The API requires a restricted application database role. Keep migration and administrator credentials out of the running API.');
   }
-  const protectedTables = ['reward_wallets', 'reward_journals', 'reward_commands', 'reward_cash_plans', 'reward_cashback_months', 'card_reward_allocations', 'reward_program', 'reward_history', 'card_event_inbox', 'card_inbox_attempts', 'card_inbox_requeues', 'card_inbox_lanes'].map((table) => `${database.schema}.${table}`);
+  const protectedTables = ['reward_wallets', 'reward_journals', 'reward_commands', 'reward_cash_plans', 'reward_cashback_months', 'card_reward_allocations', 'reward_program', 'reward_history', 'card_event_inbox', 'card_inbox_attempts', 'card_inbox_requeues', 'card_inbox_lanes', 'issuer_cards', 'issuer_outbox', 'issuer_outbox_audit', 'issuer_outbox_completions', 'issuer_outbox_requeues'].map((table) => `${database.schema}.${table}`);
   const rewardAccess = await database.query<{ unsafe: boolean }>(`SELECT EXISTS (
     SELECT 1 FROM unnest($1::text[]) AS t(name) WHERE has_table_privilege(current_user, name, 'INSERT,UPDATE,DELETE,TRUNCATE')
       OR has_any_column_privilege(current_user, name, 'INSERT,UPDATE')
@@ -66,15 +71,24 @@ export async function verifyApplicationRole(database: Database): Promise<void> {
     SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = $1 AND p.prosecdef AND p.prorettype <> 'trigger'::regtype
       AND p.oid NOT IN ('apply_sandbox_card_event(jsonb,bigint)'::regprocedure,
-        'rewards_snapshot(text,bigint)'::regprocedure, 'apply_reward_preference(jsonb,bigint)'::regprocedure)
+        'rewards_snapshot(text,bigint)'::regprocedure, 'apply_reward_preference(jsonb,bigint)'::regprocedure,
+        'issuer_card_snapshot(text)'::regprocedure, 'request_issuer_card_status(jsonb,bigint)'::regprocedure)
       AND has_function_privilege(current_user, p.oid, 'EXECUTE')
   ) AS unsafe`, [database.schema]);
   if (internalAccess.rows[0]?.unsafe !== false) throw new Error('The API cannot execute private ledger helper functions.');
+  const issuerAccess = await database.query<{ unsafe: boolean }>(`SELECT EXISTS (
+    SELECT 1 FROM unnest($1::text[]) t(name)
+    WHERE has_table_privilege(current_user,name,'SELECT') OR has_any_column_privilege(current_user,name,'SELECT')
+  ) OR NOT has_function_privilege(current_user,'issuer_card_snapshot(text)','EXECUTE')
+    OR NOT has_function_privilege(current_user,'request_issuer_card_status(jsonb,bigint)','EXECUTE') AS unsafe`,
+  [['issuer_cards', 'issuer_outbox', 'issuer_outbox_audit', 'issuer_outbox_completions', 'issuer_outbox_requeues'].map((table) => `${database.schema}.${table}`)]);
+  if (issuerAccess.rows[0]?.unsafe !== false) throw new Error('The API requires the issuer command functions without direct issuer table access.');
 }
 
 const cardServiceFunctions = {
   ingress: ['enqueue_sandbox_card_event(jsonb,bigint)'],
   worker: ['process_card_inbox(bigint)', 'card_inbox_stats(bigint)'],
+  dispatcher: ['claim_issuer_outbox(bigint)', 'finish_issuer_outbox(jsonb,bigint)', 'issuer_outbox_stats(bigint)'],
 } as const;
 
 async function grantCardServiceRole(database: Database, role: string, service: keyof typeof cardServiceFunctions): Promise<void> {
@@ -93,6 +107,8 @@ async function grantCardServiceRole(database: Database, role: string, service: k
 async function verifyCardServiceRole(database: Database, service: keyof typeof cardServiceFunctions): Promise<void> {
   const { rows } = await database.query<{ unsafe: boolean }>(`SELECT
     r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls
+    OR EXISTS (SELECT 1 FROM pg_roles delegated WHERE delegated.oid<>r.oid AND pg_has_role(current_user,delegated.oid,'SET'))
+    OR EXISTS (SELECT 1 FROM pg_auth_members membership WHERE membership.member=r.oid)
     OR has_schema_privilege(current_user, $1, 'CREATE')
     OR EXISTS (SELECT 1 FROM unnest($2::text[]) f(signature) WHERE NOT has_function_privilege(current_user,signature,'EXECUTE'))
     OR EXISTS (
@@ -114,3 +130,5 @@ export const grantCardIngressRole = (database: Database, role: string) => grantC
 export const grantCardWorkerRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'worker');
 export const verifyCardIngressRole = (database: Database) => verifyCardServiceRole(database, 'ingress');
 export const verifyCardWorkerRole = (database: Database) => verifyCardServiceRole(database, 'worker');
+export const grantCardDispatcherRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'dispatcher');
+export const verifyCardDispatcherRole = (database: Database) => verifyCardServiceRole(database, 'dispatcher');

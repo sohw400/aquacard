@@ -3,10 +3,11 @@ import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import swagger from '@fastify/swagger';
 import { extname, resolve } from 'node:path';
-import type { MemberProfile } from '../shared/api';
+import type { IssuerCardStatus, MemberProfile } from '../shared/api';
 import { AuthService } from './auth';
 import { LedgerError, LedgerStore } from './ledger';
 import { RewardsStore } from './rewards';
+import { IssuerOutboxStore } from './issuer-outbox';
 
 declare module 'fastify' {
   interface FastifyRequest { aquaUser: MemberProfile | null }
@@ -75,6 +76,34 @@ const cardPaymentSchema = {
     cashback: cashbackSchema,
   },
 };
+const issuerStatusSchema = { type: 'string', enum: ['active', 'locked'] };
+const issuerCommandStatusSchema = { type: 'string', enum: ['pending', 'in_flight', 'retry', 'succeeded', 'failed', 'needs_review'] };
+const uuidSchema = { type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' };
+const issuerVersionSchema = { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER };
+const issuerCardSchema = {
+  $id: 'AquaIssuerCard', type: 'object', additionalProperties: false, required: ['mode', 'card'],
+  properties: {
+    mode: { type: 'string', enum: ['sandbox'] },
+    card: { anyOf: [{ type: 'null' }, {
+      type: 'object', additionalProperties: false, required: ['id', 'desiredStatus', 'confirmedStatus', 'version', 'updatedAt', 'command'],
+      properties: {
+        id: uuidSchema, desiredStatus: issuerStatusSchema, confirmedStatus: issuerStatusSchema, version: issuerVersionSchema, updatedAt: amount,
+        command: { anyOf: [{ type: 'null' }, {
+          type: 'object', additionalProperties: false, required: ['id', 'status', 'phase', 'attemptCount', 'errorCode', 'createdAt', 'updatedAt'],
+          properties: {
+            id: uuidSchema, status: issuerCommandStatusSchema, phase: { type: 'string', enum: ['send', 'lookup'] },
+            ...amountProperties(['attemptCount', 'createdAt', 'updatedAt']),
+            errorCode: { anyOf: [{ type: 'string', maxLength: 64 }, { type: 'null' }] },
+          },
+        }] },
+      },
+    }] },
+  },
+};
+const issuerReceiptSchema = {
+  type: 'object', additionalProperties: false, required: ['id', 'cardId', 'status', 'cardVersion', 'duplicate'],
+  properties: { id: uuidSchema, cardId: uuidSchema, status: { type: 'string', enum: ['pending'] }, cardVersion: issuerVersionSchema, duplicate: { type: 'boolean' } },
+};
 const okaySchema = { type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'boolean', enum: [true] } } };
 const userSchema = { type: 'object', additionalProperties: false, required: ['user'], properties: { user: { $ref: 'AquaMember#' } } };
 const errorResponses = Object.fromEntries([400, 401, 403, 404, 405, 409, 413, 415, 429, 500, 503].map((status) => [status, { $ref: 'AquaError#' }]));
@@ -95,6 +124,8 @@ function tokenOf(request: FastifyRequest): string | undefined {
 export function createApiServer(store: LedgerStore, options: ServerOptions): FastifyInstance {
   const auth = new AuthService(store, { deliverRecovery: options.deliverRecovery });
   const rewards = new RewardsStore(store.database);
+  const issuer = new IssuerOutboxStore(store.database);
+  const sandboxIssuerWritesEnabled = process.env.NODE_ENV !== 'production';
   const allowedOrigins = new Set(options.allowedOrigins);
   const logger = options.logger === false ? false : {
     level: 'info',
@@ -162,11 +193,11 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
     await api.register(swagger, {
       openapi: {
         openapi: '3.0.3',
-        info: { title: 'Aqua sandbox API', version: '0.4.0', description: '계정, 인증, 원장, 송금, 카드 결제와 결제 전용 리워드 API. 실제 자금 이동은 제공하지 않습니다.' },
+        info: { title: 'Aqua sandbox API', version: '0.5.0', description: '계정, 인증, 원장, 송금, 카드 결제, 결제 전용 리워드와 테스트 발급사 상태 동기화 API. 실제 자금 이동이나 카드 발급은 제공하지 않습니다.' },
         components: { securitySchemes: { aquaSession: { type: 'apiKey', in: 'cookie', name: COOKIE } } },
       },
     });
-    api.addSchema(errorSchema); api.addSchema(profileSchema); api.addSchema(recordSchema); api.addSchema(cardPaymentSchema); api.addSchema(rewardsSchema);
+    api.addSchema(errorSchema); api.addSchema(profileSchema); api.addSchema(recordSchema); api.addSchema(cardPaymentSchema); api.addSchema(rewardsSchema); api.addSchema(issuerCardSchema);
 
     const sessionCookie = (reply: FastifyReply, token: string, clear = false) => {
       reply.setCookie(COOKIE, token, { path: '/api', httpOnly: true, sameSite: 'strict', secure: options.secureCookies ?? false, maxAge: clear ? 0 : SESSION_SECONDS });
@@ -226,6 +257,32 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
         response: { 200: { type: 'object', additionalProperties: false, required: ['useFirst', 'version'], properties: { useFirst: { type: 'boolean' }, version: amount } }, ...errorResponses },
       },
     }, async (request) => rewards.setPreference({ userId: request.aquaUser!.id, useFirst: request.body.useFirst, expectedVersion: request.body.expectedVersion, idempotencyKey: request.headers['idempotency-key'] as string }));
+    api.get('/api/issuer-card', { preValidation: signedIn, schema: {
+      tags: ['issuer sandbox'], summary: '내 테스트 발급사 카드의 요청 상태와 확인 상태', security: secured,
+      response: { 200: { $ref: 'AquaIssuerCard#' }, ...errorResponses },
+    } }, async (request) => issuer.snapshot(request.aquaUser!.id));
+    api.post<{ Body: { cardId: string; targetStatus: IssuerCardStatus; expectedVersion: number } }>('/api/issuer-card/status', {
+      preValidation: async (request) => {
+        await signedIn(request); accountMatches(request, request.aquaUser!);
+        if (!sandboxIssuerWritesEnabled) throw new LedgerError(403, 'SANDBOX_DISABLED', '운영 환경에서는 테스트 발급사 명령을 실행할 수 없어요.');
+        // Validate before Ajv's shared removeAdditional setting can strip caller-selected identities or endpoints.
+        const allowed = new Set(['cardId', 'targetStatus', 'expectedVersion']);
+        if (Object.keys(request.body).some((key) => !allowed.has(key))) throw new LedgerError(400, 'INVALID_INPUT', '요청 내용을 확인해 주세요.');
+        const key = request.headers['idempotency-key'];
+        if (typeof key !== 'string' || !/^[a-zA-Z0-9_-]{8,128}$/.test(key)) throw new LedgerError(400, 'IDEMPOTENCY_KEY_REQUIRED', '요청 식별자를 확인해 주세요.');
+        await auth.enforceIssuerCardCommand(request.aquaUser!.id);
+      },
+      schema: {
+        tags: ['issuer sandbox'], summary: '테스트 발급사 카드 잠금·해제 요청 접수',
+        description: '202는 요청이 저장됐다는 뜻입니다. 발급사 확인 전에는 confirmedStatus가 바뀌지 않습니다. 현재 테스트 원장 승인 경로의 결제 차단 기능과는 별개입니다.', security: secured,
+        headers: { type: 'object', required: ['idempotency-key', 'x-aqua-account'], properties: { 'idempotency-key': { type: 'string', minLength: 8, maxLength: 128, pattern: '^[a-zA-Z0-9_-]+$' }, 'x-aqua-account': { type: 'string', minLength: 1 } } },
+        body: objectBody({ cardId: uuidSchema, targetStatus: issuerStatusSchema, expectedVersion: issuerVersionSchema }),
+        response: { 202: issuerReceiptSchema, ...errorResponses },
+      },
+    }, async (request, reply) => reply.code(202).send(await issuer.requestStatus({
+      userId: request.aquaUser!.id, cardId: request.body.cardId, targetStatus: request.body.targetStatus,
+      expectedVersion: request.body.expectedVersion, idempotencyKey: request.headers['idempotency-key'] as string,
+    })));
     api.get<{ Querystring: { tag: string } }>('/api/members', { preValidation: signedIn, schema: { tags: ['members'], summary: '태그로 회원 찾기', security: secured, querystring: objectBody({ tag: { type: 'string', minLength: 3, maxLength: 21 } }), response: { 200: { type: 'object', additionalProperties: false, required: ['member'], properties: { member: { type: 'object', additionalProperties: false, required: ['id', 'tag', 'name'], properties: { id: text, tag: text, name: text } } } }, ...errorResponses } } }, async (request) => {
       await auth.enforceMemberLookup(request.aquaUser!.id);
       const tag = request.query.tag.trim().replace(/^@/, '').toLowerCase();
