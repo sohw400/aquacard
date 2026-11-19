@@ -81,9 +81,10 @@ const issuerCommandStatusSchema = { type: 'string', enum: ['pending', 'in_flight
 const uuidSchema = { type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' };
 const issuerVersionSchema = { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER };
 const issuerCardSchema = {
-  $id: 'AquaIssuerCard', type: 'object', additionalProperties: false, required: ['mode', 'card'],
+  $id: 'AquaIssuerCard', type: 'object', additionalProperties: false, required: ['mode', 'canRequestStatus', 'card'],
   properties: {
     mode: { type: 'string', enum: ['sandbox'] },
+    canRequestStatus: { type: 'boolean' },
     card: { anyOf: [{ type: 'null' }, {
       type: 'object', additionalProperties: false, required: ['id', 'desiredStatus', 'confirmedStatus', 'version', 'updatedAt', 'command'],
       properties: {
@@ -257,10 +258,13 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
         response: { 200: { type: 'object', additionalProperties: false, required: ['useFirst', 'version'], properties: { useFirst: { type: 'boolean' }, version: amount } }, ...errorResponses },
       },
     }, async (request) => rewards.setPreference({ userId: request.aquaUser!.id, useFirst: request.body.useFirst, expectedVersion: request.body.expectedVersion, idempotencyKey: request.headers['idempotency-key'] as string }));
-    api.get('/api/issuer-card', { preValidation: signedIn, schema: {
+    api.get('/api/issuer-card', { preValidation: async (request) => {
+      await signedIn(request); accountMatches(request, request.aquaUser!);
+    }, schema: {
       tags: ['issuer sandbox'], summary: '내 테스트 발급사 카드의 요청 상태와 확인 상태', security: secured,
+      headers: { type: 'object', required: ['x-aqua-account'], properties: { 'x-aqua-account': { type: 'string', minLength: 1, maxLength: 128 } } },
       response: { 200: { $ref: 'AquaIssuerCard#' }, ...errorResponses },
-    } }, async (request) => issuer.snapshot(request.aquaUser!.id));
+    } }, async (request) => ({ ...await issuer.snapshot(request.aquaUser!.id), canRequestStatus: sandboxIssuerWritesEnabled }));
     api.post<{ Body: { cardId: string; targetStatus: IssuerCardStatus; expectedVersion: number } }>('/api/issuer-card/status', {
       preValidation: async (request) => {
         await signedIn(request); accountMatches(request, request.aquaUser!);

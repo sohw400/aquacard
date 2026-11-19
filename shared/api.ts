@@ -105,6 +105,7 @@ export type IssuerCommandStatus = 'pending' | 'in_flight' | 'retry' | 'succeeded
 /** Sandbox issuer state only. This does not gate the separate test ledger's authorization commands. */
 export interface IssuerCardSnapshot {
   mode: 'sandbox';
+  canRequestStatus: boolean;
   card: {
     id: string;
     desiredStatus: IssuerCardStatus;

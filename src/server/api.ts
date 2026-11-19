@@ -1,4 +1,4 @@
-import type { AccountSnapshot, MemberProfile, RewardPreferenceResult, TransferResult } from '../../shared/api';
+import type { AccountSnapshot, IssuerCardSnapshot, IssuerCardStatus, IssuerCardStatusReceipt, MemberProfile, RewardPreferenceResult, TransferResult } from '../../shared/api';
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -7,7 +7,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: { method?: 'GET' | 'POST'; body?: unknown; signal?: AbortSignal; key?: string; ownerId?: string } = {}): Promise<T> {
+async function request<T>(path: string, options: { method?: 'GET' | 'POST'; body?: unknown; signal?: AbortSignal; key?: string; ownerId?: string; expectedStatus?: number } = {}): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method: options.method ?? 'GET',
     credentials: 'same-origin',
@@ -22,6 +22,7 @@ async function request<T>(path: string, options: { method?: 'GET' | 'POST'; body
     throw new ApiError(response.status, typeof details?.code === 'string' ? details.code : `HTTP_${response.status}`, typeof details?.message === 'string' ? details.message : '서버 응답을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
   }
   if (data === null) throw new Error('서버 응답을 확인하지 못했습니다.');
+  if (options.expectedStatus !== undefined && response.status !== options.expectedStatus) throw new Error('요청 결과의 응답 형식을 확인하지 못했습니다.');
   return data as T;
 }
 
@@ -36,6 +37,8 @@ export const api = {
   member: (tag: string, signal?: AbortSignal) => request<{ member: Recipient }>(`/members?tag=${encodeURIComponent(tag)}`, { signal }),
   transfer: (body: { recipientTag: string; amountWon: number }, key: string, ownerId: string) => request<TransferResult>('/transfers', { method: 'POST', body, key, ownerId }),
   rewardPreference: (body: { useFirst: boolean; expectedVersion: number }, key: string, ownerId: string) => request<RewardPreferenceResult>('/rewards/preference', { method: 'POST', body, key, ownerId }),
+  issuerCard: (ownerId: string, signal?: AbortSignal) => request<IssuerCardSnapshot>('/issuer-card', { ownerId, signal, expectedStatus: 200 }),
+  issuerCardStatus: (body: { cardId: string; targetStatus: IssuerCardStatus; expectedVersion: number }, key: string, ownerId: string, signal?: AbortSignal) => request<IssuerCardStatusReceipt>('/issuer-card/status', { method: 'POST', body, key, ownerId, signal, expectedStatus: 202 }),
   requestRecovery: (email: string) => request<{ ok: true }>('/auth/recovery/request', { method: 'POST', body: { email } }),
   confirmRecovery: (token: string, password: string) => request<{ ok: true }>('/auth/recovery/confirm', { method: 'POST', body: { token, password } }),
 };
