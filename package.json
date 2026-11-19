@@ -34,6 +34,7 @@
     "test:server:browser": "node scripts/server-browser-check.mjs",
     "test:card:browser": "node scripts/card-browser-check.mjs",
     "test:rewards:browser": "node scripts/rewards-browser-check.mjs",
+    "test:issuer:browser": "node --env-file-if-exists=.env --import tsx scripts/issuer-browser-runner.mjs",
     "server:prod": "node dist-server/index.js",
     "server:credit:prod": "node dist-server/credit.js",
     "typecheck:server": "tsc --noEmit -p tsconfig.server.json",

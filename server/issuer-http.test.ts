@@ -56,19 +56,44 @@ function command(session: MemberSession, cardId: string, key = 'issuer-request-0
     body: { cardId, targetStatus: 'locked', expectedVersion } };
 }
 
+function viewing(session: MemberSession): RequestOptions {
+  return { cookie: session.cookie, headers: { 'x-aqua-account': session.user.id } };
+}
+
 test('issuer snapshots are session-owned and omit partner references and internal delivery credentials', async (t) => {
   const f = await fixture(t);
   assert.equal((await f.request('/issuer-card')).status, 401);
   const alice = await f.signup('issueralice'); const bob = await f.signup('issuerbobby');
-  const empty = await f.request<IssuerCardSnapshot>('/issuer-card', { cookie: alice.cookie });
-  assert.deepEqual(empty.data, { mode: 'sandbox', card: null });
+  const empty = await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice));
+  assert.deepEqual(empty.data, { mode: 'sandbox', canRequestStatus: true, card: null });
   const { cardId } = await f.register(alice); const other = await f.register(bob);
-  const own = await f.request<IssuerCardSnapshot>(`/issuer-card?userId=${bob.user.id}&cardId=${other.cardId}`, { cookie: alice.cookie });
+  const own = await f.request<IssuerCardSnapshot>(`/issuer-card?userId=${bob.user.id}&cardId=${other.cardId}`, viewing(alice));
   assert.equal(own.status, 200); assert.equal(own.headers['cache-control'], 'no-store');
+  assert.equal(own.data.canRequestStatus, true);
   assert.equal(own.data.card?.id, cardId);
   assert.deepEqual([own.data.card?.desiredStatus, own.data.card?.confirmedStatus, own.data.card?.command], ['active', 'active', null]);
-  assert.equal((await f.request<IssuerCardSnapshot>('/issuer-card', { cookie: bob.cookie })).data.card?.id, other.cardId);
+  assert.equal((await f.request<IssuerCardSnapshot>('/issuer-card', viewing(bob))).data.card?.id, other.cardId);
   for (const hidden of ['providerCardId', 'sandbox-card-', 'requestKey', 'leaseToken', 'leaseUntil', 'canonical_input', bob.user.id]) assert.equal(own.body.includes(hidden), false, hidden);
+});
+
+test('issuer reads reject a changed shared cookie or absent account header without exposing either card', async (t) => {
+  const f = await fixture(t); const alice = await f.signup('issuerreadalice'); const bob = await f.signup('issuerreadbobby');
+  const own = await f.register(alice); const other = await f.register(bob);
+  const before = await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice));
+  assert.equal(before.status, 200); assert.equal(before.data.card?.id, own.cardId);
+  for (const options of [
+    { ...viewing(alice), cookie: bob.cookie },
+    { cookie: alice.cookie },
+    { cookie: bob.cookie, headers: { 'x-aqua-account': '' } },
+  ]) {
+    const denied = await f.request('/issuer-card', options);
+    assert.equal(denied.status, 409, denied.body);
+    assert.equal(denied.data.error.code, 'SESSION_CHANGED');
+    assert.equal(denied.headers['cache-control'], 'no-store');
+    for (const hidden of [own.cardId, other.cardId, 'desiredStatus', 'confirmedStatus', 'sandbox-card-']) assert.equal(denied.body.includes(hidden), false, hidden);
+  }
+  const after = await f.request<IssuerCardSnapshot>('/issuer-card', viewing(bob));
+  assert.equal(after.status, 200); assert.equal(after.data.card?.id, other.cardId);
 });
 
 test('202 only accepts the desired status; issuer confirmation is separate and the financial ledger is unchanged', async (t) => {
@@ -78,7 +103,7 @@ test('202 only accepts the desired status; issuer confirmation is separate and t
   const options = command(alice, cardId);
   const accepted = await f.request<IssuerCardStatusReceipt>('/issuer-card/status', options);
   assert.equal(accepted.status, 202, accepted.body); assert.equal(accepted.data.status, 'pending'); assert.equal(accepted.data.duplicate, false);
-  const waiting = await f.request<IssuerCardSnapshot>('/issuer-card', { cookie: alice.cookie });
+  const waiting = await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice));
   assert.equal(waiting.data.card?.desiredStatus, 'locked'); assert.equal(waiting.data.card?.confirmedStatus, 'active');
   assert.equal(waiting.data.card?.command?.id, accepted.data.id); assert.equal(waiting.data.card?.command?.status, 'pending');
   assert.equal(waiting.data.card?.version, accepted.data.cardVersion);
@@ -91,16 +116,16 @@ test('202 only accepts the desired status; issuer confirmation is separate and t
     body: { cardId, targetStatus: 'active', expectedVersion: accepted.data.cardVersion } });
   assert.equal(blocked.status, 409); assert.equal(blocked.data.error.code, 'OUTBOX_PENDING');
   const claim = await f.issuer.claim(); assert.ok(claim);
-  assert.equal((await f.request<IssuerCardSnapshot>('/issuer-card', { cookie: alice.cookie })).data.card?.confirmedStatus, 'active');
+  assert.equal((await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice))).data.card?.confirmedStatus, 'active');
   await f.issuer.finish({ id: claim.id, leaseToken: claim.leaseToken, expectedVersion: claim.version, outcome: { kind: 'succeeded' } });
-  const confirmed = await f.request<IssuerCardSnapshot>('/issuer-card', { cookie: alice.cookie });
+  const confirmed = await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice));
   assert.equal(confirmed.data.card?.confirmedStatus, 'locked'); assert.equal(confirmed.data.card?.command?.status, 'succeeded');
   assert.deepEqual(await f.ledger.snapshot(alice.user.id), before);
   const stale = await f.request('/issuer-card/status', command(alice, cardId, 'issuer-stale-0001', accepted.data.cardVersion));
   assert.equal(stale.status, 409); assert.equal(stale.data.error.code, 'OUTBOX_VERSION_CHANGED');
   const replay = await f.request<IssuerCardStatusReceipt>('/issuer-card/status', options);
   assert.equal(replay.status, 202); assert.equal(replay.data.id, accepted.data.id); assert.equal(replay.data.duplicate, true);
-  assert.equal((await f.request<IssuerCardSnapshot>('/issuer-card', { cookie: alice.cookie })).data.card?.confirmedStatus, 'locked');
+  assert.equal((await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice))).data.card?.confirmedStatus, 'locked');
 });
 
 test('issuer commands require the matching session, allowed origin and owned card', async (t) => {
@@ -116,8 +141,8 @@ test('issuer commands require the matching session, allowed origin and owned car
   assert.equal(absentHeader.status, 409); assert.equal(absentHeader.data.error.code, 'SESSION_CHANGED');
   const ownership = await f.request('/issuer-card/status', command(alice, other.cardId));
   assert.equal(ownership.status, 404); assert.equal(ownership.data.error.code, 'OUTBOX_CARD_NOT_FOUND');
-  assert.equal((await f.request<IssuerCardSnapshot>('/issuer-card', { cookie: bob.cookie })).data.card?.command, null);
-  assert.equal((await f.request<IssuerCardSnapshot>('/issuer-card', { cookie: alice.cookie })).data.card?.command, null);
+  assert.equal((await f.request<IssuerCardSnapshot>('/issuer-card', viewing(bob))).data.card?.command, null);
+  assert.equal((await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice))).data.card?.command, null);
 });
 
 test('issuer status input rejects extra identities, provider data, invalid versions and missing request keys', async (t) => {
@@ -134,7 +159,7 @@ test('issuer status input rejects extra identities, provider data, invalid versi
   }
   const missingKey = await f.request('/issuer-card/status', { ...options, headers: { 'x-aqua-account': alice.user.id } });
   assert.equal(missingKey.status, 400); assert.equal(missingKey.data.error.code, 'IDEMPOTENCY_KEY_REQUIRED');
-  assert.equal((await f.request<IssuerCardSnapshot>('/issuer-card', { cookie: alice.cookie })).data.card?.command, null);
+  assert.equal((await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice))).data.card?.command, null);
 });
 
 test('issuer command rate limiting isolates members and duplicate requests do not create more commands', async (t) => {
@@ -152,7 +177,7 @@ test('production API refuses sandbox issuer writes while preserving safe status 
   const f = await fixture(t, true); const alice = await f.signup('issuerprod'); const { cardId } = await f.register(alice);
   const denied = await f.request('/issuer-card/status', command(alice, cardId));
   assert.equal(denied.status, 403); assert.equal(denied.data.error.code, 'SANDBOX_DISABLED');
-  const snapshot = await f.request<IssuerCardSnapshot>('/issuer-card', { cookie: alice.cookie });
-  assert.equal(snapshot.status, 200); assert.equal(snapshot.data.mode, 'sandbox'); assert.equal(snapshot.data.card?.command, null);
+  const snapshot = await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice));
+  assert.equal(snapshot.status, 200); assert.equal(snapshot.data.mode, 'sandbox'); assert.equal(snapshot.data.canRequestStatus, false); assert.equal(snapshot.data.card?.command, null);
   assert.equal((await f.database.query('SELECT COUNT(*)::int AS count FROM issuer_outbox')).rows[0].count, 0);
 });
