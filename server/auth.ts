@@ -228,6 +228,10 @@ export class AuthService {
     await this.rateLimit([{ scope: 'lookup:member', value: userId, limit: 30, duration: MINUTE }]);
   }
 
+  async enforceRewardPreference(userId: string): Promise<void> {
+    await this.rateLimit([{ scope: 'rewards:preference', value: userId, limit: 20, duration: MINUTE }]);
+  }
+
   async requestRecovery(rawEmail: string, rateKey: string): Promise<void> {
     const email = emailInput(rawEmail);
     await this.rateLimit([

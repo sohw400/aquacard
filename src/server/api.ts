@@ -1,4 +1,4 @@
-import type { AccountSnapshot, MemberProfile, TransferResult } from '../../shared/api';
+import type { AccountSnapshot, MemberProfile, RewardPreferenceResult, TransferResult } from '../../shared/api';
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -35,6 +35,7 @@ export const api = {
   account: (signal?: AbortSignal) => request<AccountSnapshot>('/account', { signal }),
   member: (tag: string, signal?: AbortSignal) => request<{ member: Recipient }>(`/members?tag=${encodeURIComponent(tag)}`, { signal }),
   transfer: (body: { recipientTag: string; amountWon: number }, key: string, ownerId: string) => request<TransferResult>('/transfers', { method: 'POST', body, key, ownerId }),
+  rewardPreference: (body: { useFirst: boolean; expectedVersion: number }, key: string, ownerId: string) => request<RewardPreferenceResult>('/rewards/preference', { method: 'POST', body, key, ownerId }),
   requestRecovery: (email: string) => request<{ ok: true }>('/auth/recovery/request', { method: 'POST', body: { email } }),
   confirmRecovery: (token: string, password: string) => request<{ ok: true }>('/auth/recovery/confirm', { method: 'POST', body: { token, password } }),
 };

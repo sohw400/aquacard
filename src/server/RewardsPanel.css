@@ -1,0 +1,51 @@
+.sa-rewards-panel { padding-bottom:24px; }
+.sa-rewards-program { max-width:170px; padding:4px 8px; border-radius:5px; color:var(--sa-muted); background:#f3f5f6; text-align:right; font-size:11px; line-height:1.6; }
+.sa-rewards-balances { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; margin:22px 0; }
+.sa-rewards-balances dt { color:var(--sa-muted); font-size:13px; line-height:1.6; }
+.sa-rewards-balances dd { margin:7px 0 0; color:var(--sa-ink); font-size:28px; font-weight:600; line-height:1.4; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.sa-rewards-balances > div + div { padding-left:24px; border-left:1px solid var(--sa-line); }
+.sa-rewards-adjustment { padding:15px 0; border-top:1px solid var(--sa-line); }
+.sa-rewards-adjustment > div { display:flex; align-items:center; justify-content:space-between; gap:14px; color:#795b35; font-size:13px; line-height:1.7; }
+.sa-rewards-adjustment strong { font-weight:550; font-variant-numeric:tabular-nums; }
+.sa-rewards-adjustment > p { margin-top:6px; color:var(--sa-muted); font-size:12px; line-height:1.8; }
+.sa-rewards-preference { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:21px 0; border-top:1px solid var(--sa-line); }
+.sa-rewards-preference > div { min-width:0; }
+.sa-rewards-preference strong { color:var(--sa-ink); font-size:14px; line-height:1.5; font-weight:550; }
+.sa-rewards-preference p { margin-top:5px; color:var(--sa-muted); font-size:12px; line-height:1.8; }
+.sa-rewards-switch { width:52px; min-width:52px; height:44px; display:flex; align-items:center; position:relative; flex-shrink:0; border:0; padding:0; border-radius:8px; background:transparent; cursor:pointer; }
+.sa-rewards-switch::before { content:''; position:absolute; inset:8px 0; border-radius:16px; background:#c2cbd2; }
+.sa-rewards-switch > span { position:relative; width:22px; height:22px; margin-left:3px; background:#fff; border-radius:50%; }
+.sa-rewards-switch.on::before { background:var(--sa-accent); }
+.sa-rewards-switch.on > span { margin-left:27px; }
+.sa-rewards-switch:disabled { cursor:wait; opacity:.5; }
+.sa-shell .sa-rewards-feedback { margin:0 0 16px; color:var(--sa-muted); font-size:12px; line-height:1.8; }
+.sa-rewards-unknown { padding:15px 0; border-top:1px solid var(--sa-line); border-bottom:1px solid var(--sa-line); margin-bottom:15px; }
+.sa-rewards-unknown p { color:var(--sa-muted); font-size:13px; line-height:1.8; }
+.sa-rewards-unknown .sa-secondary { margin-top:12px; }
+.sa-rewards-month { padding-top:20px; border-top:1px solid var(--sa-line); }
+.sa-rewards-month-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:15px; }
+.sa-rewards-month-heading h3 { color:var(--sa-ink); font-size:15px; font-weight:550; line-height:1.5; }
+.sa-rewards-month-heading p { color:var(--sa-muted); font-size:11px; line-height:1.7; margin-top:4px; }
+.sa-rewards-month-heading > span { color:var(--sa-muted); font-size:12px; line-height:1.8; text-align:right; }
+.sa-rewards-month-heading b { color:var(--sa-ink); font-weight:500; }
+.sa-rewards-month-amounts { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:15px; margin:21px 0 14px; }
+.sa-rewards-month-amounts dt { color:var(--sa-muted); font-size:12px; line-height:1.7; }
+.sa-rewards-month-amounts dd { color:var(--sa-ink); font-size:17px; font-weight:550; line-height:1.5; margin:6px 0 0; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.sa-shell .sa-rewards-rule { color:var(--sa-muted); font-size:12px; line-height:1.9; }
+.sa-rewards-history { border-top:1px solid var(--sa-line); margin-top:23px; }
+.sa-rewards-history > summary { display:flex; align-items:center; justify-content:space-between; gap:15px; min-height:48px; list-style:none; color:var(--sa-ink); font-size:13px; font-weight:550; line-height:1.6; cursor:pointer; }
+.sa-rewards-history > summary > span + span { color:var(--sa-muted); font-size:12px; font-weight:400; }
+.sa-rewards-history summary::-webkit-details-marker { display:none; }
+.sa-rewards-history > .sa-rewards-rule { padding-bottom:14px; }
+.sa-rewards-record { border-top:1px solid var(--sa-line); }
+.sa-rewards-record > summary { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:70px; padding:14px 0; list-style:none; cursor:pointer; }
+.sa-rewards-record > summary > div { min-width:0; }
+.sa-rewards-record > summary > div > strong { display:block; color:var(--sa-ink); font-size:13px; font-weight:500; line-height:1.6; }
+.sa-rewards-record > summary > div > span { display:block; margin-top:4px; color:var(--sa-muted); font-size:11px; line-height:1.7; }
+.sa-rewards-record > summary > strong { color:var(--sa-ink); font-size:13px; font-weight:500; line-height:1.6; text-align:right; font-variant-numeric:tabular-nums; }
+.sa-rewards-record > summary > strong.positive { color:var(--sa-accent); }
+.sa-rewards-record dl { display:grid; gap:9px; margin:0; padding:8px 0 19px; }
+.sa-rewards-record dl > div { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; color:var(--sa-muted); font-size:12px; line-height:1.7; }
+.sa-rewards-record dt { flex-shrink:0; }
+.sa-rewards-record dd { min-width:0; margin:0; color:var(--sa-ink); text-align:right; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+@media(max-width:700px) { .sa-rewards-panel > .sa-section-heading { gap:10px; flex-wrap:wrap; } .sa-rewards-program { max-width:none; text-align:left; } .sa-rewards-balances { gap:15px; } .sa-rewards-balances > div + div { padding-left:15px; } .sa-rewards-balances dd { font-size:24px; } .sa-rewards-month-heading { flex-wrap:wrap; gap:8px; } .sa-rewards-month-heading > span { text-align:left; } .sa-rewards-month-amounts { grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 15px; } .sa-rewards-month-amounts dd { font-size:16px; } .sa-rewards-unknown .sa-secondary { width:100%; } }

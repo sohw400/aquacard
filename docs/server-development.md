@@ -52,7 +52,9 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 
 `npm run server:card -- <event.json>`으로 테스트 승인·부분 매입·승인 취소·부분 환불을 처리한다. 기존 DB에도 `db:migrate`를 먼저 적용한다. [카드 결제 서버 처리](card-payment-server.md)의 JSON 예시를 따라 승인액 확보와 마지막 매입의 잔여액 해제, 중복 환불 방지를 확인할 수 있다.
 
-화면의 사용 가능 잔액은 승인 보류액을 제외한다. 보류액과 전체 잔액, 본인의 카드 결제 내역은 같은 계정 조회 응답으로 갱신된다. 카드 명령은 개발자 전용이며 일반 회원용 쓰기 API는 없다. `NODE_ENV=production`에서는 명령을 거절한다. 실제 카드사 이벤트나 리저브·리워드·페이백은 연결하지 않았다.
+화면의 사용 가능 잔액은 승인 보류액을 제외한다. 보류액과 전체 잔액, 본인의 카드 결제 내역은 같은 계정 조회 응답으로 갱신된다. 카드 명령은 개발자 전용이며 일반 회원용 쓰기 API는 없다. `NODE_ENV=production`에서는 명령을 거절한다. 실제 카드사 이벤트와 리저브는 연결하지 않았다.
+
+리워드 우선 사용과 스탠다드 페이백은 별도 서버 장부로 처리한다. 마이그레이션 후 기본 비활성이며 회사 테스트 재원을 명시적으로 넣어야 신규 지급을 활성화할 수 있다. [리워드 서버 처리](rewards-server.md)에 정책, 운영자 명령, 환불 회수와 내부 대사 절차를 정리했다.
 
 ## DB 변경과 설정
 
@@ -111,12 +113,13 @@ Fastify JSON Schema로 HTTP 경계를 정의하고 OpenAPI를 생성한다. 인�
 | `GET /api/account` | 사용 가능·카드 보류·전체 잔액, 송금·카드 결제 내역을 함께 조회. |
 | `GET /api/members?tag=...` | 가입된 태그로 수신자 조회. |
 | `POST /api/transfers` | 회원 송금. `Idempotency-Key`, `X-Aqua-Account` 헤더가 필요하다. |
+| `POST /api/rewards/preference` | 리워드 우선 사용 설정. 요청 키·계정 헤더와 `expectedVersion`으로 중복·오래된 변경을 방지한다. |
 
 송금 JSON 필드는 `recipientTag`와 최소 1,000원의 정수 `amountWon`이다. 보내는 계정과 권한은 서버 세션으로 결정한다. `X-Aqua-Account`는 화면·저장된 요청의 소유 계정이 세션과 같은지 확인하는 전제 조건이다. 다른 탭에서 계정이 바뀌면 일치하지 않는 송금·로그아웃은 `409 SESSION_CHANGED`로 거절한다.
 
 결과가 불확실한 송금은 원래 계정에서 같은 요청 키·내용으로 다시 확인한다. DB 트랜잭션과 계정 잠금으로 검증·차감·입금·기록을 함께 처리하며 같은 요청은 거래를 다시 만들지 않는다.
 
-`balanceWon`은 사용 가능 잔액을 유지한다. `heldBalanceWon`은 카드 승인 보류액이며 `totalBalanceWon`은 두 값의 합이다. `cardPayments`에는 현재 세션 회원의 결제만 포함된다. 카드 승인·매입·환불을 직접 수행하는 HTTP API나 공급업체 웹훅 엔드포인트는 제공하지 않는다.
+`balanceWon`은 사용 가능 원금을 유지한다. `heldBalanceWon`은 카드에 확보한 원금이며 `totalBalanceWon`은 두 값의 합이다. 카드 전용 리워드는 `rewards`에 별도로 포함한다. `cardPayments`에는 현재 세션 회원의 결제와 원금·리워드 구성을 제공한다. 카드 승인·매입·환불이나 리워드 지급·회사 재원 변경을 직접 수행하는 HTTP API와 공급업체 웹훅 엔드포인트는 제공하지 않는다.
 
 ## 빌드와 검증
 
@@ -141,11 +144,15 @@ API와 `dev:server`를 실행한 뒤 브라우저 검사를 수행한다.
 ```bash
 AQUA_BASE_URL=http://127.0.0.1:5173 npm run test:server:browser
 AQUA_BASE_URL=http://127.0.0.1:5173 npm run test:card:browser
+AQUA_BASE_URL=http://127.0.0.1:5173 npm run test:rewards:browser
+npm run server:reconcile
 ```
 
 브라우저 실행 파일은 `CHROMIUM_PATH`로 지정한다. 각 검사는 고유 계정과 CLI 적립을 사용하고 카드 검사는 실제 카드 테스트 CLI도 실행한다. 기존 데이터를 지우지 않으며 생성한 계정·내역은 개발 DB에 남는다. API·CLI·검사는 같은 DB·스키마를 사용해야 한다. 짧은 시간에 반복하면 가입 제한이 적용되므로 별도 개발 스키마로 API를 실행한다.
 
-[서버 CI](../.github/workflows/server-check.yml)는 PostgreSQL 18 서비스와 분리된 테스트 스키마를 사용한다. 타입·서버 통합 테스트·기존 로직·웹 빌드·서버 번들·Docker 이미지·연결 브라우저의 송금과 카드 흐름을 검사한다. 실제 iOS·Android 기기 테스트나 서버 배포를 수행하지 않는다.
+[서버 CI](../.github/workflows/server-check.yml)는 PostgreSQL 18 서비스와 분리된 테스트 스키마를 사용한다. 타입·서버 통합 테스트·기존 로직·웹 빌드·서버 번들·Docker 이미지·연결 브라우저의 송금·카드·리워드 흐름과 내부 대사를 검사한다. 실제 iOS·Android 기기 테스트나 서버 배포를 수행하지 않는다.
+
+2026-11-19 리워드 연결 검증에서는 서버 테스트 109개, 제품·클라이언트 로직 127개, 컴파일한 API와 연결 웹 화면의 브라우저 검사 28개가 통과했다. 회사 재원·리워드·원금의 내부 대사도 일치했다. 상세 범위는 [리워드 서버 처리](rewards-server.md)를 따른다.
 
 2026-11-16 검증 결과: 실제 PostgreSQL 서버 테스트 48개, 제품·클라이언트 로직 테스트 123개, 연결 브라우저 검사 12개를 통과했다. 컨테이너의 첫 화면 경로 수정 후 PostgreSQL HTTP 테스트 11개도 다시 통과했다. 최종 이미지는 운영 모드에서 인증서를 검증하는 DB TLS와 제한된 DB 역할로 시작했고, UID 1000·읽기 전용 파일시스템에서 API, 첫 화면 GET·HEAD, SPA 경로와 JS·CSS 제공을 확인했다. CI에서도 컴파일한 컨테이너의 첫 화면과 자산을 검사한다.
 
@@ -169,4 +176,4 @@ docker build --secret id=npm_ca,src=/path/to/trusted-proxy-ca.pem --tag aqua-car
 
 운영 이미지는 `NODE_ENV=production`이 기본이며 HTTPS origin과 검증 가능한 운영 DB 연결 없이 실행하지 않는다. 읽기 전용 루트 파일시스템에서 실행할 수 있도록 로컬 DB·개발 메일함에 의존하지 않는다. TLS 종료와 비밀값 주입은 배포 환경에서 구성한다.
 
-배포 대상은 AWS 서울 리전 ECS Fargate·RDS PostgreSQL로 정했다. S3·KMS를 포함한 세부 운영 구성은 후속 작업이다. AWS 리소스나 유료 인프라를 생성하지 않았으며 서버가 공개 배포됐다고 가정하지 않는다. 실제 카드 발급·발급사 이벤트 수신·KYC·실제 입출금·파트너·메일·outbox·대사·백업 복구와 관측도 후속 범위다.
+배포 대상은 AWS 서울 리전 ECS Fargate·RDS PostgreSQL로 정했다. S3·KMS를 포함한 세부 운영 구성은 후속 작업이다. AWS 리소스나 유료 인프라를 생성하지 않았으며 서버가 공개 배포됐다고 가정하지 않는다. 실제 카드 발급·발급사 이벤트 수신·KYC·실제 입출금·파트너·메일·outbox·외부 정산 대사·백업 복구와 관측도 후속 범위다. 내부 장부 대사는 실제 외부 자금 확인을 대신하지 않는다.

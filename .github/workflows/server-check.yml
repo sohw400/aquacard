@@ -167,3 +167,5 @@ jobs:
           fi
           npm run test:server:browser
           npm run test:card:browser
+          npm run test:rewards:browser
+          npm run server:reconcile

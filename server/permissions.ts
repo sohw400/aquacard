@@ -23,6 +23,18 @@ export async function grantApplicationRole(database: Database, role: string): Pr
     await client.query(`GRANT SELECT ON card_payments, card_payment_events TO ${quoted}`);
     await client.query(`REVOKE ALL ON FUNCTION apply_sandbox_card_event(jsonb, bigint) FROM ${quoted}`);
     await client.query(`GRANT EXECUTE ON FUNCTION apply_sandbox_card_event(jsonb, bigint) TO ${quoted}`);
+    await client.query(`REVOKE ALL ON reward_wallets, reward_journals, reward_entries, reward_commands, reward_cashback_months, card_reward_allocations, reward_program, reward_history FROM ${quoted}`);
+    await client.query(`REVOKE ALL ON reward_cash_plans FROM ${quoted}`);
+    await client.query(`GRANT SELECT ON reward_wallets, reward_journals, reward_entries, reward_commands, reward_cashback_months, card_reward_allocations, reward_program, reward_history TO ${quoted}`);
+    await client.query(`GRANT EXECUTE ON FUNCTION rewards_snapshot(text, bigint), apply_reward_preference(jsonb, bigint) TO ${quoted}`);
+    await client.query(`REVOKE ALL ON FUNCTION operator_fund_reward_budget(jsonb, bigint), operator_set_reward_program(jsonb, bigint), operator_grant_rewards(jsonb, bigint) FROM ${quoted}`);
+    await client.query(`REVOKE ALL ON FUNCTION apply_sandbox_card_event_legacy_003(jsonb, bigint) FROM ${quoted}`);
+    const internalFunctions = await client.query<{ signature: string }>(`SELECT p.oid::regprocedure::text AS signature
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = $1 AND p.prosecdef
+      AND p.oid NOT IN ('apply_sandbox_card_event(jsonb,bigint)'::regprocedure,
+        'rewards_snapshot(text,bigint)'::regprocedure, 'apply_reward_preference(jsonb,bigint)'::regprocedure)`, [database.schema]);
+    for (const { signature } of internalFunctions.rows) await client.query(`REVOKE ALL ON FUNCTION ${signature} FROM ${quoted}`);
   });
 }
 
@@ -41,4 +53,20 @@ export async function verifyApplicationRole(database: Database): Promise<void> {
   if (result.rows.length !== 1 || result.rows[0].unsafe) {
     throw new Error('The API requires a restricted application database role. Keep migration and administrator credentials out of the running API.');
   }
+  const protectedTables = ['reward_wallets', 'reward_journals', 'reward_commands', 'reward_cash_plans', 'reward_cashback_months', 'card_reward_allocations', 'reward_program', 'reward_history'].map((table) => `${database.schema}.${table}`);
+  const rewardAccess = await database.query<{ unsafe: boolean }>(`SELECT EXISTS (
+    SELECT 1 FROM unnest($1::text[]) AS t(name) WHERE has_table_privilege(current_user, name, 'INSERT,UPDATE,DELETE,TRUNCATE')
+      OR has_any_column_privilege(current_user, name, 'INSERT,UPDATE')
+  ) OR EXISTS (
+    SELECT 1 FROM unnest($2::text[]) AS f(name) WHERE has_function_privilege(current_user, name, 'EXECUTE')
+  ) AS unsafe`, [protectedTables, ['operator_fund_reward_budget', 'operator_set_reward_program', 'operator_grant_rewards', 'apply_sandbox_card_event_legacy_003'].map((name) => `${database.schema}.${name}(jsonb,bigint)`)]);
+  if (rewardAccess.rows[0]?.unsafe !== false) throw new Error('The API cannot change reward projections or execute reward budget and grant operations.');
+  const internalAccess = await database.query<{ unsafe: boolean }>(`SELECT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = $1 AND p.prosecdef AND p.prorettype <> 'trigger'::regtype
+      AND p.oid NOT IN ('apply_sandbox_card_event(jsonb,bigint)'::regprocedure,
+        'rewards_snapshot(text,bigint)'::regprocedure, 'apply_reward_preference(jsonb,bigint)'::regprocedure)
+      AND has_function_privilege(current_user, p.oid, 'EXECUTE')
+  ) AS unsafe`, [database.schema]);
+  if (internalAccess.rows[0]?.unsafe !== false) throw new Error('The API cannot execute private ledger helper functions.');
 }

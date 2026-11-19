@@ -8,6 +8,7 @@ import { createApiServer } from './http';
 import { Database } from './database';
 import { LedgerStore } from './ledger';
 import { CardPaymentStore } from './card-payments';
+import { RewardsStore } from './rewards';
 import { createTestDatabase } from './test-support';
 import type { AccountSnapshot, MemberProfile, TransferResult } from '../shared/api';
 
@@ -17,6 +18,8 @@ type TestBody = AccountSnapshot & TransferResult & {
   ok: true;
   status: string;
   mode: string;
+  useFirst: boolean;
+  version: number;
 };
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'OPTIONS' | 'HEAD';
@@ -179,6 +182,68 @@ test('account responses expose owned card holds and prevent spending them throug
     assert.equal(captured.data.cardPayments[0].releasedWon, 20_000);
     assert.equal(captured.data.cardPayments[0].status, 'captured');
     assert.equal(captured.data.transactions.length, 1, 'card legs must not appear as member transfers');
+  } finally { await f.close(); }
+});
+
+test('reward preferences require the session owner, version and immutable retry key', async () => {
+  const f = await fixture();
+  try {
+    assert.equal((await f.request('/rewards/preference', { method: 'POST', body: { useFirst: false, expectedVersion: 0 } })).status, 401);
+    const alice = await f.signup('rewardalice'); const bob = await f.signup('rewardbobby');
+    const options = { method: 'POST' as const, cookie: alice.cookie, headers: { 'Idempotency-Key': 'reward-preference-001', 'X-Aqua-Account': alice.user.id }, body: { useFirst: false, expectedVersion: 0 } };
+    const wrongOwner = await f.request('/rewards/preference', { ...options, headers: { ...options.headers, 'X-Aqua-Account': bob.user.id } });
+    assert.equal(wrongOwner.status, 409); assert.equal(wrongOwner.data.error.code, 'SESSION_CHANGED');
+    const changed = await f.request('/rewards/preference', options);
+    assert.equal(changed.status, 200); assert.deepEqual(changed.data, { useFirst: false, version: 1 });
+    assert.deepEqual((await f.request('/rewards/preference', options)).data, changed.data);
+    const next = await f.request('/rewards/preference', { ...options, headers: { ...options.headers, 'Idempotency-Key': 'reward-preference-002' }, body: { useFirst: true, expectedVersion: 1 } });
+    assert.equal(next.status, 200); assert.equal(next.data.version, 2);
+    assert.deepEqual((await f.request('/rewards/preference', options)).data, changed.data, 'old response replay must not overwrite the newer preference');
+    const stale = await f.request('/rewards/preference', { ...options, headers: { ...options.headers, 'Idempotency-Key': 'reward-preference-003' } });
+    assert.equal(stale.status, 409); assert.equal(stale.data.error.code, 'PREFERENCE_CHANGED');
+    const changedContent = await f.request('/rewards/preference', { ...options, body: { useFirst: true, expectedVersion: 0 } });
+    assert.equal(changedContent.status, 409);
+    const state = await f.request('/account', { cookie: alice.cookie });
+    assert.equal(state.data.rewards.useFirst, true); assert.equal(state.data.rewards.preferenceVersion, 2);
+    const other = await f.request('/account', { cookie: bob.cookie });
+    assert.equal(other.data.rewards.preferenceVersion, 0);
+    const bad = await f.request('/rewards/preference', { ...options, body: { useFirst: 'false', expectedVersion: 2 } });
+    assert.equal(bad.status, 400);
+  } finally { await f.close(); }
+});
+
+test('funded rewards remain card-only and the API exposes the original funding split and cashback separately', async () => {
+  const f = await fixture();
+  try {
+    const alice = await f.signup('rewardowner'); const bob = await f.signup('rewardother');
+    const rewards = new RewardsStore(f.database);
+    await rewards.fundBudget({ amountWon: 100_000, idempotencyKey: 'http-company-budget' });
+    await rewards.setProgram({ enabled: true, idempotencyKey: 'http-enable-rewards' });
+    await rewards.grant({ userId: alice.user.id, amountWon: 7_000, idempotencyKey: 'http-reward-grant' });
+    await f.store.creditSandbox({ userId: alice.user.id, amountWon: 5_000, idempotencyKey: 'http-principal-funding' });
+    const before = await f.request('/account', { cookie: alice.cookie });
+    assert.equal(before.data.balanceWon, 5_000); assert.equal(before.data.rewards.availableWon, 7_000);
+    const denied = await f.request('/transfers', { method: 'POST', cookie: alice.cookie, headers: { 'Idempotency-Key': 'reward-not-cash-001', 'X-Aqua-Account': alice.user.id }, body: { recipientTag: bob.user.tag, amountWon: 6_000 } });
+    assert.equal(denied.status, 409); assert.equal(denied.data.error.code, 'INSUFFICIENT_FUNDS');
+    for (const path of ['/rewards/grant', '/rewards/budget', '/rewards/program']) {
+      assert.equal((await f.request(path, { method: 'POST', cookie: alice.cookie, body: { amountWon: 1_000_000, enabled: true } })).status, 404);
+    }
+    const cards = new CardPaymentStore(f.database);
+    await cards.apply({ kind: 'authorize', eventId: 'http-reward-auth', paymentId: 'http-reward-payment', userId: alice.user.id, amountWon: 10_000, merchantName: '테스트 서점' });
+    const held = await f.request('/account', { cookie: alice.cookie });
+    assert.equal(held.data.balanceWon, 2_000); assert.equal(held.data.heldBalanceWon, 3_000);
+    assert.equal(held.data.rewards.availableWon, 0); assert.equal(held.data.rewards.heldWon, 7_000);
+    assert.equal(held.data.cardPayments[0].funding?.rewards.authorizedWon, 7_000);
+    assert.equal(held.data.cardPayments[0].funding?.principal.authorizedWon, 3_000);
+    assert.equal(held.data.rewards.cashback.pendingWon, 30);
+    await cards.apply({ kind: 'capture', eventId: 'http-reward-capture', paymentId: 'http-reward-payment', userId: alice.user.id, amountWon: 10_000, finalCapture: true });
+    const captured = await f.request('/account', { cookie: alice.cookie });
+    assert.equal(captured.data.balanceWon, 2_000); assert.equal(captured.data.rewards.availableWon, 30);
+    assert.equal(captured.data.rewards.heldWon, 0); assert.equal(captured.data.rewards.cashback.confirmedWon, 30);
+    assert.equal(captured.data.cardPayments[0].cashback?.awardedWon, 30);
+    const other = await f.request(`/account?userId=${alice.user.id}`, { cookie: bob.cookie });
+    assert.equal(other.data.rewards.availableWon, 0); assert.deepEqual(other.data.rewards.history, []);
+    assert.equal(captured.body.includes('canonical_input'), false);
   } finally { await f.close(); }
 });
 

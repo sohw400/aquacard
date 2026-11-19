@@ -2,16 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type { PoolClient, QueryResultRow } from 'pg';
 import type { AccountSnapshot, CardPaymentRecord, MemberProfile, TransferRecord, TransferResult } from '../shared/api';
 import type { Database } from './database';
+import { LedgerError } from './errors';
+import { readRewardsSnapshot } from './reward-read';
+export { LedgerError } from './errors';
 
 export interface UserRecord extends MemberProfile { passwordHash: string }
-
-export class LedgerError extends Error {
-  readonly status: number;
-  readonly code: string;
-  constructor(status: number, code: string, message: string) {
-    super(message); this.name = 'LedgerError'; this.status = status; this.code = code;
-  }
-}
 
 interface UserRow extends QueryResultRow {
   id: string; email: string; name: string; tag: string; password_hash: string; created_at: string;
@@ -25,6 +20,13 @@ interface JournalRow extends QueryResultRow {
 interface CardRow extends QueryResultRow {
   id: string; merchant_name: string; status: CardPaymentRecord['status']; authorized_won: string; held_won: string;
   captured_won: string; released_won: string; refunded_won: string; created_at: string; updated_at: string;
+  policy_version: string | null; month: string | null; rate_bps: number | null;
+  principal_authorized_won: string | null; principal_held_won: string | null; principal_captured_won: string | null;
+  principal_released_won: string | null; principal_refunded_won: string | null;
+  reward_authorized_won: string | null; reward_held_won: string | null; reward_captured_won: string | null;
+  reward_released_won: string | null; reward_refunded_won: string | null;
+  cashback_pending_won: string | null; cashback_awarded_won: string | null; cashback_reversed_won: string | null;
+  cashback_offset_won: string | null; closed_at: string | null;
 }
 interface NewUser { id: string; email: string; name: string; tag: string; passwordHash: string; createdAt: number }
 
@@ -154,7 +156,20 @@ export class LedgerStore {
     return { id: row.id, merchantName: row.merchant_name, status: row.status,
       authorizedWon: safeInteger(row.authorized_won), heldWon: safeInteger(row.held_won), capturedWon: safeInteger(row.captured_won),
       releasedWon: safeInteger(row.released_won), refundedWon: safeInteger(row.refunded_won),
-      createdAt: safeInteger(row.created_at), updatedAt: safeInteger(row.updated_at) };
+      createdAt: safeInteger(row.created_at), updatedAt: safeInteger(row.updated_at),
+      ...(row.policy_version === null ? {} : {
+        funding: {
+          principal: { authorizedWon: safeInteger(row.principal_authorized_won), heldWon: safeInteger(row.principal_held_won),
+            capturedWon: safeInteger(row.principal_captured_won), releasedWon: safeInteger(row.principal_released_won), refundedWon: safeInteger(row.principal_refunded_won) },
+          rewards: { authorizedWon: safeInteger(row.reward_authorized_won), heldWon: safeInteger(row.reward_held_won),
+            capturedWon: safeInteger(row.reward_captured_won), releasedWon: safeInteger(row.reward_released_won), refundedWon: safeInteger(row.reward_refunded_won) },
+        },
+        cashback: { policyVersion: row.policy_version!, month: row.month!, rateBps: safeInteger(row.rate_bps),
+          pendingWon: safeInteger(row.cashback_pending_won), awardedWon: safeInteger(row.cashback_awarded_won),
+          reversedWon: safeInteger(row.cashback_reversed_won), offsetWon: safeInteger(row.cashback_offset_won),
+          closedAt: row.closed_at === null ? null : safeInteger(row.closed_at) },
+      }),
+    };
   }
 
   private async limits(client: PoolClient, user: UserRecord, balanceWon: number, now: number): Promise<AccountSnapshot['limits']> {
@@ -181,6 +196,7 @@ export class LedgerStore {
 
   async snapshot(userId: string): Promise<AccountSnapshot> {
     return this.database.transaction(async (client) => {
+      const now = this.now();
       const user = await this.requireUser(client, userId);
       const accounts = await this.accountRows(client, [userAccountId(userId), holdAccountId(userId)]);
       const balanceWon = safeInteger(accounts.find((row) => row.id === userAccountId(userId))!.balance_won);
@@ -188,9 +204,14 @@ export class LedgerStore {
       const totalBalanceWon = safeInteger(String(BigInt(balanceWon) + BigInt(heldBalanceWon)));
       const history = await client.query<JournalRow>(`SELECT * FROM journals WHERE kind IN ('member_transfer', 'sandbox_credit')
         AND (sender_id = $1 OR recipient_id = $1) ORDER BY created_at DESC, id DESC`, [userId]);
-      const payments = await client.query<CardRow>('SELECT * FROM card_payments WHERE user_id = $1 ORDER BY created_at DESC, id DESC', [userId]);
-      return { user: profile(user), balanceWon, heldBalanceWon, totalBalanceWon, cardPayments: payments.rows.map((row) => this.cardRecord(row)),
-        transactions: history.rows.map((row) => this.record(row, userId)), limits: await this.limits(client, user, balanceWon, this.now()) };
+      const payments = await client.query<CardRow>(`SELECT p.*, a.policy_version, a.month, a.rate_bps,
+        a.principal_authorized_won, a.principal_held_won, a.principal_captured_won, a.principal_released_won, a.principal_refunded_won,
+        a.reward_authorized_won, a.reward_held_won, a.reward_captured_won, a.reward_released_won, a.reward_refunded_won,
+        a.cashback_pending_won, a.cashback_awarded_won, a.cashback_reversed_won, a.cashback_offset_won, a.closed_at
+        FROM card_payments p LEFT JOIN card_reward_allocations a ON a.payment_id = p.id
+        WHERE p.user_id = $1 ORDER BY p.created_at DESC, p.id DESC`, [userId]);
+      return { user: profile(user), balanceWon, heldBalanceWon, totalBalanceWon, rewards: await readRewardsSnapshot(client, userId, now), cardPayments: payments.rows.map((row) => this.cardRecord(row)),
+        transactions: history.rows.map((row) => this.record(row, userId)), limits: await this.limits(client, user, balanceWon, now) };
     }, { isolation: 'repeatable read' });
   }
 
