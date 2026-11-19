@@ -21,6 +21,7 @@
     "server:start": "node --env-file-if-exists=.env --import tsx server/index.ts",
     "server:credit": "node --env-file-if-exists=.env --import tsx server/credit.ts",
     "server:card": "node --env-file-if-exists=.env --import tsx server/card.ts",
+    "server:card:ops": "node --env-file-if-exists=.env --import tsx server/card-operations-operator.ts",
     "server:inbox": "node --env-file-if-exists=.env --import tsx server/card-inbox-operator.ts",
     "server:card:ingress": "node --env-file-if-exists=.env --import tsx server/card-ingress.ts",
     "server:card:worker": "node --env-file-if-exists=.env --import tsx server/card-worker.ts",

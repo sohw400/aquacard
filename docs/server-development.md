@@ -60,6 +60,8 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 
 ## DB 변경과 설정
 
+승인·거절 원인을 확인할 때는 [카드 거래 운영 조회](card-operations.md)를 사용한다. `server:card:ops`는 전용 `OPERATIONS_DATABASE_URL`로 조회 기록을 남긴 뒤 결과를 읽는다. 기존 관리자 계정을 운영 조회용으로 넘기지 않는다.
+
 `npm run db:migrate`는 `server/migrations/`의 번호가 붙은 SQL을 적용한다. 체크섬으로 적용된 파일의 변경을 감지하고 PostgreSQL advisory lock으로 동시 실행을 조정한다. 적용한 SQL을 수정하지 말고 다음 번호의 마이그레이션을 추가한다. 애플리케이션 시작이 테이블을 자동 생성·변경하는 경로에 의존하지 않는다.
 
 | 설정 | 역할 |
@@ -76,6 +78,8 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 | `INGRESS_DATABASE_URL` | 수신 서버·접수 CLI 전용 연결. 웹 API의 DB 연결로 대체하지 않는다. |
 | `WORKER_DATABASE_URL` | 별도 카드 작업자 연결. 처리·집계 함수 실행만 허용하며 API 관리자 연결을 대신 넣지 않는다. |
 | `DISPATCHER_DATABASE_URL` | 발신 명령 확보·결과 기록·집계 함수만 실행하는 별도 연결. 회원·명령 생성·장부 변경 권한을 주지 않는다. |
+| `DATABASE_OPERATIONS_ROLE` | 카드 거래 운영 조회 전용 역할. 다른 런타임 역할과 분리한다. 로컬 `aqua_operations`. |
+| `OPERATIONS_DATABASE_URL` | 조회 기록 준비·결과 확인 함수만 실행하는 별도 연결. API·관리자 주소로 대체하지 않는다. |
 | `AQUA_ISSUER_SANDBOX_URL`, `AQUA_ISSUER_KEY_ID`, `AQUA_ISSUER_SIGNING_KEY` | 로컬 sandbox 발신 URL과 명시적인 서명 키. [발급사 요청·복구](issuer-command-outbox.md)의 제한과 실행 방법을 따른다. |
 | `TEST_DATABASE_URL` | 서버 통합 테스트용 PostgreSQL 주소. 테스트는 고유 스키마를 만들고 자신이 만든 스키마만 정리한다. |
 | `AQUA_MAIL_DIR` | 기본 `data/mail`. 개발용 비밀번호 재설정 안내 파일 위치. |

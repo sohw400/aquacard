@@ -8,6 +8,7 @@ export async function grantApplicationRole(database: Database, role: string): Pr
     if (!exists.rowCount) throw new Error('DATABASE_RUNTIME_ROLE does not exist. Create the application login role before granting access.');
     const quoted = '"' + role + '"';
     await client.query(`GRANT USAGE ON SCHEMA "${database.schema}" TO ${quoted}`);
+    await client.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA "${database.schema}" FROM ${quoted}`);
     await client.query(`REVOKE ALL ON schema_migrations, users, ledger_accounts, journals, journal_entries, auth_sessions, auth_recovery, auth_rate_limits FROM ${quoted}`);
     await client.query(`GRANT SELECT ON schema_migrations, users, ledger_accounts, journals, journal_entries, auth_sessions, auth_recovery, auth_rate_limits TO ${quoted}`);
     await client.query(`GRANT INSERT ON users, ledger_accounts, journals, auth_sessions, auth_recovery, auth_rate_limits TO ${quoted}`);
@@ -29,7 +30,7 @@ export async function grantApplicationRole(database: Database, role: string): Pr
     await client.query(`GRANT EXECUTE ON FUNCTION rewards_snapshot(text, bigint), apply_reward_preference(jsonb, bigint) TO ${quoted}`);
     await client.query(`REVOKE ALL ON card_event_inbox, card_inbox_attempts, card_inbox_requeues, card_inbox_lanes FROM ${quoted}`);
     await client.query(`REVOKE ALL ON issuer_cards, issuer_outbox, issuer_outbox_audit, issuer_outbox_completions, issuer_outbox_requeues FROM ${quoted}`);
-    await client.query(`REVOKE ALL ON card_authorization_decisions FROM ${quoted}`);
+    await client.query(`REVOKE ALL ON card_authorization_decisions, card_operations_reports FROM ${quoted}`);
     await client.query(`GRANT EXECUTE ON FUNCTION issuer_card_snapshot(text), request_issuer_card_status(jsonb,bigint) TO ${quoted}`);
     await client.query(`REVOKE ALL ON FUNCTION operator_fund_reward_budget(jsonb, bigint), operator_set_reward_program(jsonb, bigint), operator_grant_rewards(jsonb, bigint) FROM ${quoted}`);
     await client.query(`REVOKE ALL ON FUNCTION apply_sandbox_card_event_legacy_003(jsonb, bigint) FROM ${quoted}`);
@@ -49,6 +50,11 @@ export async function verifyApplicationRole(database: Database): Promise<void> {
     r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls
     OR EXISTS (SELECT 1 FROM pg_roles delegated WHERE delegated.oid<>r.oid AND pg_has_role(current_user,delegated.oid,'SET'))
     OR EXISTS (SELECT 1 FROM pg_auth_members membership WHERE membership.member=r.oid)
+    OR EXISTS (SELECT 1 FROM pg_namespace owned WHERE owned.nspname=$1 AND owned.nspowner=r.oid)
+    OR EXISTS (SELECT 1 FROM pg_class owned JOIN pg_namespace ns ON ns.oid=owned.relnamespace WHERE ns.nspname=$1 AND owned.relowner=r.oid)
+    OR EXISTS (SELECT 1 FROM pg_proc owned JOIN pg_namespace ns ON ns.oid=owned.pronamespace WHERE ns.nspname=$1 AND owned.proowner=r.oid)
+    OR EXISTS (SELECT 1 FROM pg_class sequence JOIN pg_namespace ns ON ns.oid=sequence.relnamespace
+      WHERE ns.nspname=$1 AND sequence.relkind='S' AND has_sequence_privilege(current_user,sequence.oid,'USAGE,SELECT,UPDATE'))
     OR has_schema_privilege(current_user, $1, 'CREATE')
     OR has_table_privilege(current_user, $2, 'UPDATE,DELETE,TRUNCATE')
     OR has_table_privilege(current_user, $3, 'UPDATE,DELETE,TRUNCATE')
@@ -60,7 +66,7 @@ export async function verifyApplicationRole(database: Database): Promise<void> {
   if (result.rows.length !== 1 || result.rows[0].unsafe) {
     throw new Error('The API requires a restricted application database role. Keep migration and administrator credentials out of the running API.');
   }
-  const protectedTables = ['reward_wallets', 'reward_journals', 'reward_commands', 'reward_cash_plans', 'reward_cashback_months', 'card_reward_allocations', 'reward_program', 'reward_history', 'card_event_inbox', 'card_inbox_attempts', 'card_inbox_requeues', 'card_inbox_lanes', 'issuer_cards', 'issuer_outbox', 'issuer_outbox_audit', 'issuer_outbox_completions', 'issuer_outbox_requeues', 'card_authorization_decisions'].map((table) => `${database.schema}.${table}`);
+  const protectedTables = ['reward_wallets', 'reward_journals', 'reward_commands', 'reward_cash_plans', 'reward_cashback_months', 'card_reward_allocations', 'reward_program', 'reward_history', 'card_event_inbox', 'card_inbox_attempts', 'card_inbox_requeues', 'card_inbox_lanes', 'issuer_cards', 'issuer_outbox', 'issuer_outbox_audit', 'issuer_outbox_completions', 'issuer_outbox_requeues', 'card_authorization_decisions', 'card_operations_reports'].map((table) => `${database.schema}.${table}`);
   const rewardAccess = await database.query<{ unsafe: boolean }>(`SELECT EXISTS (
     SELECT 1 FROM unnest($1::text[]) AS t(name) WHERE has_table_privilege(current_user, name, 'INSERT,UPDATE,DELETE,TRUNCATE')
       OR has_any_column_privilege(current_user, name, 'INSERT,UPDATE')
@@ -82,7 +88,7 @@ export async function verifyApplicationRole(database: Database): Promise<void> {
     WHERE has_table_privilege(current_user,name,'SELECT') OR has_any_column_privilege(current_user,name,'SELECT')
   ) OR NOT has_function_privilege(current_user,'issuer_card_snapshot(text)','EXECUTE')
     OR NOT has_function_privilege(current_user,'request_issuer_card_status(jsonb,bigint)','EXECUTE') AS unsafe`,
-  [['issuer_cards', 'issuer_outbox', 'issuer_outbox_audit', 'issuer_outbox_completions', 'issuer_outbox_requeues', 'card_authorization_decisions'].map((table) => `${database.schema}.${table}`)]);
+  [['issuer_cards', 'issuer_outbox', 'issuer_outbox_audit', 'issuer_outbox_completions', 'issuer_outbox_requeues', 'card_authorization_decisions', 'card_operations_reports'].map((table) => `${database.schema}.${table}`)]);
   if (issuerAccess.rows[0]?.unsafe !== false) throw new Error('The API requires the issuer command functions without direct issuer table access.');
 }
 
@@ -90,6 +96,7 @@ const cardServiceFunctions = {
   ingress: ['enqueue_sandbox_card_event(jsonb,bigint)'],
   worker: ['process_card_inbox(bigint)', 'card_inbox_stats(bigint)'],
   dispatcher: ['claim_issuer_outbox(bigint)', 'finish_issuer_outbox(jsonb,bigint)', 'issuer_outbox_stats(bigint)'],
+  operations: ['prepare_card_operations_report(jsonb)', 'read_card_operations_report(text)'],
 } as const;
 
 async function grantCardServiceRole(database: Database, role: string, service: keyof typeof cardServiceFunctions): Promise<void> {
@@ -98,6 +105,7 @@ async function grantCardServiceRole(database: Database, role: string, service: k
     if (!(await client.query('SELECT 1 FROM pg_roles WHERE rolname = $1', [role])).rowCount) throw new Error(`Provision a separate card ${service} database login before granting access.`);
     const quoted = '"' + role + '"';
     await client.query(`REVOKE ALL ON ALL TABLES IN SCHEMA "${database.schema}" FROM ${quoted}`);
+    await client.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA "${database.schema}" FROM ${quoted}`);
     await client.query(`REVOKE ALL ON ALL FUNCTIONS IN SCHEMA "${database.schema}" FROM ${quoted}`);
     await client.query(`GRANT USAGE ON SCHEMA "${database.schema}" TO ${quoted}`);
     await client.query(`GRANT SELECT ON schema_migrations TO ${quoted}`);
@@ -110,6 +118,11 @@ async function verifyCardServiceRole(database: Database, service: keyof typeof c
     r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls
     OR EXISTS (SELECT 1 FROM pg_roles delegated WHERE delegated.oid<>r.oid AND pg_has_role(current_user,delegated.oid,'SET'))
     OR EXISTS (SELECT 1 FROM pg_auth_members membership WHERE membership.member=r.oid)
+    OR EXISTS (SELECT 1 FROM pg_namespace owned WHERE owned.nspname=$1 AND owned.nspowner=r.oid)
+    OR EXISTS (SELECT 1 FROM pg_class owned JOIN pg_namespace ns ON ns.oid=owned.relnamespace WHERE ns.nspname=$1 AND owned.relowner=r.oid)
+    OR EXISTS (SELECT 1 FROM pg_proc owned JOIN pg_namespace ns ON ns.oid=owned.pronamespace WHERE ns.nspname=$1 AND owned.proowner=r.oid)
+    OR EXISTS (SELECT 1 FROM pg_class sequence JOIN pg_namespace ns ON ns.oid=sequence.relnamespace
+      WHERE ns.nspname=$1 AND sequence.relkind='S' AND has_sequence_privilege(current_user,sequence.oid,'USAGE,SELECT,UPDATE'))
     OR has_schema_privilege(current_user, $1, 'CREATE')
     OR EXISTS (SELECT 1 FROM unnest($2::text[]) f(signature) WHERE NOT has_function_privilege(current_user,signature,'EXECUTE'))
     OR EXISTS (
@@ -133,3 +146,5 @@ export const verifyCardIngressRole = (database: Database) => verifyCardServiceRo
 export const verifyCardWorkerRole = (database: Database) => verifyCardServiceRole(database, 'worker');
 export const grantCardDispatcherRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'dispatcher');
 export const verifyCardDispatcherRole = (database: Database) => verifyCardServiceRole(database, 'dispatcher');
+export const grantCardOperationsRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'operations');
+export const verifyCardOperationsRole = (database: Database) => verifyCardServiceRole(database, 'operations');
