@@ -35,6 +35,10 @@ jobs:
       DATABASE_URL: postgresql://aqua_app:aqua_app_local_only@127.0.0.1:5432/aqua
       MIGRATION_DATABASE_URL: postgresql://aqua:aqua_local_only@127.0.0.1:5432/aqua
       DATABASE_RUNTIME_ROLE: aqua_app
+      DATABASE_WORKER_ROLE: aqua_worker
+      DATABASE_INGRESS_ROLE: aqua_ingress
+      INGRESS_DATABASE_URL: postgresql://aqua_ingress:aqua_ingress_local_only@127.0.0.1:5432/aqua
+      WORKER_DATABASE_URL: postgresql://aqua_worker:aqua_worker_local_only@127.0.0.1:5432/aqua
       DATABASE_SCHEMA: aqua_browser_ci
       TEST_DATABASE_URL: postgresql://aqua:aqua_local_only@127.0.0.1:5432/aqua
     steps:
@@ -125,6 +129,9 @@ jobs:
           for (const [, asset] of assets) assert.equal((await fetch(new URL(asset, base))).status, 200);
           console.log('Non-root compiled API, connected assets and secret exclusion passed.');
           JS
+          docker run --rm --network host --read-only --cap-drop ALL --security-opt no-new-privileges \
+            -e NODE_ENV=development -e WORKER_DATABASE_URL -e DATABASE_SCHEMA \
+            aqua-card-server:ci node dist-server/card-worker.js --once
       - name: Locate a browser for the connected flow
         shell: bash
         run: |

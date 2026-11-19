@@ -150,6 +150,8 @@ npm run server:card -- data/card-events/refund.json
 
 CLI는 16 KiB 이내의 JSON 파일 하나를 받는다. `NODE_ENV=production`에서는 파일을 읽거나 DB에 연결하기 전에 거절한다. 운영 카드사 이벤트 수신 경로로 사용할 수 없다.
 
+같은 JSON을 `server:inbox enqueue`로 먼저 보관하고 별도 작업자에서 반영할 수도 있다. [카드 이벤트 수신·재처리](card-event-inbox.md)는 서명 HTTP 테스트, 접수 순서와 결제별 처리 잠금, 실패 재시도 및 운영자 이력을 다룬다. HTTP 접수 성공과 카드 승인 성공은 서로 다른 상태다.
+
 ## 검증
 
 ```bash
