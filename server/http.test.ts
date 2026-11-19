@@ -8,6 +8,7 @@ import { createApiServer } from './http';
 import { Database } from './database';
 import { LedgerStore } from './ledger';
 import { CardPaymentStore } from './card-payments';
+import { IssuerOutboxStore } from './issuer-outbox';
 import { RewardsStore } from './rewards';
 import { createTestDatabase } from './test-support';
 import type { AccountSnapshot, MemberProfile, TransferResult } from '../shared/api';
@@ -151,6 +152,7 @@ test('account responses expose owned card holds and prevent spending them throug
   try {
     const alice = await f.signup('cardalice');
     const bob = await f.signup('cardbobby');
+    await new IssuerOutboxStore(f.database).register({ userId: alice.user.id, providerCardId: 'sandbox-card-http-alice', initialStatus: 'active' });
     await f.store.creditSandbox({ userId: alice.user.id, amountWon: 100_000, idempotencyKey: 'card-http-seed' });
     const cards = new CardPaymentStore(f.database);
     await cards.apply({ kind: 'authorize', eventId: 'http-auth-event', paymentId: 'http-payment', userId: alice.user.id, amountWon: 80_000, merchantName: '테스트 서점' });
@@ -216,6 +218,7 @@ test('funded rewards remain card-only and the API exposes the original funding s
   const f = await fixture();
   try {
     const alice = await f.signup('rewardowner'); const bob = await f.signup('rewardother');
+    await new IssuerOutboxStore(f.database).register({ userId: alice.user.id, providerCardId: 'sandbox-card-http-reward', initialStatus: 'active' });
     const rewards = new RewardsStore(f.database);
     await rewards.fundBudget({ amountWon: 100_000, idempotencyKey: 'http-company-budget' });
     await rewards.setProgram({ enabled: true, idempotencyKey: 'http-enable-rewards' });

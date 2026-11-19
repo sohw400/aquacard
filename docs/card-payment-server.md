@@ -30,6 +30,8 @@ flowchart LR
 
 공통 필드는 `eventId`, `paymentId`, `userId`, `kind`다. `eventId`는 개별 처리 요청, `paymentId`는 승인부터 환불까지 이어지는 결제, `userId`는 해당 테스트 회원을 식별한다.
 
+007 이후 새 승인은 회원에게 연결된 sandbox 카드가 필요하다. 잠금 요청 접수부터 승인을 중단하고, 해제 성공을 확인한 뒤 새 승인을 허용한다. 정책 거절은 기록으로 남아 재전송해도 뒤늦게 승인되지 않는다. 기존 승인 건의 매입·취소·환불은 카드 잠금에 영향을 받지 않는다. [카드 승인 정책](card-authorization-policy.md)에 검사·경합·구버전 처리 범위를 정리했다.
+
 | `kind` | 추가 필드 | 처리 |
 | --- | --- | --- |
 | `authorize` | `amountWon`, `merchantName` | 사용 가능 잔액에서 승인액을 확보하고 결제를 만든다. |
@@ -84,6 +86,7 @@ flowchart LR
 
 ```bash
 npm run server:credit -- alice@example.test 100000 card-guide-credit-001
+npm run server:issuer -- register USER_ID sandbox-card-guide-alice active
 mkdir -p data/card-events
 ```
 

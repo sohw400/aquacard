@@ -5,6 +5,7 @@ import test, { type TestContext } from 'node:test';
 import type { FastifyInstance } from 'fastify';
 import type { SandboxCardEvent } from '../shared/api';
 import { CardInboxStore, type InboxReceipt } from './card-inbox';
+import { IssuerOutboxStore } from './issuer-outbox';
 import { createCardIngress } from './card-ingress-http';
 import { Database } from './database';
 import { LedgerStore } from './ledger';
@@ -50,6 +51,7 @@ async function inboxCount(database: Database): Promise<number> {
 test('authenticated receipt is durable but does not approve or debit the card before the worker commits', async (t) => {
   const f = await fixture(t);
   await f.ledger.createUser({ id: 'alice', email: 'alice@example.test', name: '수신 테스트 회원', tag: 'alice', passwordHash: 'test-only-hash', createdAt: NOW });
+  await new IssuerOutboxStore(f.database, { now: () => NOW }).register({ userId: 'alice', providerCardId: 'sandbox-card-alice', initialStatus: 'active' });
   await f.ledger.creditSandbox({ userId: 'alice', amountWon: 10_000, idempotencyKey: 'ingress-principal' });
   const body = JSON.stringify(EVENT);
   const received = await send(f.server, body);

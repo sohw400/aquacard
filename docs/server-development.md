@@ -50,7 +50,7 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 
 ## 카드 승인과 매입 확인
 
-`npm run server:card -- <event.json>`으로 테스트 승인·부분 매입·승인 취소·부분 환불을 처리한다. 기존 DB에도 `db:migrate`를 먼저 적용한다. [카드 결제 서버 처리](card-payment-server.md)의 JSON 예시를 따라 승인액 확보와 마지막 매입의 잔여액 해제, 중복 환불 방지를 확인할 수 있다.
+`npm run server:card -- <event.json>`으로 테스트 승인·부분 매입·승인 취소·부분 환불을 처리한다. 기존 DB에도 `db:migrate`를 먼저 적용한다. 새 승인 전에는 `npm run server:issuer -- register USER_ID sandbox-card-local active`로 회원의 테스트 카드를 연결한다. [카드 결제 서버 처리](card-payment-server.md)의 JSON 예시를 따라 승인액 확보와 마지막 매입의 잔여액 해제, 중복 환불 방지를 확인할 수 있다. [카드 승인 정책](card-authorization-policy.md)은 잠금 이후 새 승인을 차단하고 거절 재전송을 보존한다.
 
 화면의 사용 가능 잔액은 승인 보류액을 제외한다. 보류액과 전체 잔액, 본인의 카드 결제 내역은 같은 계정 조회 응답으로 갱신된다. 카드 명령은 개발자 전용이며 일반 회원용 쓰기 API는 없다. `NODE_ENV=production`에서는 명령을 거절한다. 실제 카드사 이벤트와 리저브는 연결하지 않았다.
 
