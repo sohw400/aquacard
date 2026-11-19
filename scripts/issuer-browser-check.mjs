@@ -1,3 +1,4 @@
+import { approveBrowserCustomer } from './browser-customer-access.mjs';
 import assert from 'node:assert/strict';
 import { createHmac, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -259,6 +260,9 @@ try {
   const health = await context.request.get(new URL('/api/health', base).href);
   assert.equal(health.status(), 200); assert.equal((await health.json()).mode, 'sandbox');
   ownerId = (await signup(page, owner)).id;
+  const initialAccount = await context.request.get(new URL('/api/account', base).href);
+  assert.equal((await initialAccount.json()).access.status, 'unverified');
+  approveBrowserCustomer(ownerId);
   await page.getByTestId('issuer-empty').waitFor();
   assert.equal(await page.getByTestId('issuer-lock').count(), 0);
   assert.equal((await snapshot()).card, null);
@@ -513,6 +517,7 @@ try {
 
   const otherPage = await otherContext.newPage(); watch(otherPage);
   const otherUser = await signup(otherPage, other);
+  approveBrowserCustomer(otherUser.id);
   const otherCard = await operator(['register', otherUser.id, `sandbox-card-other-${runId}`, 'active']);
   await otherPage.getByTestId('issuer-refresh').click(); await state('active', 'none', otherPage);
   await page.bringToFront();

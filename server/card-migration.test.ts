@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { copyFile, mkdtemp, rm } from 'node:fs/promises';
@@ -40,6 +41,7 @@ test('upgrading an existing transfer database preserves funded accounts and crea
     assert.equal(before.transactions[0].id, 'legacy-credit');
     const cards = new CardPaymentStore(database);
     const issuer = new IssuerOutboxStore(database);
+    await approveTestCustomer(database, 'legacy');
     await issuer.register({ userId: 'legacy', providerCardId: 'sandbox-card-legacy', initialStatus: 'active' });
     await cards.apply({ kind: 'authorize', eventId: 'legacy-authorization', paymentId: 'legacy-payment', userId: 'legacy', amountWon: 7_000, merchantName: '테스트 가맹점' });
     const after = await store.snapshot('legacy');
@@ -55,6 +57,7 @@ test('upgrading an existing transfer database preserves funded accounts and crea
     });
     assert.equal((await store.snapshot('rollout')).heldBalanceWon, 0);
     await store.creditSandbox({ userId: 'rollout', amountWon: 5_000, idempotencyKey: 'rollout-credit' });
+    await approveTestCustomer(database, 'rollout');
     await issuer.register({ userId: 'rollout', providerCardId: 'sandbox-card-rollout', initialStatus: 'active' });
     await cards.apply({ kind: 'authorize', eventId: 'rollout-authorization', paymentId: 'rollout-payment', userId: 'rollout', amountWon: 2_000, merchantName: '테스트 가맹점' });
     assert.equal((await store.snapshot('rollout')).balanceWon, 3_000);

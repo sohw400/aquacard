@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { Database } from './database';
@@ -34,10 +35,12 @@ async function fixture(t: TestContext, initialNow = NOW) {
   };
 }
 
-function member(store: LedgerStore, id: string, createdAt = NOW - 60 * DAY) {
+async function member(store: LedgerStore, id: string, createdAt = NOW - 60 * DAY) {
   const names: Record<string, string> = { alice: '김민수', bob: '이서연', carol: '박지훈' };
-  return store.createUser({ id, email: `${id}@example.test`, name: names[id] ?? `${id} 회원`, tag: id,
+  const user = await store.createUser({ id, email: `${id}@example.test`, name: names[id] ?? `${id} 회원`, tag: id,
     passwordHash: `test-password-hash:${id}`, createdAt });
+  await approveTestCustomer(store.database, id);
+  return user;
 }
 
 function fund(store: LedgerStore, userId: string, amountWon: number, idempotencyKey = `seed-${userId}`) {

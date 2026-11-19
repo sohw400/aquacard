@@ -1,3 +1,4 @@
+import { approveBrowserCustomer } from './browser-customer-access.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -151,6 +152,11 @@ try {
   const firstSender = await signup(senderPage, sender);
   const firstReceiver = await signup(receiverPage, receiver);
   assert.notEqual(firstSender.user.id, firstReceiver.user.id);
+  assert.equal(firstSender.access.status, 'unverified');
+  assert.equal(firstReceiver.access.status, 'unverified');
+  assert.equal(firstSender.access.canTransact, false);
+  approveBrowserCustomer(firstSender.user.id);
+  approveBrowserCustomer(firstReceiver.user.id);
   assert.equal((await account(senderContext)).user.id, firstSender.user.id);
   assert.equal((await account(receiverContext)).user.id, firstReceiver.user.id);
   const cookies = await senderContext.cookies(accountUrl);

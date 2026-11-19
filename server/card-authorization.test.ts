@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import type { CardEventResult, SandboxCardEvent } from '../shared/api';
@@ -25,6 +26,7 @@ async function fixture(t: TestContext, registered = true) {
   for (const id of ['alice', 'bobby']) {
     await main.ledger.createUser({ id, email: `${id}@example.test`, name: '승인 정책 테스트', tag: id,
       passwordHash: 'test-only-hash', createdAt: NOW - 86_400_000 });
+    await approveTestCustomer(main.ledger.database, id);
     await main.ledger.creditSandbox({ userId: id, amountWon: 50_000, idempotencyKey: `fund-${id}` });
     if (registered) await main.outbox.register({ userId: id, providerCardId: `sandbox-card-${id}`, initialStatus: 'active' });
   }

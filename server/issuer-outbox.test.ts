@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import { Database } from './database';
@@ -22,8 +23,11 @@ async function fixture(t: TestContext, register = true) {
   const ledger = new LedgerStore(base.database, { now: () => now });
   const rewards = new RewardsStore(base.database, { now: () => now });
   t.after(async () => { try { await Promise.all(peers.map((database) => database.close())); } finally { await base.cleanup(); } });
-  for (const id of ['alice', 'bobby']) await ledger.createUser({ id, email: `${id}@example.test`, name: '발급사 요청 테스트', tag: id,
-    passwordHash: 'test-only-hash', createdAt: NOW - DAY });
+  for (const id of ['alice', 'bobby']) {
+    await ledger.createUser({ id, email: `${id}@example.test`, name: '발급사 요청 테스트', tag: id,
+      passwordHash: 'test-only-hash', createdAt: NOW - DAY });
+    await approveTestCustomer(base.database, id);
+  }
   if (register) await main.outbox.register({ userId: 'alice', providerCardId: 'sandbox-card-alice', initialStatus: 'active' });
   return {
     ...main, ledger, rewards, key: (prefix = 'issuer') => `${prefix}-${++sequence}`,

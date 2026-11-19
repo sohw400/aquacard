@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { copyFile, mkdtemp, rm } from 'node:fs/promises';
@@ -42,6 +43,7 @@ test('reward upgrade preserves old card responses and funding, and supports olde
     assert.equal(legacy.rewards.availableWon, 3_000, 'old authorization must neither use new rewards nor earn retroactive cashback');
     assert.equal(legacy.rewards.cashback.confirmedWon, 0);
     assert.deepEqual(await cards.apply(originalEvent), original);
+    await approveTestCustomer(database, 'legacy');
     await new IssuerOutboxStore(database).register({ userId: 'legacy', providerCardId: 'sandbox-card-legacy', initialStatus: 'active' });
     await cards.apply({ kind: 'authorize', eventId: 'new-reward-authorization', paymentId: 'new-reward-payment', userId: 'legacy', amountWon: 3_000, merchantName: '새 가맹점' });
     assert.equal((await ledger.snapshot('legacy')).balanceWon, 13_000);

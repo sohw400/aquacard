@@ -7,6 +7,29 @@ export interface MemberProfile {
   createdAt: number;
 }
 
+/** Sandbox eligibility only. An active state does not represent completed live KYC. */
+export type CustomerAccessStatus = 'unverified' | 'pending_review' | 'active' | 'restricted' | 'frozen' | 'closed';
+export interface CustomerAccessSnapshot {
+  status: CustomerAccessStatus;
+  version: number;
+  updatedAt: number;
+  canTransact: boolean;
+}
+
+/** Public session IDs are unrelated to the secret cookie and its stored hash. */
+export interface AuthSessionRecord {
+  id: string;
+  deviceLabel: string;
+  createdAt: number;
+  lastSeenAt: number;
+  expiresAt: number;
+  current: boolean;
+}
+export interface SessionSecuritySnapshot {
+  sessions: AuthSessionRecord[];
+  reauthenticatedUntil: number | null;
+}
+
 export interface TransferRecord {
   id: string;
   direction: 'sent' | 'received' | 'funded';
@@ -18,6 +41,7 @@ export interface TransferRecord {
 
 export interface AccountSnapshot {
   user: MemberProfile;
+  access: CustomerAccessSnapshot;
   /** Available funds. Authorized card amounts are excluded until released. */
   balanceWon: number;
   heldBalanceWon: number;

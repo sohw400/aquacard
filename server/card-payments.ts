@@ -7,7 +7,7 @@ import { throwRewardError } from './reward-errors';
 
 interface AuthorizationDecline {
   declined: true;
-  code: 'CARD_NOT_ISSUED' | 'CARD_LOCKED' | 'CARD_STATUS_UNCONFIRMED';
+  code: 'CARD_NOT_ISSUED' | 'CARD_LOCKED' | 'CARD_STATUS_UNCONFIRMED' | 'CUSTOMER_ACCESS_REQUIRED';
 }
 
 const failures: Record<string, { status: number; message: string }> = {
@@ -19,6 +19,7 @@ const failures: Record<string, { status: number; message: string }> = {
   CARD_NOT_ISSUED: { status: 409, message: '연결된 카드가 없어 새 결제를 승인할 수 없습니다.' },
   CARD_LOCKED: { status: 409, message: '카드가 잠겨 있거나 잠금을 요청한 상태입니다.' },
   CARD_STATUS_UNCONFIRMED: { status: 409, message: '카드 상태 확인이 끝날 때까지 새 결제를 승인할 수 없습니다.' },
+  CUSTOMER_ACCESS_REQUIRED: { status: 403, message: '현재 계정 상태에서는 새 결제를 승인할 수 없습니다.' },
   INSUFFICIENT_FUNDS: { status: 409, message: '승인할 수 있는 잔액이 부족합니다.' },
   IDEMPOTENCY_CONFLICT: { status: 409, message: '같은 카드 이벤트 번호에 다른 내용이 있습니다.' },
   RECIPIENT_BALANCE_LIMIT: { status: 409, message: '반영 후 잔액이 처리 범위를 초과합니다.' },
@@ -48,7 +49,7 @@ export class CardPaymentStore {
       // the error, so an unlock cannot turn a replay into a new authorization.
       if ('declined' in answer) {
         const failure = failures[answer.code];
-        if (answer.declined !== true || !['CARD_NOT_ISSUED', 'CARD_LOCKED', 'CARD_STATUS_UNCONFIRMED'].includes(answer.code) || !failure) {
+        if (answer.declined !== true || !['CARD_NOT_ISSUED', 'CARD_LOCKED', 'CARD_STATUS_UNCONFIRMED', 'CUSTOMER_ACCESS_REQUIRED'].includes(answer.code) || !failure) {
           throw new Error('Invalid card authorization decision.');
         }
         throw new LedgerError(failure.status, answer.code, failure.message);

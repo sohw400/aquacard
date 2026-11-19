@@ -29,6 +29,8 @@ npm run dev
 
 [카드 거래 운영 조회](docs/card-operations.md)는 이벤트 번호나 수신함 번호로 승인·거절·정산 상태를 확인합니다. 전용 운영 권한을 사용하고, 변경 불가 조회 기록을 먼저 커밋한 뒤 제한된 결과를 읽습니다. 승인 변경이나 재처리 권한은 포함하지 않습니다.
 
+[고객 거래 자격·로그인 기기 관리](docs/customer-access-security.md)는 로그인과 거래 허용을 분리합니다. 신규·기존 계정은 기본 거래 제한 상태이며, 테스트 운영자의 명시적 허용 이후에만 새 송금·카드 승인·잠금 해제가 가능합니다. 동결 후에도 기존 결제의 정산·환불과 과거 요청 재조회는 유지됩니다. 로그인 기기 조회·개별 해제·다른 기기 일괄 해제와 최근 비밀번호 확인을 제공합니다. 실제 본인확인·이메일 검증·MFA는 아직 연결되지 않았습니다.
+
 [서버 실행·검증 안내](docs/server-development.md)와 [기술 선택·배포 방향](docs/technology-decisions.md)에 재현 절차와 구현·계획을 구분했습니다. 운영 대상은 AWS 서울 리전 ECS Fargate·RDS PostgreSQL이며 아직 AWS 리소스나 유료 인프라를 생성하지 않았습니다. 공개 GitHub Pages는 기존 데모 모드를 유지합니다.
 
 ## 검증
@@ -47,7 +49,7 @@ npm run test:devices
 
 Chromium 경로는 `CHROMIUM_PATH`, 서버 주소는 `AQUA_BASE_URL`로 바꿀 수 있습니다(기본 `/usr/bin/chromium`, `http://127.0.0.1:5173`).
 
-2026-11-19 기준 서버 테스트 234개, 제품·클라이언트 로직 테스트 139개, 카드 설정·승인 정책 브라우저 검사 18개가 통과했습니다. CI는 기존 서버 연결 브라우저 검사 28개도 함께 실행합니다. [카드 운영 조회](docs/card-operations.md), [카드 승인 정책](docs/card-authorization-policy.md), [리워드 서버 처리 안내](docs/rewards-server.md), [카드 수신·재처리 안내](docs/card-event-inbox.md), [카드 설정 화면](docs/card-controls-ui.md)에 검사 범위를 정리했습니다. 실제 iOS·Android 기기 검증은 아직 수행하지 않았습니다.
+2026-11-19 기준 서버 테스트 262개, 제품·클라이언트 로직 테스트 139개, 서버 연결 브라우저 검사 54개가 통과했습니다. 브라우저 검사는 기존 금융 흐름 28개, 카드 설정·승인 정책 18개, 고객 상태·세션 보안 8개를 포함합니다. [카드 운영 조회](docs/card-operations.md), [카드 승인 정책](docs/card-authorization-policy.md), [리워드 서버 처리 안내](docs/rewards-server.md), [카드 수신·재처리 안내](docs/card-event-inbox.md), [카드 설정 화면](docs/card-controls-ui.md)에 검사 범위를 정리했습니다. 실제 iOS·Android 기기 검증은 아직 수행하지 않았습니다.
 
 공개 브라우저 데모는 2026-10-14 기준 브라우저 검사 57개, 320~430px 기기 프로필 5개를 통과했습니다. 기기 프로필은 Chromium에서 화면 크기와 터치를 **모사**한 것이며 실제 iOS Safari·Android 실기기 검증과 다릅니다. 자세한 절차는 [테스트 안내](docs/testing.md)에 있습니다.
 

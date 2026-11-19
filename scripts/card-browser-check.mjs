@@ -1,3 +1,4 @@
+import { approveBrowserCustomer } from './browser-customer-access.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -128,6 +129,8 @@ try {
   const ownerProfile = await signup(ownerPage, owner);
   const otherProfile = await signup(otherPage, other);
   assert.notEqual(ownerProfile.id, otherProfile.id);
+  approveBrowserCustomer(ownerProfile.id);
+  approveBrowserCustomer(otherProfile.id);
   command('server:issuer', ['register', ownerProfile.id, `sandbox-card-browser-${runId}`, 'active']);
   command('server:credit', [owner.email, '100000', `${runId}-fund-owner`]);
   command('server:credit', [other.email, '2000', `${runId}-fund-other`]);

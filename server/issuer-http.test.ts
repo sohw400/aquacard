@@ -1,3 +1,4 @@
+import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import type { FastifyInstance } from 'fastify';
@@ -44,9 +45,12 @@ async function fixture(t: TestContext, production = false) {
     assert.equal(response.status, 201, response.body);
     return { user: response.data.user, cookie: response.cookie };
   };
-  const register = async (session: MemberSession) => issuer.register({ userId: session.user.id,
-    providerCardId: `sandbox-card-${session.user.tag}`, initialStatus: 'active' });
-  return { ...base, server, ledger, issuer, signup, register,
+  const registerApproved = async (session: MemberSession) => {
+    await approveTestCustomer(base.database, session.user.id);
+    return issuer.register({ userId: session.user.id,
+      providerCardId: `sandbox-card-${session.user.tag}`, initialStatus: 'active' });
+  };
+  return { ...base, server, ledger, issuer, signup, registerApproved,
     request: <T = ApiErrorBody>(path: string, options?: RequestOptions) => request<T>(server, path, options) };
 }
 
@@ -66,7 +70,7 @@ test('issuer snapshots are session-owned and omit partner references and interna
   const alice = await f.signup('issueralice'); const bob = await f.signup('issuerbobby');
   const empty = await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice));
   assert.deepEqual(empty.data, { mode: 'sandbox', canRequestStatus: true, card: null });
-  const { cardId } = await f.register(alice); const other = await f.register(bob);
+  const { cardId } = await f.registerApproved(alice); const other = await f.registerApproved(bob);
   const own = await f.request<IssuerCardSnapshot>(`/issuer-card?userId=${bob.user.id}&cardId=${other.cardId}`, viewing(alice));
   assert.equal(own.status, 200); assert.equal(own.headers['cache-control'], 'no-store');
   assert.equal(own.data.canRequestStatus, true);
@@ -78,7 +82,7 @@ test('issuer snapshots are session-owned and omit partner references and interna
 
 test('issuer reads reject a changed shared cookie or absent account header without exposing either card', async (t) => {
   const f = await fixture(t); const alice = await f.signup('issuerreadalice'); const bob = await f.signup('issuerreadbobby');
-  const own = await f.register(alice); const other = await f.register(bob);
+  const own = await f.registerApproved(alice); const other = await f.registerApproved(bob);
   const before = await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice));
   assert.equal(before.status, 200); assert.equal(before.data.card?.id, own.cardId);
   for (const options of [
@@ -98,7 +102,7 @@ test('issuer reads reject a changed shared cookie or absent account header witho
 
 test('202 only accepts the desired status; issuer confirmation is separate and the financial ledger is unchanged', async (t) => {
   const f = await fixture(t); const alice = await f.signup('issuerstatus');
-  const { cardId } = await f.register(alice);
+  const { cardId } = await f.registerApproved(alice);
   const before = await f.ledger.snapshot(alice.user.id);
   const options = command(alice, cardId);
   const accepted = await f.request<IssuerCardStatusReceipt>('/issuer-card/status', options);
@@ -130,7 +134,7 @@ test('202 only accepts the desired status; issuer confirmation is separate and t
 
 test('issuer commands require the matching session, allowed origin and owned card', async (t) => {
   const f = await fixture(t); const alice = await f.signup('issuerauth'); const bob = await f.signup('issuerother');
-  const { cardId } = await f.register(alice); const other = await f.register(bob);
+  const { cardId } = await f.registerApproved(alice); const other = await f.registerApproved(bob);
   const options = command(alice, cardId);
   assert.equal((await f.request('/issuer-card/status', { ...options, cookie: '' })).status, 401);
   const origin = await f.request('/issuer-card/status', { ...options, headers: { ...options.headers, origin: 'https://untrusted.example' } });
@@ -146,7 +150,7 @@ test('issuer commands require the matching session, allowed origin and owned car
 });
 
 test('issuer status input rejects extra identities, provider data, invalid versions and missing request keys', async (t) => {
-  const f = await fixture(t); const alice = await f.signup('issuerinput'); const { cardId } = await f.register(alice);
+  const f = await fixture(t); const alice = await f.signup('issuerinput'); const { cardId } = await f.registerApproved(alice);
   const options = command(alice, cardId);
   for (const [key, value] of Object.entries({ userId: 'another-user', providerCardId: 'sandbox-card-other', url: 'https://example.test', leaseToken: 'caller-token', confirmedStatus: 'locked', expectedUserId: alice.user.id })) {
     const response = await f.request('/issuer-card/status', { ...options, body: { cardId, targetStatus: 'locked', expectedVersion: 1, [key]: value } });
@@ -163,18 +167,18 @@ test('issuer status input rejects extra identities, provider data, invalid versi
 });
 
 test('issuer command rate limiting isolates members and duplicate requests do not create more commands', async (t) => {
-  const f = await fixture(t); const alice = await f.signup('issuerrate'); const { cardId } = await f.register(alice);
+  const f = await fixture(t); const alice = await f.signup('issuerrate'); const { cardId } = await f.registerApproved(alice);
   const options = command(alice, cardId);
   for (let index = 0; index < 20; index++) assert.equal((await f.request('/issuer-card/status', options)).status, 202);
   const limited = await f.request('/issuer-card/status', options);
   assert.equal(limited.status, 429); assert.equal(limited.headers['retry-after'], '60');
   assert.equal((await f.database.query('SELECT COUNT(*)::int AS count FROM issuer_outbox')).rows[0].count, 1);
-  const bob = await f.signup('issuerrateother'); const other = await f.register(bob);
+  const bob = await f.signup('issuerrateother'); const other = await f.registerApproved(bob);
   assert.equal((await f.request('/issuer-card/status', command(bob, other.cardId))).status, 202);
 });
 
 test('production API refuses sandbox issuer writes while preserving safe status inspection', async (t) => {
-  const f = await fixture(t, true); const alice = await f.signup('issuerprod'); const { cardId } = await f.register(alice);
+  const f = await fixture(t, true); const alice = await f.signup('issuerprod'); const { cardId } = await f.registerApproved(alice);
   const denied = await f.request('/issuer-card/status', command(alice, cardId));
   assert.equal(denied.status, 403); assert.equal(denied.data.error.code, 'SANDBOX_DISABLED');
   const snapshot = await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice));

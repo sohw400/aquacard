@@ -1,3 +1,4 @@
+import { approveBrowserCustomer } from './browser-customer-access.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -160,6 +161,8 @@ try {
   assert.equal(initial.rewards.policy.monthlyCapWon, 10_000);
   originalProgramActive = initial.rewards.programActive;
   const userId = initial.user.id;
+  assert.equal(initial.access.status, 'unverified');
+  approveBrowserCustomer(userId);
   command('server:issuer', ['register', userId, `sandbox-card-rewards-${runId}`, 'active']);
   command('server:credit', [owner.email, '100000', `${runId}-principal`]);
   command('server:rewards', ['budget', '1000000', `${runId}-budget`]);
