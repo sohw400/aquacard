@@ -8,7 +8,7 @@ GitHub의 `main` 브랜치 변경 또는 수동 실행으로 `.github/workflows/
 
 공개 주소는 [https://sohw400.github.io/aquacard/](https://sohw400.github.io/aquacard/)이다.
 
-PR 단계에서 도는 검사 워크플로는 없으므로, `main`에 머지하기 전에 로컬에서 `npm test`, `npm run test:browser`, `npm run test:devices`, `npm run build`를 돌린다([테스트 안내](testing.md)).
+서버 개발 브랜치의 PR 검사는 제품 로직, PostgreSQL 테스트와 복원, 컨테이너, 서버 연결 브라우저 흐름을 검증한다. 공개 데모 화면을 바꿀 때는 `npm run test:browser`와 `npm run test:devices`로 체험판도 확인한다. [PR 검사](../.github/workflows/server-check.yml) · [테스트 안내](testing.md)
 
 | 날짜 | 배포한 변경 | 실행 | 확인한 것 |
 | --- | --- | --- | --- |

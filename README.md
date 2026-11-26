@@ -37,6 +37,8 @@ npm run dev
 
 ## 검증
 
+원장 차이, 미처리 거래, 작업자 중단은 `npm run server:monitor`와 CloudWatch 경보로 점검합니다. 점검 계정은 건수·대기 시간만 읽습니다. [운영 경보와 장애 대응](docs/operations-monitoring.md) · [실거래 개방 전 확인할 사항](docs/launch-readiness.md)
+
 합성 카드 거래를 포함한 PostgreSQL 백업 복원은 `npm run test:recovery`로 검사합니다. [복원 훈련과 기대 금액](docs/server-development.md#postgresql-백업-복원-훈련)
 
 ```bash
@@ -53,7 +55,7 @@ npm run test:devices
 
 Chromium 경로는 `CHROMIUM_PATH`, 서버 주소는 `AQUA_BASE_URL`로 바꿀 수 있습니다(기본 `/usr/bin/chromium`, `http://127.0.0.1:5173`).
 
-2026-11-26 기준 서버 테스트 302개, 제품·클라이언트 로직 테스트 139개, 서버 연결 브라우저 검사 62개가 통과했습니다. 브라우저 검사는 기존 금융 흐름 28개, 카드 설정·승인 정책 18개, 고객 상태·세션 보안 8개, 이메일 확인·복구 발송 8개를 포함합니다. [카드 운영 조회](docs/card-operations.md), [카드 승인 정책](docs/card-authorization-policy.md), [리워드 서버 처리 안내](docs/rewards-server.md), [카드 수신·재처리 안내](docs/card-event-inbox.md), [카드 설정 화면](docs/card-controls-ui.md), [이메일 확인·복구 안내 발송](docs/email-verification-delivery.md)에 검사 범위를 정리했습니다. 실제 iOS·Android 기기 검증은 아직 수행하지 않았습니다.
+PR마다 서버·제품 테스트, 백업 복원, 경보 설정과 서버 연결 브라우저 흐름을 검사합니다. 브라우저 검사는 송금·결제, 리워드·페이백, 카드 잠금·해제, 고객 상태·로그인 기기, 이메일 확인·복구를 포함합니다. 실제 iOS·Android 기기 검증은 남아 있습니다. [자동 검사](.github/workflows/server-check.yml) · [검증 방법](docs/testing.md)
 
 브라우저 데모는 2026-11-26 기준 브라우저 검사 57개, 320~430px 기기 프로필 5개를 통과했습니다. 기기 프로필은 Chromium에서 화면 크기와 터치를 **모사**한 것이며 실제 iOS Safari·Android 실기기 검증과 다릅니다. 자세한 절차는 [테스트 안내](docs/testing.md)에 있습니다.
 

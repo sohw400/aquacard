@@ -1,10 +1,18 @@
 import { readFile } from 'node:fs/promises';
 import { Database } from './database';
 
-/** Card services never silently inherit the API or migration owner's credentials. */
-export async function cardServiceDatabase(service: 'ingress' | 'worker' | 'dispatcher' | 'operations'): Promise<Database> {
-  if (service !== 'ingress' && service !== 'worker' && service !== 'dispatcher' && service !== 'operations') throw new Error('Unknown card service database role.');
-  const variable = { ingress: 'INGRESS_DATABASE_URL', worker: 'WORKER_DATABASE_URL', dispatcher: 'DISPATCHER_DATABASE_URL', operations: 'OPERATIONS_DATABASE_URL' }[service];
+const serviceUrls = {
+  ingress: 'INGRESS_DATABASE_URL',
+  worker: 'WORKER_DATABASE_URL',
+  dispatcher: 'DISPATCHER_DATABASE_URL',
+  operations: 'OPERATIONS_DATABASE_URL',
+  monitor: 'MONITOR_DATABASE_URL',
+} as const;
+
+/** Each service requires its own login, including the read-only scheduled monitor. */
+export async function cardServiceDatabase(service: keyof typeof serviceUrls): Promise<Database> {
+  if (!Object.hasOwn(serviceUrls, service)) throw new Error('Unknown card service database role.');
+  const variable = serviceUrls[service];
   const connectionString = process.env[variable];
   if (!connectionString) throw new Error(`Set ${variable} to the separate restricted ${service} login.`);
   return new Database({

@@ -2,6 +2,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { IssuerOutboxStore, IssuerOutboxFinishResult } from './issuer-outbox';
 import { IssuerLeaseExpiredError, type IssuerAdapter } from './issuer-adapter';
 import { LedgerError } from './errors';
+import { workerHeartbeat } from './worker-liveness';
 
 type DispatchStore = Pick<IssuerOutboxStore, 'claim' | 'finish' | 'stats'>;
 export type IssuerDispatchResult = IssuerOutboxFinishResult | { id: string; status: 'lease_lost' | 'deferred'; errorCode: string } | null;
@@ -30,11 +31,13 @@ export async function runIssuerDispatcher(outbox: DispatchStore, adapter: Issuer
 }): Promise<void> {
   const { signal, pollMs, report } = options;
   if (!Number.isInteger(pollMs) || pollMs < 250 || pollMs > 60_000) throw new Error('Dispatcher poll interval must be between 250 and 60000 ms.');
+  const heartbeat = workerHeartbeat('IssuerDispatcherHeartbeat', process.env.AQUA_MONITOR_ENVIRONMENT, report);
   let failures = 0; let nextHealth = 0;
   while (!signal.aborted) {
     let waitMs = pollMs; let processed = false;
     try {
       const result = await dispatchIssuerOnce(outbox, adapter, signal);
+      if (!signal.aborted && result?.status !== 'lease_lost') heartbeat?.();
       failures = 0;
       if (result) report({ event: 'issuer_command_processed', ...result });
       processed = result !== null;

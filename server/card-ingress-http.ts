@@ -4,6 +4,7 @@ import type { SandboxCardEvent } from '../shared/api';
 import { parseSandboxCardEvent } from './card-command';
 import type { CardInboxStore } from './card-inbox';
 import { LedgerError } from './errors';
+import { createReadinessProbe, livenessSchema } from './readiness';
 
 const PATH = '/webhooks/sandbox/cards';
 const MAX_BODY = 16_384;
@@ -76,6 +77,7 @@ const errorResponses = Object.fromEntries([400, 401, 404, 409, 413, 415, 503].ma
 export function createCardIngress(store: CardInboxStore, options: CardIngressOptions): FastifyInstance {
   if (process.env.NODE_ENV === 'production') throw new CardIngressConfigurationError('Sandbox card ingress is disabled in production.');
   const keys = signingKeys(options.keys);
+  const readyForTraffic = createReadinessProbe(store.database, 'ingress');
   const clock = options.now ?? Date.now;
   const logger = options.logger === false ? false : {
     level: 'info', ...(typeof options.logger === 'object' ? options.logger : {}),
@@ -93,7 +95,7 @@ export function createCardIngress(store: CardInboxStore, options: CardIngressOpt
 
   app.addHook('onRequest', async (request, reply) => {
     reply.header('Cache-Control', 'no-store').header('X-Content-Type-Options', 'nosniff');
-    if (request.routeOptions.url !== PATH && request.routeOptions.url !== '/health') {
+    if (request.routeOptions.url !== PATH && request.routeOptions.url !== '/health' && request.routeOptions.url !== '/live') {
       return reply.code(404).send({ error: { code: 'NOT_FOUND', message: '요청한 경로를 찾을 수 없습니다.' } });
     }
     if (request.routeOptions.url !== PATH) return;
@@ -135,10 +137,12 @@ export function createCardIngress(store: CardInboxStore, options: CardIngressOpt
   });
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: { code: 'NOT_FOUND', message: '요청한 경로를 찾을 수 없습니다.' } }));
 
+  app.get('/live', { schema: { response: { 200: livenessSchema } } }, async () => ({ status: 'ok' }));
   app.get('/health', { schema: { response: { 200: {
     type: 'object', additionalProperties: false, required: ['status', 'mode'], properties: { status: { type: 'string', enum: ['ok'] }, mode: { type: 'string', enum: ['sandbox'] } },
-  }, 503: errorSchema } } }, async () => {
-    await store.database.query('SELECT 1');
+  }, 503: errorSchema } } }, async (_request, reply) => {
+    if (!(await readyForTraffic())) return reply.code(503).header('Retry-After', '5')
+      .send({ error: { code: 'INGRESS_UNAVAILABLE', message: '수신 서버를 준비하고 있습니다.' } });
     return { status: 'ok', mode: 'sandbox' };
   });
   app.post<{ Body: SandboxCardEvent }>(PATH, { schema: { response: { 202: {

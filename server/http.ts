@@ -9,6 +9,7 @@ import type { AuthMailQueue } from './auth-mail';
 import { LedgerError, LedgerStore } from './ledger';
 import { RewardsStore } from './rewards';
 import { IssuerOutboxStore } from './issuer-outbox';
+import { createReadinessProbe, livenessSchema } from './readiness';
 
 declare module 'fastify' {
   interface FastifyRequest { aquaUser: MemberProfile | null }
@@ -147,6 +148,7 @@ function tokenOf(request: FastifyRequest): string | undefined {
 
 /** Plugins and routes are registered synchronously; callers await ready/listen and close their own database. */
 export function createApiServer(store: LedgerStore, options: ServerOptions): FastifyInstance {
+  const readyForTraffic = createReadinessProbe(store.database, 'api');
   const auth = new AuthService(store, { deliverRecovery: options.deliverRecovery, mailQueue: options.mailQueue });
   const rewards = new RewardsStore(store.database);
   const issuer = new IssuerOutboxStore(store.database);
@@ -236,12 +238,15 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
       if (request.headers['x-aqua-account'] !== user.id) throw new LedgerError(409, 'SESSION_CHANGED', '로그인한 계정이 바뀌었어요. 계정을 다시 확인해 주세요.');
     };
 
+    api.get('/api/live', { schema: {
+      tags: ['operations'], summary: 'API 프로세스 응답 확인', response: { 200: livenessSchema },
+    } }, async () => ({ status: 'ok' }));
     api.get('/api/health', { schema: {
       tags: ['operations'], summary: '데이터베이스 준비 상태',
       response: { 200: { type: 'object', additionalProperties: false, required: ['status', 'mode'], properties: { status: { type: 'string', enum: ['ok'] }, mode: { type: 'string', enum: ['sandbox'] } } }, 503: { $ref: 'AquaError#' } },
     } }, async (_request, reply) => {
-      try { await store.database.query('SELECT 1'); return { status: 'ok', mode: 'sandbox' }; }
-      catch { return reply.code(503).send({ error: { code: 'DATABASE_UNAVAILABLE', message: '데이터베이스 연결을 준비하고 있어요. 잠시 후 다시 확인해 주세요.' } }); }
+      if (await readyForTraffic()) return { status: 'ok', mode: 'sandbox' };
+      return reply.code(503).send({ error: { code: 'DATABASE_UNAVAILABLE', message: '데이터베이스 연결을 준비하고 있어요. 잠시 후 다시 확인해 주세요.' } });
     });
     api.get('/api/session', { schema: { tags: ['authentication'], summary: '현재 세션 확인', response: { 200: { type: 'object', additionalProperties: false, required: ['user'], properties: { user: { anyOf: [{ $ref: 'AquaMember#' }, { type: 'null' }] } } }, ...errorResponses } } }, async (request) => ({ user: await auth.authenticate(tokenOf(request)) }));
 

@@ -7,11 +7,12 @@ import { cardServiceDatabase } from './card-service-database';
 import { createTestDatabase } from './test-support';
 import { verifyMigrations } from './migrations';
 import {
-  grantApplicationRole, grantCardIngressRole, grantCardWorkerRole, grantCardDispatcherRole, grantCardOperationsRole,
+  grantMonitorRole, verifyMonitorRole, grantApplicationRole, grantCardIngressRole, grantCardWorkerRole, grantCardDispatcherRole, grantCardOperationsRole,
   verifyApplicationRole, verifyCardIngressRole, verifyCardWorkerRole, verifyCardDispatcherRole, verifyCardOperationsRole,
 } from './permissions';
 
 const access = {
+  monitor: { grant: grantMonitorRole, verify: verifyMonitorRole },
   api: { grant: grantApplicationRole, verify: verifyApplicationRole },
   ingress: { grant: grantCardIngressRole, verify: verifyCardIngressRole },
   worker: { grant: grantCardWorkerRole, verify: verifyCardWorkerRole },
@@ -90,6 +91,29 @@ test('the operations login prepares and reads its report without direct access t
     "SELECT operator_grant_rewards('{}'::jsonb,1000::bigint)",
   ]) await assert.rejects(ops.database.query(sql), /permission denied/);
   assert.equal((await f.database.query('SELECT COUNT(*)::int AS n FROM journals')).rows[0].n, 0);
+});
+
+test('monitor can count incidents without customer records, traces or payment actions', async (t) => {
+  const fixtureRoles = await fixture(t, ['monitor', 'operations']);
+  const { database, name } = fixtureRoles.service('monitor');
+  const operator = fixtureRoles.service('operations').database;
+  await verifyMigrations(database);
+  await verifyMonitorRole(database);
+  await assert.rejects(verifyMonitorRole(operator), /restricted monitor/);
+  for (const sql of ['SELECT operations_ledger_finding_count()', 'SELECT read_queue_health(1000::bigint)']) {
+    await database.query(sql);
+    await assert.rejects(operator.query(sql), /permission denied/);
+  }
+  for (const sql of ['SELECT * FROM internal_ledger_findings()', 'SELECT email FROM users',
+    'SELECT * FROM journal_entries', 'SELECT * FROM card_event_inbox', 'SELECT * FROM auth_mail_outbox',
+    'SELECT read_card_operations_report(NULL)', 'SELECT prepare_card_operations_report(NULL)',
+    'SELECT process_card_inbox(1000::bigint)', 'DELETE FROM card_payments']) {
+    await assert.rejects(database.query(sql), /permission denied/);
+  }
+  await fixtureRoles.database.query(`GRANT SELECT(email) ON users TO "${name}"`);
+  await assert.rejects(verifyMonitorRole(database), /restricted monitor/);
+  await fixtureRoles.database.query(`REVOKE SELECT(email) ON users FROM "${name}"`);
+  await verifyMonitorRole(database);
 });
 
 test('operations startup rejects accidental table, column, schema and private function permissions', async (t) => {

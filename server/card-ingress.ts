@@ -4,6 +4,7 @@ import { verifyCardIngressRole } from './permissions';
 import { CardInboxStore } from './card-inbox';
 import { CardIngressConfigurationError, createCardIngress } from './card-ingress-http';
 import { cardServiceDatabase } from './card-service-database';
+import { closeHttpService, drainOnShutdown } from './http-shutdown';
 
 async function start() {
   if (process.env.NODE_ENV === 'production') throw new CardIngressConfigurationError('Sandbox card ingress is disabled in production.');
@@ -22,23 +23,10 @@ async function start() {
     await verifyCardIngressRole(database);
     await app.listen({ host: process.env.AQUA_CARD_INGRESS_HOST ?? '127.0.0.1', port });
   } catch (error) {
-    await app?.close();
-    await database?.close();
+    await closeHttpService(app, database);
     throw error;
   }
-  const liveApp = app; const liveDatabase = database;
-  let closing = false;
-  async function shutdown() {
-    if (closing) return;
-    closing = true;
-    const timer = setTimeout(() => { process.exit(1); }, 20_000);
-    timer.unref();
-    try { await liveApp.close(); await liveDatabase.close(); }
-    catch { console.error('Card ingress could not shut down cleanly.'); process.exitCode = 1; }
-    finally { clearTimeout(timer); }
-  }
-  process.on('SIGINT', () => { void shutdown(); });
-  process.on('SIGTERM', () => { void shutdown(); });
+  drainOnShutdown(app, database);
 }
 
 start().catch((error: unknown) => {

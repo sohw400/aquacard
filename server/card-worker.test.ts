@@ -96,10 +96,12 @@ test('worker executable uses its restricted login, processes once across restart
   } });
   assert.equal(received.status, 202);
   assert.equal((await f.ledger.snapshot('alice')).balanceWon, 10_000, 'HTTP receipt is not card approval');
-  const env = { ...process.env, NODE_ENV: 'development', WORKER_DATABASE_URL: f.workerUrl, DATABASE_SCHEMA: f.schema, AQUA_CARD_WORKER_POLL_MS: '250' };
+  const env = { ...process.env, NODE_ENV: 'development', WORKER_DATABASE_URL: f.workerUrl, DATABASE_SCHEMA: f.schema,
+    AQUA_CARD_WORKER_POLL_MS: '250', AQUA_MONITOR_ENVIRONMENT: 'ci' };
   for (let run = 0; run < 2; run++) {
     const result = spawnSync(process.execPath, ['--import','tsx','server/card-worker.ts','--once'], { env, encoding: 'utf8', timeout: 10_000 });
     assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /CardWorkerHeartbeat/);
     const response = JSON.parse(result.stdout) as { result: { status: string } | null };
     assert.equal(response.result?.status ?? null, run === 0 ? 'applied' : null);
   }
@@ -118,6 +120,9 @@ test('worker executable uses its restricted login, processes once across restart
   const [code, signal] = await exited;
   assert.equal(code, 0, errors); assert.equal(signal, null); assert.equal(stopped, true);
   assert.match(output, /"applied":"1"/);
+  const heartbeat = output.trim().split('\n').map(line => JSON.parse(line)).filter(event => event.CardWorkerHeartbeat === 1);
+  assert.equal(heartbeat.length, 1);
+  assert.equal(heartbeat[0].Environment, 'ci');
   assert.doesNotMatch(output + errors, /postgres(?:ql)?:\/\/|password|canonical_input/);
 });
 

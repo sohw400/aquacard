@@ -84,6 +84,8 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 | `DISPATCHER_DATABASE_URL` | 발신 명령 확보·결과 기록·집계 함수만 실행하는 별도 연결. 회원·명령 생성·장부 변경 권한을 주지 않는다. |
 | `DATABASE_OPERATIONS_ROLE` | 카드 거래 운영 조회 전용 역할. 다른 런타임 역할과 분리한다. 로컬 `aqua_operations`. |
 | `OPERATIONS_DATABASE_URL` | 조회 기록 준비·결과 확인 함수만 실행하는 별도 연결. API·관리자 주소로 대체하지 않는다. |
+| `DATABASE_MONITOR_ROLE`, `MONITOR_DATABASE_URL` | 원장 불일치 건수와 대기열 집계만 읽는 계정. 로컬 기본값은 `aqua_monitor`다. |
+| `AQUA_MONITOR_ENVIRONMENT` | 점검 명령과 상시 작업자가 CloudWatch 지표에 기록하는 환경 이름. [.env.example](../.env.example)의 로컬 예시는 `local`이다. |
 | `DATABASE_AUTH_MAIL_ROLE`, `AUTH_MAIL_DATABASE_URL` | 별도 메일 발송 역할과 연결. 로컬 역할은 `aqua_auth_mail`이며 API·카드 작업자·관리자와 분리한다. |
 | `AQUA_ISSUER_SANDBOX_URL`, `AQUA_ISSUER_KEY_ID`, `AQUA_ISSUER_SIGNING_KEY` | 로컬 sandbox 발신 URL과 명시적인 서명 키. [발급사 요청·복구](issuer-command-outbox.md)의 제한과 실행 방법을 따른다. |
 | `TEST_DATABASE_URL` | 서버 통합 테스트용 PostgreSQL 주소. 테스트는 고유 스키마를 만들고 자신이 만든 스키마만 정리한다. |
@@ -121,7 +123,8 @@ Fastify JSON Schema로 HTTP 경계를 정의하고 OpenAPI를 생성한다. 인�
 
 | 메서드·경로 | 역할 |
 | --- | --- |
-| `GET /api/health` | 준비 확인. `status: ok`, `mode: sandbox`. |
+| `GET /api/live` | 프로세스가 HTTP에 응답하면 200. 컨테이너 생존 검사에 사용한다. |
+| `GET /api/health` | 트래픽 수신 준비 확인. 쓰기 가능한 기본 DB에 연결되고 배포 이력과 주요 원장 권한이 확인되면 200과 `{"status":"ok","mode":"sandbox"}`를 반환한다. 조회 실패·시간 초과는 503이다. |
 | `GET /api/openapi.json` | 개발 모드의 OpenAPI 문서. 운영 모드에서는 기본으로 노출하지 않는다. |
 | `GET /api/session` | 현재 세션 확인. |
 | `POST /api/auth/signup` | 테스트 계정 생성. 시작 잔액 0원. |
@@ -159,7 +162,7 @@ npm run test:recovery
 | 복원 후 기존 충전·승인·매입·환불 재전송 | 중복 차감이나 지급 없이 원장, 이벤트 수와 고객 잔액이 동일하다. |
 | 보류 거래의 후속 매입 | 75원 중 50원을 매입하고 25원을 해제한다. 보류액이 0원이 되고 전체 테스트 정산 잔액은 120원이다. |
 
-각 단계에서 내부 대사를 실행한다. 복원 직후에는 마이그레이션 체크섬과 앱·수신·작업자·발신·운영 조회·메일 발송 역할의 권한도 검사한다. 이상이 있으면 명령이 실패한다. 임시 DB와 백업 파일은 실행이 끝날 때 정리한다.
+각 단계에서 내부 대사를 실행한다. 복원 직후에는 마이그레이션 체크섬과 앱·수신·작업자·발신·운영 조회·집계·메일 발송 역할의 권한도 검사한다. 이상이 있으면 명령이 실패한다. 복원된 DB에서 TLS를 켜고 운영 모드 점검을 실행한다. 신뢰한 CA와 올바른 호스트 이름으로만 원장 검사를 통과해야 하며, 다른 인증서나 호스트 이름을 주면 점검 실패를 보고해야 한다. 임시 DB, 인증서와 백업 파일은 실행이 끝날 때 정리한다.
 
 이 훈련은 합성 데이터로 PostgreSQL 논리 복원을 검증한다. 운영 RDS에서는 자동 백업 보존 기간, 특정 시점 복구(PITR), 외부에 보관하는 암호화 키의 복구와 실제 복구 시간·손실 가능 구간(RTO·RPO)을 별도로 확인해야 한다.
 
@@ -221,6 +224,12 @@ docker build --secret id=npm_ca,src=/path/to/trusted-proxy-ca.pem --tag aqua-car
 이 클라우드 환경에서 Buildx가 읽기 전용 홈 디렉터리에 메타데이터를 쓰지 못하면 `BUILDX_CONFIG=/tmp/aqua-buildx`를 명령 앞에 지정한다. 홈 디렉터리나 Docker 인증 설정을 바꾸지 않는다.
 
 배포 전에 같은 이미지에서 `node dist-server/migrate.js` 또는 `npm run db:migrate:prod`를 별도 작업으로 실행한 뒤 API를 시작한다. 마이그레이션·런타임 연결을 구분할 수 있고 두 작업 모두 대상 DB·스키마와 TLS 신뢰를 명시해야 한다.
+
+로드 밸런서의 대상 그룹은 `/api/health`를 사용한다. 프로세스 생존 검사에는 이미지 기본값인 `/api/live`를 사용한다. 준비 검사는 연결 풀 대기를 포함해 2초 안에 응답하고 같은 프로세스의 동시 조회는 한 번으로 묶는다. 발급사·수탁사와의 통신 상태는 이 검사 범위 밖이다. AWS 대상 그룹의 모든 대상이 비정상이면 ALB가 다시 트래픽을 보낼 수 있으므로 전체 중단이 필요한 배포에서는 리스너의 유지보수 응답을 별도로 설정한다.
+
+새 프로세스는 DB의 전체 마이그레이션 목록·체크섬이 이미지와 일치해야 시작한다. 실행 중인 프로세스는 자신이 검증한 이력이 유지되고 새 버전이 뒤에 추가된 경우 계속 요청을 받는다. 롤링 배포에서는 기존 코드와 호환되는 SQL·권한을 먼저 적용하고 새 이미지의 준비 응답을 확인한 다음 이전 작업을 종료한다. 준비 검사는 SQL 변경의 호환성을 판정할 수 없다. 열·함수·권한 제거는 기존 API와 작업자 소비가 모두 끝난 뒤 별도 배포에서 적용한다. 기존 코드와 호환되지 않는 변경이 필요하면 먼저 트래픽과 쓰기를 멈추는 배포 절차를 스테이징에서 연습한다.
+
+이미 새 SQL이 적용된 DB에서는 이전 이미지를 다시 시작할 수 없다. 되돌릴 수 있는 변경은 현재 마이그레이션 이력과 호환되는 이미지로 배포한다. SIGTERM을 받은 HTTP 서버는 진행 중인 요청을 마친 뒤 DB 풀을 닫으며 최대 대기 시간은 20초다.
 
 운영 이미지는 `NODE_ENV=production`이 기본이며 HTTPS origin과 검증 가능한 운영 DB 연결 없이 실행하지 않는다. 읽기 전용 루트 파일시스템에서 실행할 수 있도록 로컬 DB·개발 메일함에 의존하지 않는다. TLS 종료와 비밀값 주입은 배포 환경에서 구성한다.
 

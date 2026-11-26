@@ -16,3 +16,8 @@ coverage
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+**/*.pem
+**/*.key
+**/*.crt
+**/*.p12
+**/*.pfx

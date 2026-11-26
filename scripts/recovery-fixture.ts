@@ -7,7 +7,7 @@ import { LedgerStore } from '../server/ledger';
 import { verifyMigrations } from '../server/migrations';
 import {
   verifyApplicationRole, verifyAuthMailRole, verifyCardDispatcherRole,
-  verifyCardIngressRole, verifyCardOperationsRole, verifyCardWorkerRole,
+  verifyCardIngressRole, verifyCardOperationsRole, verifyCardWorkerRole, verifyMonitorRole,
 } from '../server/permissions';
 import { reconcileRewards } from '../server/reward-reconciliation';
 import { RewardsStore } from '../server/rewards';
@@ -97,6 +97,7 @@ async function verifyServiceRoles() {
     ['DISPATCHER_DATABASE_URL', verifyCardDispatcherRole],
     ['OPERATIONS_DATABASE_URL', verifyCardOperationsRole],
     ['AUTH_MAIL_DATABASE_URL', verifyAuthMailRole],
+    ['MONITOR_DATABASE_URL', verifyMonitorRole],
   ] as const) await withRole(variable, verify);
 }
 

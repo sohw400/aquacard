@@ -1,6 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { AuthMailPayloadError, decryptAuthMail, type AuthMailKeyring, type AuthMailOutbox, type AuthMailResult } from './auth-mail';
 import { AuthMailTransportError, type AuthMailTransport } from './auth-mail-transport';
+import { workerHeartbeat } from './worker-liveness';
 
 type Outbox = Pick<AuthMailOutbox, 'claim' | 'finish' | 'stats'>;
 /** No network operation runs inside a database transaction. Retries preserve the token. */
@@ -45,11 +46,13 @@ export async function runAuthMailWorker(outbox: Outbox, transport: AuthMailTrans
   options: { signal: AbortSignal; pollMs: number; report: (event: Record<string, unknown>) => void }): Promise<void> {
   const { signal, pollMs, report } = options;
   if (!Number.isInteger(pollMs) || pollMs < 250 || pollMs > 60_000) throw new Error('Invalid auth mail polling interval.');
+  const heartbeat = workerHeartbeat('AuthMailWorkerHeartbeat', process.env.AQUA_MONITOR_ENVIRONMENT, report);
   let failures = 0, nextHealth = 0;
   while (!signal.aborted) {
     let processed = false, wait = pollMs;
     try {
       const result = await dispatchAuthMailOnce(outbox, transport, schema, keyring, signal);
+      if (!signal.aborted) heartbeat?.();
       failures = 0; processed = result !== null;
       if (result) report({ event: 'auth_mail_processed', ...result });
     } catch {

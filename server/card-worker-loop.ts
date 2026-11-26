@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { CardInboxStore } from './card-inbox';
+import { workerHeartbeat } from './worker-liveness';
 
 export interface CardWorkerOptions {
   signal: AbortSignal;
@@ -10,6 +11,7 @@ export interface CardWorkerOptions {
 /** One awaited DB transaction at a time. Shutdown never abandons an active commit. */
 export async function runCardWorker(inbox: Pick<CardInboxStore, 'processNext' | 'stats'>, { signal, pollMs, report }: CardWorkerOptions): Promise<void> {
   if (!Number.isInteger(pollMs) || pollMs < 250 || pollMs > 60_000) throw new Error('Worker poll interval must be between 250 and 60000 ms.');
+  const heartbeat = workerHeartbeat('CardWorkerHeartbeat', process.env.AQUA_MONITOR_ENVIRONMENT, report);
   let failures = 0;
   let nextHealth = 0;
   while (!signal.aborted) {
@@ -17,6 +19,7 @@ export async function runCardWorker(inbox: Pick<CardInboxStore, 'processNext' | 
     let processed = false;
     try {
       const result = await inbox.processNext();
+      if (!signal.aborted) heartbeat?.();
       failures = 0;
       if (result) report({ event: 'card_inbox_processed', ...result });
       processed = result !== null;

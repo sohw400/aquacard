@@ -6,8 +6,19 @@ COPY --chmod=0644 package.json package-lock.json ./
 RUN --mount=type=secret,id=npm_ca,required=false \
     if [ -s /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; \
     npm ci --no-audit --no-fund
-COPY . .
+COPY index.html tsconfig.json tsconfig.server.json vite.config.ts ./
+COPY server ./server
+COPY shared ./shared
+COPY src ./src
+COPY public ./public
+COPY scripts/build-server.mjs scripts/recovery-fixture.ts ./scripts/
 RUN npm run build:server && npm run build:connected
+
+FROM ${NODE_IMAGE} AS rds-trust
+ARG RDS_CA_SHA256
+RUN --mount=type=secret,id=rds_ca,required=false \
+    --mount=type=bind,source=docker/install-rds-ca.mjs,target=/tmp/install-rds-ca.mjs \
+    mkdir /trust && node /tmp/install-rds-ca.mjs
 
 FROM ${NODE_IMAGE} AS runtime
 WORKDIR /app
@@ -21,9 +32,10 @@ RUN --mount=type=secret,id=npm_ca,required=false \
     npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY --from=build /app/dist-server ./dist-server
 COPY --from=build /app/dist ./dist
+COPY --from=rds-trust /trust/ /etc/
 RUN find dist-server dist -type d -exec chmod 0755 {} + && find dist-server dist -type f -exec chmod 0644 {} +
 USER node
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.AQUA_PORT||'3001')+'/api/health',{signal:AbortSignal.timeout(3000)}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.AQUA_PORT||'3001')+'/api/live',{signal:AbortSignal.timeout(3000)}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
 CMD ["node", "dist-server/index.js"]

@@ -39,6 +39,8 @@ jobs:
       DATABASE_INGRESS_ROLE: aqua_ingress
       DATABASE_DISPATCHER_ROLE: aqua_dispatcher
       DATABASE_OPERATIONS_ROLE: aqua_operations
+      DATABASE_MONITOR_ROLE: aqua_monitor
+      MONITOR_DATABASE_URL: postgresql://aqua_monitor:aqua_monitor_local_only@127.0.0.1:5432/aqua
       DATABASE_AUTH_MAIL_ROLE: aqua_auth_mail
       AUTH_MAIL_DATABASE_URL: postgresql://aqua_auth_mail:aqua_auth_mail_local_only@127.0.0.1:5432/aqua
       OPERATIONS_DATABASE_URL: postgresql://aqua_operations:aqua_operations_local_only@127.0.0.1:5432/aqua
@@ -63,6 +65,16 @@ jobs:
         shell: bash
         run: |
           printf 'AQUA_MAIL_DIR=%s\n' "$RUNNER_TEMP/aqua-server-check/mail" >> "$GITHUB_ENV"
+      - name: Check monitoring infrastructure and alarm metrics
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/aqua-cfn"
+          source "$RUNNER_TEMP/aqua-cfn/bin/activate"
+          python -m pip install --disable-pip-version-check cfn-lint==1.40.4
+          cfn-lint --regions ap-northeast-2 --template infra/operations-monitoring.yaml
+          node --import tsx scripts/check-operations-alarms.mjs
+      - name: Verify trust bundle packaging
+        run: node --test scripts/rds-ca.test.mjs
       - name: Check server types
         run: npm run typecheck:server
       - name: Bootstrap the isolated test application role
@@ -93,8 +105,25 @@ jobs:
         run: npm run build:connected
       - name: Compile the server and migration runner
         run: npm run build:server
-      - name: Check the production container build
-        run: docker build --tag aqua-card-server:ci .
+      - name: Build the release container with a test trust anchor
+        shell: bash
+        run: |
+          aqua_test_ca="$RUNNER_TEMP/aqua-ci-ca.pem"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=Aqua-CI \
+            -addext basicConstraints=critical,CA:TRUE -keyout /dev/null -out "$aqua_test_ca" 2>/dev/null
+          read -r aqua_ca_hash _ < <(sha256sum "$aqua_test_ca")
+          docker buildx build --load --no-cache-filter rds-trust \
+            --secret "id=rds_ca,src=$aqua_test_ca" --build-arg "RDS_CA_SHA256=$aqua_ca_hash" \
+            --tag aqua-card-server:ci .
+          docker run --rm --read-only --entrypoint node aqua-card-server:ci --input-type=module -e '
+            import assert from "node:assert/strict";
+            import { createHash } from "node:crypto";
+            import { readFileSync, statSync } from "node:fs";
+            const path = "/etc/aqua/rds-ca.pem";
+            assert.notEqual(process.getuid(), 0);
+            assert.equal(statSync(path).mode & 0o777, 0o444);
+            assert.equal(createHash("sha256").update(readFileSync(path)).digest("hex"), process.argv[1]);
+          ' "$aqua_ca_hash"
       - name: Check the compiled container with a read-only filesystem
         shell: bash
         run: |
@@ -128,6 +157,7 @@ jobs:
           assert.equal(existsSync('/app/.env'), false);
           assert.equal('NODE_EXTRA_CA_CERTS' in process.env, false);
           const base = 'http://127.0.0.1:3002';
+          for (const probe of ['/api/live', '/api/health']) assert.equal((await fetch(base + probe)).status, 200);
           const page = await fetch(base);
           assert.equal(page.status, 200);
           const html = await page.text();
@@ -140,6 +170,17 @@ jobs:
           docker run --rm --network host --read-only --no-healthcheck --cap-drop ALL --security-opt no-new-privileges \
             -e NODE_ENV=development -e WORKER_DATABASE_URL -e DATABASE_SCHEMA \
             aqua-card-server:ci node dist-server/card-worker.js --once
+          docker run --rm --network host --read-only --no-healthcheck --cap-drop ALL --security-opt no-new-privileges \
+            -e NODE_ENV=development -e MONITOR_DATABASE_URL -e DATABASE_SCHEMA -e AQUA_MONITOR_ENVIRONMENT=ci \
+            aqua-card-server:ci node dist-server/operations-monitor.js | node --input-type=module -e '
+              import assert from "node:assert/strict";
+              let input = ""; for await (const chunk of process.stdin) input += chunk;
+              const event = JSON.parse(input);
+              assert.equal(event.Environment, "ci");
+              assert.equal(event.MonitorHealthy, 1);
+              assert.equal(event.LedgerFindings, 0);
+              assert.equal(event.CardInboxDueCount, 0);
+            '
           aqua_report="$(docker run --rm --network host --read-only --no-healthcheck --cap-drop ALL --security-opt no-new-privileges \
             -e NODE_ENV=development -e OPERATIONS_DATABASE_URL -e DATABASE_SCHEMA \
             aqua-card-server:ci node dist-server/card-operations-operator.js \

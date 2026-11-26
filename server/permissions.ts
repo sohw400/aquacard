@@ -26,6 +26,7 @@ export async function grantApplicationRole(database: Database, role: string): Pr
     await client.query(`GRANT DELETE ON auth_sessions, auth_recovery, auth_email_verification, auth_rate_limits TO ${quoted}`);
     await client.query(`REVOKE ALL ON card_payments, card_payment_events FROM ${quoted}`);
     await client.query(`GRANT SELECT ON card_payments, card_payment_events TO ${quoted}`);
+    await client.query(`GRANT EXECUTE ON FUNCTION internal_ledger_findings() TO ${quoted}`);
     await client.query(`REVOKE ALL ON FUNCTION apply_sandbox_card_event(jsonb, bigint) FROM ${quoted}`);
     await client.query(`GRANT EXECUTE ON FUNCTION apply_sandbox_card_event(jsonb, bigint) TO ${quoted}`);
     await client.query(`REVOKE ALL ON reward_wallets, reward_journals, reward_entries, reward_commands, reward_cashback_months, card_reward_allocations, reward_program, reward_history FROM ${quoted}`);
@@ -122,6 +123,7 @@ const cardServiceFunctions = {
   worker: ['process_card_inbox(bigint)', 'card_inbox_stats(bigint)'],
   dispatcher: ['claim_issuer_outbox(bigint)', 'finish_issuer_outbox(jsonb,bigint)', 'issuer_outbox_stats(bigint)'],
   operations: ['prepare_card_operations_report(jsonb)', 'read_card_operations_report(text)'],
+  monitor: ['read_queue_health(bigint)', 'operations_ledger_finding_count()'],
   mail: ['claim_auth_mail(bigint)', 'finish_auth_mail(jsonb,bigint)', 'auth_mail_stats(bigint)'],
 } as const;
 
@@ -174,6 +176,9 @@ export const grantCardDispatcherRole = (database: Database, role: string) => gra
 export const verifyCardDispatcherRole = (database: Database) => verifyCardServiceRole(database, 'dispatcher');
 export const grantCardOperationsRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'operations');
 export const verifyCardOperationsRole = (database: Database) => verifyCardServiceRole(database, 'operations');
+
+export const grantMonitorRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'monitor');
+export const verifyMonitorRole = (database: Database) => verifyCardServiceRole(database, 'monitor');
 
 export const grantAuthMailRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'mail');
 export const verifyAuthMailRole = (database: Database) => verifyCardServiceRole(database, 'mail');
