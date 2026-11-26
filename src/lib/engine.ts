@@ -1137,9 +1137,9 @@ function migrateAccount(account: Record<string, unknown>): Record<string, unknow
     risk: 'standard', ...(timestamp(account.verifiedAt) ? { kycDueAt: addYears(account.verifiedAt, RECHECK_YEARS.standard) } : {}), ...account, kyc };
 }
 
-export function loadState(): AppState {
+export function loadState(storageKey = STORAGE_KEY, initialState = createInitialState): AppState {
   try {
-    const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
+    const raw = globalThis.localStorage?.getItem(storageKey);
     if (raw) {
       const candidate: unknown = JSON.parse(raw);
       const migrated = record(candidate) && candidate.version === 1
@@ -1149,11 +1149,11 @@ export function loadState(): AppState {
       if (validState(migrated)) return applyAction(migrated, { type: 'TICK' });
     }
   } catch { /* Disabled storage or corrupt snapshots reset safely to demo balances. */ }
-  return createInitialState();
+  return initialState();
 }
 
-export function saveState(state: AppState): void {
+export function saveState(state: AppState, storageKey = STORAGE_KEY): void {
   try {
-    if (validState(state)) globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (validState(state)) globalThis.localStorage?.setItem(storageKey, JSON.stringify(state));
   } catch { /* Browsing with disabled/full storage still works for this session. */ }
 }

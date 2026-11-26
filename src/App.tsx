@@ -77,8 +77,8 @@ function useModalOpen(): boolean {
   return open;
 }
 
-export default function App() {
-  const [state, setState] = useState<AppState>(() => loadState());
+export default function App({ storageKey, initialState }: { storageKey?: string; initialState?: () => AppState }) {
+  const [state, setState] = useState<AppState>(() => loadState(storageKey, initialState));
   const stateRef = useRef(state);
   const [page, setPage] = useState<Page>('home');
   const [trail, setTrail] = useState<Page[]>([]);
@@ -167,7 +167,7 @@ export default function App() {
     confirmationTimers.current.add(timer);
   }, [perform]);
 
-  useEffect(() => { saveState(state); }, [state]);
+  useEffect(() => { saveState(state, storageKey); }, [state, storageKey]);
   useEffect(() => {
     const timer = setInterval(() => { perform({ type: 'TICK' }); }, 1_000);
     stateRef.current.payments.filter((item) => item.status === 'pending').forEach((item) => confirmPayment(item.id));
