@@ -68,7 +68,7 @@ npm run server:inbox -- retry INBOX_UUID CURRENT_VERSION RETRY_KEY '선행 승�
 
 `server:card:worker`를 인자 없이 실행하면 계속 처리한다. SIGTERM·SIGINT에는 새 처리를 멈추고 현재 트랜잭션을 마친 뒤 종료한다. `--once`는 한 건 또는 유휴 결과를 출력한다. 종료 코드는 0이 정상 처리·예약·유휴, 2가 검토 전환, 1이 실행 실패다. 운영 이미지에서는 `node dist-server/card-worker.js`를 별도 프로세스로 실행하며 검증된 DB TLS와 제한된 작업자 역할이 필요하다.
 
-공통 Docker 이미지의 기본 `HEALTHCHECK`는 API의 `/api/health`를 호출한다. 작업자는 HTTP 서버를 열지 않으므로 전용 컨테이너는 `docker run --no-healthcheck` 또는 Compose의 `healthcheck: { disable: true }`로 이 검사를 끈다. 배포 환경에서도 API 검사를 그대로 상속하지 않는다. 대신 프로세스 종료와 `card_inbox_health` 로그의 지속 수신·대기 시간·검토 건수를 감시해야 한다. 이 감시와 알림의 운영 연결은 아직 구성하지 않았다.
+공통 Docker 이미지의 기본 `HEALTHCHECK`는 API의 `/api/live`를 호출한다. 작업자는 HTTP 서버를 열지 않으므로 전용 컨테이너에서는 `docker run --no-healthcheck` 또는 Compose의 `healthcheck: { disable: true }`를 설정한다. 작업자의 프로세스 종료·생존 신호와 카드 수신 큐의 처리 지연·검토 대상을 감시한다. [운영 지표와 알림](operations-monitoring.md)
 
 ## 서명한 HTTP 테스트
 
@@ -82,7 +82,7 @@ npm run server:inbox -- retry INBOX_UUID CURRENT_VERSION RETRY_KEY '선행 승�
 | `x-aqua-timestamp` | 전송 당시 Unix 초, 서버 시각과 최대 300초 차이 |
 | `x-aqua-signature` | `v1=` 뒤 HMAC-SHA256 소문자 16진수 64자 |
 
-서명 대상은 UTF-8 문자열 `sandbox.cards.v1.KEY_ID.TIMESTAMP.`와 **전송할 JSON 원문 바이트**를 이어 붙인 값이다. 공백이 바뀌어도 서명을 다시 계산해야 한다. 헤더 중복, 알 수 없는 키, 서명 변조, 허용 시간을 벗어난 요청은 401로 거절한다. 성공 202, 내용 충돌 409, 저장 결과 불확실 503을 반환한다. 503은 같은 이벤트로 재전송한다. `/health`는 DB 연결 여부만 반환하며 거래 조회·재처리 API는 제공하지 않는다.
+서명 대상은 UTF-8 문자열 `sandbox.cards.v1.KEY_ID.TIMESTAMP.`와 **전송할 JSON 원문 바이트**를 이어 붙인 값이다. 공백이 바뀌어도 서명을 다시 계산해야 한다. 헤더 중복, 알 수 없는 키, 서명 변조, 허용 시간을 벗어난 요청은 401로 거절한다. 성공 202, 내용 충돌 409, 저장 결과 불확실 503을 반환한다. 503은 같은 이벤트로 재전송한다. 수신기의 `GET /live`는 프로세스 응답을 확인한다. `GET /health`는 해당 배포의 마이그레이션 이력, 쓰기 가능한 기본 DB, 접수 함수 실행 권한을 확인한다. 준비가 되면 200, 준비가 되지 않았거나 2초 안에 확인할 수 없으면 503이다.
 
 ## 검증 범위
 

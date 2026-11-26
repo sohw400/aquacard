@@ -20,7 +20,7 @@ cleanup() {
   local status=$?
   trap - EXIT
   remove_cluster || status=1
-  rm -f -- "$archive"
+  rm -f -- "$archive" "$scratch/monitor-ca.pem" "$scratch/untrusted-ca.pem"
   rmdir -- "$scratch" || status=1
   exit "$status"
 }
@@ -31,6 +31,7 @@ trap 'exit 143' TERM
 
 export NODE_ENV=test DATABASE_SCHEMA=aqua
 export DATABASE_RUNTIME_ROLE=aqua_app DATABASE_INGRESS_ROLE=aqua_ingress DATABASE_WORKER_ROLE=aqua_worker
+export DATABASE_MONITOR_ROLE=aqua_monitor
 export DATABASE_DISPATCHER_ROLE=aqua_dispatcher DATABASE_OPERATIONS_ROLE=aqua_operations DATABASE_AUTH_MAIL_ROLE=aqua_auth_mail
 unset DATABASE_CA_FILE DATABASE_POOL_SIZE MIGRATION_DATABASE_URL
 admin_password=$(node -e "process.stdout.write(require('node:crypto').randomBytes(24).toString('hex'))")
@@ -56,6 +57,7 @@ start_cluster() {
   export WORKER_DATABASE_URL="postgresql://aqua_worker:aqua_worker_local_only@$address"
   export DISPATCHER_DATABASE_URL="postgresql://aqua_dispatcher:aqua_dispatcher_local_only@$address"
   export OPERATIONS_DATABASE_URL="postgresql://aqua_operations:aqua_operations_local_only@$address"
+  export MONITOR_DATABASE_URL="postgresql://aqua_monitor:aqua_monitor_local_only@$address"
   export AUTH_MAIL_DATABASE_URL="postgresql://aqua_auth_mail:aqua_auth_mail_local_only@$address"
   owner_url="postgresql://aqua:$admin_password@$address"
 }
@@ -71,3 +73,40 @@ start_cluster aqua_recovery_restored
 docker exec -i "$cluster" pg_restore -U aqua --single-transaction --exit-on-error \
   --dbname=aqua_recovery_restored < "$archive"
 node --import tsx scripts/recovery-fixture.ts verify
+
+# Generate the short-lived certificates as postgres on this container's tmpfs.
+# Only the two public trust anchors are copied out. PostgreSQL checks key modes.
+docker exec -i --user postgres "$cluster" sh -eu <<'TLS'
+umask 077
+mkdir "$PGDATA/drill-tls"
+cd "$PGDATA/drill-tls"
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=Aqua recovery CA' \
+  -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign' \
+  -keyout ca.key -out ca.pem 2>/dev/null
+openssl req -new -newkey rsa:2048 -nodes -subj '/CN=localhost' -keyout server.key -out server.csr 2>/dev/null
+cat > server.ext <<'EXT'
+basicConstraints=critical,CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=DNS:localhost
+EXT
+openssl x509 -req -in server.csr -CA ca.pem -CAkey ca.key -set_serial 1 -days 1 \
+  -extfile server.ext -out server.pem 2>/dev/null
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=Unrelated recovery CA' \
+  -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign' \
+  -keyout /dev/null -out unrelated.pem 2>/dev/null
+rm -f ca.key server.csr
+TLS
+docker exec --user postgres "$cluster" sh -c 'cat "$PGDATA/drill-tls/ca.pem"' > "$scratch/monitor-ca.pem"
+docker exec --user postgres "$cluster" sh -c 'cat "$PGDATA/drill-tls/unrelated.pem"' > "$scratch/untrusted-ca.pem"
+docker exec "$cluster" psql -X -v ON_ERROR_STOP=1 -U aqua -d aqua_recovery_restored \
+  -c "ALTER SYSTEM SET ssl_cert_file = 'drill-tls/server.pem'" \
+  -c "ALTER SYSTEM SET ssl_key_file = 'drill-tls/server.key'" \
+  -c 'ALTER SYSTEM SET ssl = on' -c 'SELECT pg_reload_conf()' >/dev/null
+for ((attempt=0; attempt<10; attempt++)); do
+  active=$(docker exec "$cluster" psql -XAt -U aqua -d aqua_recovery_restored -c 'SHOW ssl')
+  [[ "$active" == on ]] && break
+  sleep 1
+done
+[[ "$active" == on ]] || { echo 'The restored PostgreSQL instance did not enable TLS.' >&2; exit 1; }
+node scripts/recovery-monitor-tls.mjs "$scratch/monitor-ca.pem" "$scratch/untrusted-ca.pem"

@@ -22,6 +22,14 @@ function checkHistory(migrations: Migration[], applied: { name: string; checksum
   }
 }
 
+export async function releaseMigrationManifest() {
+  const migrations = await files(new URL('./migrations/', import.meta.url));
+  return {
+    checksums: JSON.stringify(Object.fromEntries(migrations.map(({ name, checksum }) => [name, checksum]))),
+    lastVersion: migrations[migrations.length - 1].name.slice(0, 3),
+  };
+}
+
 /** A deployment runs this explicit command once; API instances never perform DDL on startup. */
 export async function applyMigrations(database: Database, directory = new URL('./migrations/', import.meta.url)): Promise<void> {
   const migrations = await files(directory);

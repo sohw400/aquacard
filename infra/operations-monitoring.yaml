@@ -1,0 +1,417 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Run the read-only Aqua Card operations monitor on private Fargate tasks and route alarms to the existing on-call topic.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedPattern: '^[a-z]([a-z0-9-]{0,30}[a-z0-9])?$'
+    Description: Unique environment metric dimension in this account and region.
+  ClusterArn:
+    Type: String
+    Description: ARN of the existing ECS cluster in this account and region.
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  TaskSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group that can reach PostgreSQL and the required regional endpoints.
+  EcrRepositoryName:
+    Type: String
+    AllowedPattern: '[a-z0-9]+(?:[._/-][a-z0-9]+)*'
+    Description: Private ECR repository in this account and region.
+  ImageDigest:
+    Type: String
+    AllowedPattern: 'sha256:[a-f0-9]{64}'
+    Description: Immutable digest of the server image including the trusted RDS CA bundle.
+  DatabaseSchema:
+    Type: String
+    Default: aqua
+    AllowedPattern: '[a-z][a-z0-9_]{0,62}'
+  MonitorDatabaseSecretArn:
+    Type: String
+    Description: Full Secrets Manager ARN whose current string is the monitor-only PostgreSQL URL.
+  DatabaseCaFile:
+    Type: String
+    Default: /etc/aqua/rds-ca.pem
+    AllowedPattern: '/[A-Za-z0-9_/.-]+'
+    Description: Readable path to the trusted RDS CA bundle in the image.
+  SecretKmsKeyArn:
+    Type: String
+    Default: ''
+    Description: Customer-managed KMS key ARN for this secret. Leave empty for the Secrets Manager default key.
+  AlarmTopicArn:
+    Type: String
+    Description: Existing, subscribed SNS topic in this region that accepts CloudWatch alarms.
+  OldestDueThresholdSeconds:
+    Type: Number
+    Default: 300
+    MinValue: 1
+    Description: Age since work first became eligible for its current attempt.
+  CardWorkerExpected:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+    Description: Enable only when a continuous card worker is expected in this environment.
+  IssuerDispatcherExpected:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+    Description: Enable only when a supported continuous issuer dispatcher is expected here.
+  AuthMailWorkerExpected:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+    Description: Enable only when a continuous auth mail worker is expected here.
+
+Conditions:
+  UsesSecretKmsKey: !Not [!Equals [!Ref SecretKmsKeyArn, '']]
+  WatchCardWorker: !Equals [!Ref CardWorkerExpected, 'true']
+  WatchIssuerDispatcher: !Equals [!Ref IssuerDispatcherExpected, 'true']
+  WatchAuthMailWorker: !Equals [!Ref AuthMailWorkerExpected, 'true']
+
+Resources:
+  MonitorLogs:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RetentionInDays: 30
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { 'aws:SourceAccount': !Ref 'AWS::AccountId' }
+              ArnLike: { 'aws:SourceArn': !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*' }
+      Policies:
+        - PolicyName: PullMonitorImageAndConfig
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action: [ecr:BatchGetImage, ecr:GetDownloadUrlForLayer, ecr:BatchCheckLayerAvailability]
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrRepositoryName}'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt MonitorLogs.Arn
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref MonitorDatabaseSecretArn
+              - !If
+                - UsesSecretKmsKey
+                - Effect: Allow
+                  Action: kms:Decrypt
+                  Resource: !Ref SecretKmsKeyArn
+                  Condition:
+                    StringEquals:
+                      kms:ViaService: !Sub 'secretsmanager.${AWS::Region}.${AWS::URLSuffix}'
+                      kms:EncryptionContext:SecretARN: !Ref MonitorDatabaseSecretArn
+                - !Ref AWS::NoValue
+  MonitorTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      RuntimePlatform: { CpuArchitecture: X86_64, OperatingSystemFamily: LINUX }
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: monitor
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/${EcrRepositoryName}@${ImageDigest}'
+          Essential: true
+          ReadonlyRootFilesystem: true
+          User: node
+          Command: [node, dist-server/operations-monitor.js]
+          Environment:
+            - { Name: NODE_ENV, Value: production }
+            - { Name: AQUA_MONITOR_ENVIRONMENT, Value: !Ref Environment }
+            - { Name: DATABASE_SCHEMA, Value: !Ref DatabaseSchema }
+            - { Name: DATABASE_CA_FILE, Value: !Ref DatabaseCaFile }
+          Secrets:
+            - { Name: MONITOR_DATABASE_URL, ValueFrom: !Ref MonitorDatabaseSecretArn }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref MonitorLogs
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: monitor
+              mode: blocking
+  ScheduleGroup:
+    Type: AWS::Scheduler::ScheduleGroup
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: scheduler.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { 'aws:SourceAccount': !Ref 'AWS::AccountId' }
+              ArnEquals: { 'aws:SourceArn': !GetAtt ScheduleGroup.Arn }
+      Policies:
+        - PolicyName: StartMonitorTask
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ecs:RunTask
+                Resource: !Ref MonitorTask
+                Condition:
+                  ArnEquals: { 'ecs:cluster': !Ref ClusterArn }
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt ExecutionRole.Arn
+                Condition:
+                  StringEquals: { 'iam:PassedToService': ecs-tasks.amazonaws.com }
+  MonitorSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      GroupName: !Ref ScheduleGroup
+      ScheduleExpression: rate(5 minutes)
+      FlexibleTimeWindow: { Mode: 'OFF' }
+      Target:
+        Arn: !Ref ClusterArn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        RetryPolicy: { MaximumEventAgeInSeconds: 240, MaximumRetryAttempts: 2 }
+        EcsParameters:
+          LaunchType: FARGATE
+          PlatformVersion: '1.4.0'
+          TaskCount: 1
+          TaskDefinitionArn: !Ref MonitorTask
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: DISABLED
+              SecurityGroups: [!Ref TaskSecurityGroupId]
+              Subnets: !Ref PrivateSubnetIds
+
+  MissingMonitorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Scheduled checks stopped reporting. Inspect the schedule, stopped tasks, secret, network and log delivery.
+      Namespace: AquaCard/Operations
+      MetricName: MonitorHealthy
+      Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+      Statistic: SampleCount
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+      OKActions: [!Ref AlarmTopicArn]
+  MonitorErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: A monitor execution could not complete. Check the aggregate event and migration status.
+      Namespace: AquaCard/Operations
+      MetricName: MonitorHealthy
+      Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: ignore
+      AlarmActions: [!Ref AlarmTopicArn]
+      OKActions: [!Ref AlarmTopicArn]
+  LedgerAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Internal ledger reconciliation found a discrepancy. Preserve the report and compare journal entries before any adjustment.
+      Namespace: AquaCard/Operations
+      MetricName: LedgerFindings
+      Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: ignore
+      AlarmActions: [!Ref AlarmTopicArn]
+      OKActions: [!Ref AlarmTopicArn]
+  OldestDueAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Eligible work exceeded the queue latency threshold. Find the affected queue in the monitor event.
+      Metrics:
+        - { Id: oldest, Expression: 'MAX([card,issuer,mail])', ReturnData: true }
+        - Id: card
+          ReturnData: false
+          MetricStat:
+            Period: 300
+            Stat: Maximum
+            Metric:
+              Namespace: AquaCard/Operations
+              MetricName: CardInboxOldestDueSeconds
+              Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+        - Id: issuer
+          ReturnData: false
+          MetricStat:
+            Period: 300
+            Stat: Maximum
+            Metric:
+              Namespace: AquaCard/Operations
+              MetricName: IssuerOutboxOldestDueSeconds
+              Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+        - Id: mail
+          ReturnData: false
+          MetricStat:
+            Period: 300
+            Stat: Maximum
+            Metric:
+              Namespace: AquaCard/Operations
+              MetricName: AuthMailOldestDueSeconds
+              Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+      EvaluationPeriods: 1
+      Threshold: !Ref OldestDueThresholdSeconds
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: ignore
+      AlarmActions: [!Ref AlarmTopicArn]
+      OKActions: [!Ref AlarmTopicArn]
+  ReviewAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: A card event exhausted retries or an issuer command requires a decision. Inspect the affected queue.
+      Metrics:
+        - { Id: awaiting, Expression: 'MAX([card,issuer])', ReturnData: true }
+        - Id: card
+          ReturnData: false
+          MetricStat:
+            Period: 300
+            Stat: Maximum
+            Metric:
+              Namespace: AquaCard/Operations
+              MetricName: CardInboxReviewCount
+              Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+        - Id: issuer
+          ReturnData: false
+          MetricStat:
+            Period: 300
+            Stat: Maximum
+            Metric:
+              Namespace: AquaCard/Operations
+              MetricName: IssuerOutboxReviewCount
+              Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: ignore
+      AlarmActions: [!Ref AlarmTopicArn]
+      OKActions: [!Ref AlarmTopicArn]
+  QueueFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: At least one monitored queue reported a terminal failure in its 15 minute lookback. Inspect the relevant delivery or event history.
+      Metrics:
+        - { Id: failures, Expression: 'MAX([card,issuer,mail])', ReturnData: true }
+        - Id: card
+          ReturnData: false
+          MetricStat:
+            Period: 300
+            Stat: Maximum
+            Metric:
+              Namespace: AquaCard/Operations
+              MetricName: CardInboxFailureCount
+              Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+        - Id: issuer
+          ReturnData: false
+          MetricStat:
+            Period: 300
+            Stat: Maximum
+            Metric:
+              Namespace: AquaCard/Operations
+              MetricName: IssuerOutboxFailureCount
+              Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+        - Id: mail
+          ReturnData: false
+          MetricStat:
+            Period: 300
+            Stat: Maximum
+            Metric:
+              Namespace: AquaCard/Operations
+              MetricName: AuthMailFailureCount
+              Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: ignore
+      AlarmActions: [!Ref AlarmTopicArn]
+      OKActions: [!Ref AlarmTopicArn]
+  BlockedCardAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Card events were blocked by earlier unprocessed captures across two periods. Inspect the predecessor first.
+      Namespace: AquaCard/Operations
+      MetricName: CardInboxBlockedCount
+      Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: ignore
+      AlarmActions: [!Ref AlarmTopicArn]
+      OKActions: [!Ref AlarmTopicArn]
+  CardWorkerAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: WatchCardWorker
+    Properties:
+      AlarmDescription: No successful card worker polls. Check desired and running tasks and database connectivity.
+      Namespace: AquaCard/Operations
+      MetricName: CardWorkerHeartbeat
+      Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+      Statistic: SampleCount
+      Period: 60
+      EvaluationPeriods: 5
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+      OKActions: [!Ref AlarmTopicArn]
+  IssuerDispatcherAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: WatchIssuerDispatcher
+    Properties:
+      AlarmDescription: No successful issuer dispatcher polls. Check the service and provider status before retrying uncertain commands.
+      Namespace: AquaCard/Operations
+      MetricName: IssuerDispatcherHeartbeat
+      Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+      Statistic: SampleCount
+      Period: 60
+      EvaluationPeriods: 5
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+      OKActions: [!Ref AlarmTopicArn]
+  AuthMailWorkerAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: WatchAuthMailWorker
+    Properties:
+      AlarmDescription: No successful auth mail polls. Check the worker, database and delivery configuration.
+      Namespace: AquaCard/Operations
+      MetricName: AuthMailWorkerHeartbeat
+      Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+      Statistic: SampleCount
+      Period: 60
+      EvaluationPeriods: 5
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+      OKActions: [!Ref AlarmTopicArn]
+
+Outputs:
+  MonitorLogGroup: { Value: !Ref MonitorLogs }
+  MonitorTaskDefinitionArn: { Value: !Ref MonitorTask }
+  MonitorScheduleArn: { Value: !GetAtt MonitorSchedule.Arn }

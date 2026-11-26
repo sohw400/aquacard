@@ -4,6 +4,7 @@ import { LedgerStore } from './ledger';
 import { databaseFromEnvironment } from './database';
 import { verifyMigrations } from './migrations';
 import { verifyApplicationRole } from './permissions';
+import { closeHttpService, drainOnShutdown } from './http-shutdown';
 import { authMailQueueFromEnvironment, type AuthMailQueue } from './auth-mail';
 
 const production = process.env.NODE_ENV === 'production';
@@ -40,16 +41,5 @@ const app = createApiServer(store, {
   mailQueue,
 });
 try { await app.listen({ port, host }); }
-catch (error) { await app.close(); await database.close(); throw error; }
-let closing = false;
-async function shutdown() {
-  if (closing) return;
-  closing = true;
-  const timeout = setTimeout(() => { process.exit(1); }, 20_000);
-  timeout.unref();
-  try { await app.close(); await database.close(); }
-  catch { process.exitCode = 1; }
-  finally { clearTimeout(timeout); }
-}
-process.on('SIGINT', () => { void shutdown(); });
-process.on('SIGTERM', () => { void shutdown(); });
+catch (error) { await closeHttpService(app, database); throw error; }
+drainOnShutdown(app, database);
