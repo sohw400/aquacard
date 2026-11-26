@@ -83,6 +83,8 @@ jobs:
         run: npm run db:migrate
       - name: Check server behavior
         run: npm run test:server
+      - name: Restore a synthetic PostgreSQL backup into a fresh cluster
+        run: npm run test:recovery
       - name: Check existing product logic
         run: npm test
       - name: Build the public demo
