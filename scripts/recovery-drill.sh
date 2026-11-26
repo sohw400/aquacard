@@ -30,6 +30,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 export NODE_ENV=test DATABASE_SCHEMA=aqua
+export DATABASE_SETTLEMENT_ROLE=aqua_settlement
 export DATABASE_RUNTIME_ROLE=aqua_app DATABASE_INGRESS_ROLE=aqua_ingress DATABASE_WORKER_ROLE=aqua_worker
 export DATABASE_MONITOR_ROLE=aqua_monitor
 export DATABASE_DISPATCHER_ROLE=aqua_dispatcher DATABASE_OPERATIONS_ROLE=aqua_operations DATABASE_AUTH_MAIL_ROLE=aqua_auth_mail
@@ -57,6 +58,7 @@ start_cluster() {
   export WORKER_DATABASE_URL="postgresql://aqua_worker:aqua_worker_local_only@$address"
   export DISPATCHER_DATABASE_URL="postgresql://aqua_dispatcher:aqua_dispatcher_local_only@$address"
   export OPERATIONS_DATABASE_URL="postgresql://aqua_operations:aqua_operations_local_only@$address"
+  export SETTLEMENT_DATABASE_URL="postgresql://aqua_settlement:aqua_settlement_local_only@$address"
   export MONITOR_DATABASE_URL="postgresql://aqua_monitor:aqua_monitor_local_only@$address"
   export AUTH_MAIL_DATABASE_URL="postgresql://aqua_auth_mail:aqua_auth_mail_local_only@$address"
   owner_url="postgresql://aqua:$admin_password@$address"
@@ -73,6 +75,8 @@ start_cluster aqua_recovery_restored
 docker exec -i "$cluster" pg_restore -U aqua --single-transaction --exit-on-error \
   --dbname=aqua_recovery_restored < "$archive"
 node --import tsx scripts/recovery-fixture.ts verify
+# Reconcile the independent, normalized example against the restored ledger.
+node --import tsx server/reconcile-issuer-statement.ts docs/examples/issuer-statement.json
 
 # Generate the short-lived certificates as postgres on this container's tmpfs.
 # Only the two public trust anchors are copied out. PostgreSQL checks key modes.

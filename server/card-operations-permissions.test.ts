@@ -9,6 +9,7 @@ import { verifyMigrations } from './migrations';
 import {
   grantMonitorRole, verifyMonitorRole, grantApplicationRole, grantCardIngressRole, grantCardWorkerRole, grantCardDispatcherRole, grantCardOperationsRole,
   verifyApplicationRole, verifyCardIngressRole, verifyCardWorkerRole, verifyCardDispatcherRole, verifyCardOperationsRole,
+  grantSettlementRole, verifySettlementRole,
 } from './permissions';
 
 const access = {
@@ -18,6 +19,7 @@ const access = {
   worker: { grant: grantCardWorkerRole, verify: verifyCardWorkerRole },
   dispatcher: { grant: grantCardDispatcherRole, verify: verifyCardDispatcherRole },
   operations: { grant: grantCardOperationsRole, verify: verifyCardOperationsRole },
+  settlement: { grant: grantSettlementRole, verify: verifySettlementRole },
 };
 type Service = keyof typeof access;
 
@@ -114,6 +116,27 @@ test('monitor can count incidents without customer records, traces or payment ac
   await assert.rejects(verifyMonitorRole(database), /restricted monitor/);
   await fixtureRoles.database.query(`REVOKE SELECT(email) ON users FROM "${name}"`);
   await verifyMonitorRole(database);
+});
+
+test('only the settlement login can read daily statement postings and it has no access to raw records or payment actions', async (t) => {
+  const f = await fixture(t, ['api', 'ingress', 'worker', 'dispatcher', 'monitor', 'operations', 'settlement']);
+  const { database, name } = f.service('settlement');
+  const daily = 'SELECT * FROM issuer_statement_postings($1::bigint,$2::bigint)';
+  const window = [Date.UTC(2025, 10, 25, 15), Date.UTC(2025, 10, 26, 15)];
+  await verifySettlementRole(database);
+  assert.deepEqual((await database.query(daily, window)).rows, []);
+  for (const [service, role] of f.roles) {
+    if (service !== 'settlement') await assert.rejects(role.database.query(daily, window), /permission denied/);
+  }
+  for (const sql of ['SELECT email FROM users', 'SELECT * FROM journal_entries', 'SELECT * FROM card_payment_events',
+    'SELECT prepare_card_operations_report(NULL)', 'SELECT operations_ledger_finding_count()',
+    'SELECT process_card_inbox(1000::bigint)', 'DELETE FROM journals']) {
+    await assert.rejects(database.query(sql), /permission denied/);
+  }
+  await f.database.query(`GRANT SELECT(email) ON users TO "${name}"`);
+  await assert.rejects(verifySettlementRole(database), /restricted settlement/);
+  await grantSettlementRole(f.database, name);
+  await verifySettlementRole(database);
 });
 
 test('operations startup rejects accidental table, column, schema and private function permissions', async (t) => {

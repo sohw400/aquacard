@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
+import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { applyMigrations } from './migrations';
 import test from 'node:test';
 import { Database } from './database';
 import { bootstrapMonitor, stagingCredentials } from './staging-bootstrap-store';
@@ -85,12 +90,20 @@ test('a non-superuser bootstraps a fresh database, retries safely and refuses a 
   assert.equal((await monitor.query('SELECT operations_ledger_finding_count() AS issues')).rows[0].issues, '0');
   await assert.rejects(monitor.query('SELECT email FROM users'), /permission denied/);
 
-  // Recreate the previous release's prefix in this disposable fixture. The
-  // existing monitor can authenticate, but the new function and its grant do not exist.
-  await owner.transaction(async client => {
-    await client.query('DROP FUNCTION operations_ledger_finding_count(), internal_ledger_findings()');
-    await client.query("DELETE FROM schema_migrations WHERE name='014_ledger_monitor.sql'");
-  });
+  // Rebuild the actual 013 schema. Newer release migrations can then advance
+  // normally, including migrations unrelated to the original monitor grant.
+  const previous = await mkdtemp(join(tmpdir(), 'aqua-bootstrap-013-'));
+  try {
+    const migrations = new URL('./migrations/', import.meta.url);
+    for (const name of (await readdir(migrations)).filter(name => /^\d{3}_.*\.sql$/.test(name) && name < '014')) {
+      await copyFile(new URL(name, migrations), join(previous, name));
+    }
+    await owner.query('DROP SCHEMA aqua CASCADE');
+    await applyMigrations(owner, pathToFileURL(previous + '/'));
+    await owner.query(`GRANT USAGE ON SCHEMA aqua TO "${monitorRole}"`);
+    await owner.query(`GRANT SELECT ON schema_migrations TO "${monitorRole}"`);
+    await owner.query(`GRANT EXECUTE ON FUNCTION read_queue_health(bigint) TO "${monitorRole}"`);
+  } finally { await rm(previous, { recursive: true, force: true }); }
   await bootstrapMonitor(owner, monitor, identity);
   assert.equal((await monitor.query('SELECT operations_ledger_finding_count() AS issues')).rows[0].issues, '0');
   assert.equal(await verifier(), first);

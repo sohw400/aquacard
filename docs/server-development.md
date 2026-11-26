@@ -84,6 +84,7 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 | `DISPATCHER_DATABASE_URL` | 발신 명령 확보·결과 기록·집계 함수만 실행하는 별도 연결. 회원·명령 생성·장부 변경 권한을 주지 않는다. |
 | `DATABASE_OPERATIONS_ROLE` | 카드 거래 운영 조회 전용 역할. 다른 런타임 역할과 분리한다. 로컬 `aqua_operations`. |
 | `OPERATIONS_DATABASE_URL` | 조회 기록 준비·결과 확인 함수만 실행하는 별도 연결. API·관리자 주소로 대체하지 않는다. |
+| `DATABASE_SETTLEMENT_ROLE`, `SETTLEMENT_DATABASE_URL` | 마감된 하루의 매입·환불 전표를 읽는 정산 전용 역할과 접속 주소. 로컬 기본 역할은 `aqua_settlement`다. |
 | `DATABASE_MONITOR_ROLE`, `MONITOR_DATABASE_URL` | 원장 불일치 건수와 대기열 집계만 읽는 계정. 로컬 기본값은 `aqua_monitor`다. |
 | `AQUA_MONITOR_ENVIRONMENT` | 점검 명령과 상시 작업자가 CloudWatch 지표에 기록하는 환경 이름. [.env.example](../.env.example)의 로컬 예시는 `local`이다. |
 | `DATABASE_AUTH_MAIL_ROLE`, `AUTH_MAIL_DATABASE_URL` | 별도 메일 발송 역할과 연결. 로컬 역할은 `aqua_auth_mail`이며 API·카드 작업자·관리자와 분리한다. |

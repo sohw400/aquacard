@@ -8,6 +8,7 @@ const serviceUrls = {
   dispatcher: 'DISPATCHER_DATABASE_URL',
   operations: 'OPERATIONS_DATABASE_URL',
   monitor: 'MONITOR_DATABASE_URL',
+  settlement: 'SETTLEMENT_DATABASE_URL',
 } as const;
 
 /** Each service requires its own login, including the read-only scheduled monitor. */
