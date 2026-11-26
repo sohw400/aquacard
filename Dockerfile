@@ -11,7 +11,7 @@ COPY server ./server
 COPY shared ./shared
 COPY src ./src
 COPY public ./public
-COPY scripts/build-server.mjs scripts/recovery-fixture.ts ./scripts/
+COPY scripts/build-server.mjs scripts/recovery-fixture.ts scripts/pitr-fixture.ts ./scripts/
 RUN npm run build:server && npm run build:connected
 
 FROM ${NODE_IMAGE} AS rds-trust

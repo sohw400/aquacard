@@ -4,5 +4,5 @@
     "lib": ["ES2023"],
     "types": ["node"]
   },
-  "include": ["server", "shared", "scripts/recovery-fixture.ts"]
+  "include": ["server", "shared", "scripts/recovery-fixture.ts", "scripts/pitr-fixture.ts"]
 }
