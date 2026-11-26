@@ -170,6 +170,22 @@ AQUA_BASE_URL=http://127.0.0.1:5173 npm run test:card:browser
 
 업그레이드 검사는 기존 001·002 마이그레이션의 계정·충전 기록을 유지하고, 구버전 API 방식으로 새 가입이 이어져도 보류 계정이 자동 생성되는지 확인한다. 제한된 DB 역할로 처리하며, 직접 기록 변경과 임의의 DB 설정을 통한 카드 전표 위조가 거절되는지도 검사한다.
 
+## 카드 정산 내부 대사
+
+`npm run server:reconcile`은 같은 시점의 카드 이벤트, 결제 전표, 테스트 정산 계정을 대조한다. `counts.cardPayments`는 검사한 결제 수, `counts.cardPaymentEvents`는 기록된 승인·매입·승인 취소·환불 이벤트 수다. 승인 보류액은 매입 전까지 정산액에서 제외한다. 리워드와 원금을 나눠 쓴 결제는 두 재원의 분개를 합쳐 매입액과 환불액을 각각 비교한다.
+
+예를 들어 100원을 승인하고 전부 매입한 뒤 30원을 환불하면, 해당 결제의 정산 계정에는 입금 100원과 출금 30원이 기록되고 순액 70원이 남는다. 그 뒤 10원을 더 환불한 경우, 환불 두 건이 29원과 11원으로 잘못 기록되면 총액은 같아도 원래 이벤트 번호 두 개가 보고된다.
+
+| 보고 코드 | 확인할 기록 |
+| --- | --- |
+| `CARD_EVENT_AUTHORIZATION_COUNT_MISMATCH`, `CARD_EVENT_AUTHORIZED_MISMATCH`, `CARD_EVENT_CAPTURED_MISMATCH`, `CARD_EVENT_REFUNDED_MISMATCH` | 결제별 승인 1건 여부와 이벤트 금액 합계를 결제 전표와 비교한다. |
+| `CARD_SETTLEMENT_CAPTURED_MISMATCH`, `CARD_SETTLEMENT_REFUNDED_MISMATCH` | 결제 번호로 정산 분개의 입금·출금과 결제 전표의 누적 매입·환불을 대조한다. |
+| `CARD_EVENT_SETTLEMENT_CAPTURED_MISMATCH`, `CARD_EVENT_SETTLEMENT_REFUNDED_MISMATCH` | 이벤트 번호로 요청 금액과 그 이벤트가 만든 정산 분개를 확인한다. |
+| `CARD_EVENT_AMOUNT_INVALID`, `CARD_SETTLEMENT_EVENT_LINK_MISMATCH` | 금액 형식에 문제가 있으면 이벤트 번호를, 분개와 이벤트의 결제 번호가 맞지 않으면 분개 번호를 확인한다. |
+| `CARD_SETTLEMENT_BALANCE_MISMATCH` | 모든 결제의 누적 매입액에서 누적 환불액을 뺀 금액과 테스트 정산 계정 잔액을 비교한다. |
+
+종료 코드 `1`이면 보고서의 `code`, `reference`, `expected`, `actual`을 보관한다. 이벤트 번호는 [카드 거래 운영 조회](card-operations.md)에서 추적할 수 있다. 검사는 읽기 전용이며, 외부 발급사 명세서와의 대사는 해당 자료가 확보된 뒤 별도로 수행한다.
+
 ## 다음 연결 범위
 
 실제 발급사 연동에는 업체가 정한 서명·시간·이벤트 식별자 검증, 내구성 있는 수신 기록과 재처리, 순서가 바뀐 이벤트의 조회·조정, 카드 상태·한도·통화 검증이 필요하다. 현재 정규화한 CLI 형식을 공급업체가 그대로 보낸다고 가정하지 않는다.

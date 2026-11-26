@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg';
 import type { Database } from './database';
+import { CARD_SETTLEMENT_FINDINGS_SQL } from './card-settlement-reconciliation';
 
 export interface ReconciliationFinding {
   code: string;
@@ -28,6 +29,8 @@ interface CountsRow extends QueryResultRow {
   reward_journals: string;
   card_allocations: string;
   cashback_months: string;
+  card_payments: string;
+  card_events: string;
 }
 
 // Aggregate immutable history independently of application projection functions.
@@ -215,6 +218,8 @@ findings AS (
     CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END
   FROM card_reward_allocations
   WHERE (principal_held_won + reward_held_won = 0) IS DISTINCT FROM (closed_at IS NOT NULL)
+  UNION ALL
+  SELECT code, reference, expected, actual FROM (${CARD_SETTLEMENT_FINDINGS_SQL}) AS card_settlement
 )
 SELECT code, reference, expected, actual, COUNT(*) OVER ()::text AS total_findings
 FROM findings ORDER BY code, reference LIMIT $1`;
@@ -232,14 +237,17 @@ export async function reconcileRewards(database: Database, options: { maxFinding
       (SELECT COUNT(*)::text FROM reward_wallets) AS reward_wallets,
       (SELECT COUNT(*)::text FROM reward_journals) AS reward_journals,
       (SELECT COUNT(*)::text FROM card_reward_allocations) AS card_allocations,
-      (SELECT COUNT(*)::text FROM reward_cashback_months) AS cashback_months`);
+      (SELECT COUNT(*)::text FROM reward_cashback_months) AS cashback_months,
+      (SELECT COUNT(*)::text FROM card_payments) AS card_payments,
+      (SELECT COUNT(*)::text FROM card_payment_events) AS card_events`);
     const { rows } = await client.query<FindingRow>(FINDINGS_SQL, [maxFindings]);
     const findingCount = rows[0]?.total_findings ?? '0';
     return {
       scope: 'internal_ledgers', ok: findingCount === '0', checkedAt: counts.checked_at.toISOString(),
       counts: { monetaryAccounts: counts.monetary_accounts, monetaryJournals: counts.monetary_journals,
         rewardWallets: counts.reward_wallets, rewardJournals: counts.reward_journals,
-        cardAllocations: counts.card_allocations, cashbackMonths: counts.cashback_months },
+        cardAllocations: counts.card_allocations, cashbackMonths: counts.cashback_months,
+        cardPayments: counts.card_payments, cardPaymentEvents: counts.card_events },
       findingCount, findingsTruncated: BigInt(findingCount) > BigInt(rows.length),
       findings: rows.map(({ code, reference, expected, actual }) => ({ code, reference, expected, actual })),
     };
