@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "businessDate": "2025-11-26",
+  "currency": "TEST_KRW",
+  "controls": {
+    "rowCount": 3,
+    "capturedWon": "150",
+    "refundedWon": "30"
+  },
+  "rows": [
+    {
+      "eventId": "purchase-capture",
+      "paymentId": "recovery-purchase",
+      "kind": "capture",
+      "amountWon": "100"
+    },
+    {
+      "eventId": "purchase-refund",
+      "paymentId": "recovery-purchase",
+      "kind": "refund",
+      "amountWon": "30"
+    },
+    {
+      "eventId": "hold-capture",
+      "paymentId": "recovery-hold",
+      "kind": "capture",
+      "amountWon": "50"
+    }
+  ]
+}

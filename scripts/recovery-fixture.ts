@@ -7,7 +7,7 @@ import { LedgerStore } from '../server/ledger';
 import { verifyMigrations } from '../server/migrations';
 import {
   verifyApplicationRole, verifyAuthMailRole, verifyCardDispatcherRole,
-  verifyCardIngressRole, verifyCardOperationsRole, verifyCardWorkerRole, verifyMonitorRole,
+  verifyCardIngressRole, verifyCardOperationsRole, verifyCardWorkerRole, verifyMonitorRole, verifySettlementRole,
 } from '../server/permissions';
 import { reconcileRewards } from '../server/reward-reconciliation';
 import { RewardsStore } from '../server/rewards';
@@ -43,7 +43,7 @@ const events: SandboxCardEvent[] = [
   { ...held, kind: 'authorize', eventId: 'hold-auth', amountWon: 75, merchantName: '체험 식당' },
 ];
 const finishHold: SandboxCardEvent = { ...held, kind: 'capture', eventId: 'hold-capture', amountWon: 50, finalCapture: true };
-const now = Date.UTC(2026, 10, 26);
+const now = Date.UTC(2025, 10, 26);
 const clock = { now: () => now };
 
 async function seed(ledger: LedgerStore, cards: CardPaymentStore) {
@@ -98,6 +98,7 @@ async function verifyServiceRoles() {
     ['OPERATIONS_DATABASE_URL', verifyCardOperationsRole],
     ['AUTH_MAIL_DATABASE_URL', verifyAuthMailRole],
     ['MONITOR_DATABASE_URL', verifyMonitorRole],
+    ['SETTLEMENT_DATABASE_URL', verifySettlementRole],
   ] as const) await withRole(variable, verify);
 }
 

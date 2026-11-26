@@ -123,6 +123,7 @@ const cardServiceFunctions = {
   worker: ['process_card_inbox(bigint)', 'card_inbox_stats(bigint)'],
   dispatcher: ['claim_issuer_outbox(bigint)', 'finish_issuer_outbox(jsonb,bigint)', 'issuer_outbox_stats(bigint)'],
   operations: ['prepare_card_operations_report(jsonb)', 'read_card_operations_report(text)'],
+  settlement: ['issuer_statement_postings(bigint,bigint)'],
   monitor: ['read_queue_health(bigint)', 'operations_ledger_finding_count()'],
   mail: ['claim_auth_mail(bigint)', 'finish_auth_mail(jsonb,bigint)', 'auth_mail_stats(bigint)'],
 } as const;
@@ -202,6 +203,9 @@ export const grantCardDispatcherRole = (database: Database, role: string) => gra
 export const verifyCardDispatcherRole = (database: Database) => verifyCardServiceRole(database, 'dispatcher');
 export const grantCardOperationsRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'operations');
 export const verifyCardOperationsRole = (database: Database) => verifyCardServiceRole(database, 'operations');
+
+export const grantSettlementRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'settlement');
+export const verifySettlementRole = (database: Database) => verifyCardServiceRole(database, 'settlement');
 
 export const grantMonitorRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'monitor');
 export const verifyMonitorRole = (database: Database) => verifyCardServiceRole(database, 'monitor');

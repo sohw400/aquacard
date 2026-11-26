@@ -7,7 +7,7 @@ import { LedgerStore } from '../server/ledger';
 import { verifyMigrations } from '../server/migrations';
 import {
   verifyApplicationRole, verifyAuthMailRole, verifyCardDispatcherRole, verifyCardIngressRole,
-  verifyCardOperationsRole, verifyCardWorkerRole, verifyMonitorRole,
+  verifyCardOperationsRole, verifyCardWorkerRole, verifyMonitorRole, verifySettlementRole,
 } from '../server/permissions';
 import { reconcileRewards } from '../server/reward-reconciliation';
 import { approveTestCustomer } from '../server/test-customer-access';
@@ -104,6 +104,7 @@ await withRole('DATABASE_URL', 'aqua_app', async (db) => {
         ['OPERATIONS_DATABASE_URL', 'aqua_operations', verifyCardOperationsRole],
         ['AUTH_MAIL_DATABASE_URL', 'aqua_auth_mail', verifyAuthMailRole],
         ['MONITOR_DATABASE_URL', 'aqua_monitor', verifyMonitorRole],
+        ['SETTLEMENT_DATABASE_URL', 'aqua_settlement', verifySettlementRole],
       ] as const) await withRole(variable, user, verify);
 
       for (const event of atTarget) await cards.apply(event);

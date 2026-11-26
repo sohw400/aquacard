@@ -37,6 +37,8 @@ npm run dev
 
 ## 검증
 
+마감된 날의 매입·환불은 `npm run --silent server:reconcile:statement -- <파일>`로 외부 테스트 명세서와 대조할 수 있습니다. [명세서 예시와 정산 차이 확인](docs/issuer-statement-reconciliation.md)
+
 서울 AWS 계정에 스테이징을 처음 만들 때는 사설 네트워크, RDS·ECR·ECS, DB 초기화, 점검기 순서로 설치합니다. 배포 입력과 대기 중 과금되는 항목을 정리했습니다. [서울 스테이징 설치](docs/staging-setup.md)
 
 원장 차이, 미처리 거래, 작업자 중단은 `npm run server:monitor`와 CloudWatch 경보로 점검합니다. 점검 계정은 건수·대기 시간만 읽습니다. [운영 경보와 장애 대응](docs/operations-monitoring.md) · [실거래 개방 전 확인할 사항](docs/launch-readiness.md)

@@ -31,6 +31,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 export NODE_ENV=test DATABASE_SCHEMA=aqua
+export DATABASE_SETTLEMENT_ROLE=aqua_settlement
 export DATABASE_RUNTIME_ROLE=aqua_app DATABASE_INGRESS_ROLE=aqua_ingress DATABASE_WORKER_ROLE=aqua_worker
 export DATABASE_DISPATCHER_ROLE=aqua_dispatcher DATABASE_OPERATIONS_ROLE=aqua_operations
 export DATABASE_AUTH_MAIL_ROLE=aqua_auth_mail DATABASE_MONITOR_ROLE=aqua_monitor
@@ -65,6 +66,7 @@ use_cluster() {
   export DISPATCHER_DATABASE_URL="postgresql://aqua_dispatcher:aqua_dispatcher_local_only@$address"
   export OPERATIONS_DATABASE_URL="postgresql://aqua_operations:aqua_operations_local_only@$address"
   export AUTH_MAIL_DATABASE_URL="postgresql://aqua_auth_mail:aqua_auth_mail_local_only@$address"
+  export SETTLEMENT_DATABASE_URL="postgresql://aqua_settlement:aqua_settlement_local_only@$address"
   export MONITOR_DATABASE_URL="postgresql://aqua_monitor:aqua_monitor_local_only@$address"
   export MIGRATION_DATABASE_URL="postgresql://aqua:$admin_password@$address"
   wait_for_primary
