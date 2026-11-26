@@ -1,0 +1,16 @@
+.sa-email-panel { grid-column:1/-1; min-width:0; padding:26px 28px; border:1px solid var(--sa-line); border-radius:14px; background:#fff; }
+.sa-email-panel .sa-section-heading { align-items:flex-start; }
+.sa-email-panel .sa-section-heading .sa-icon-button { margin:-8px -8px -5px 0; }
+.sa-email-address { overflow-wrap:anywhere; }
+.sa-email-request { margin-top:17px; }
+.sa-email-form { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:16px; margin-top:24px; padding-top:23px; border-top:1px solid var(--sa-line); }
+.sa-email-form .sa-field { margin:0; }
+.sa-email-form > button { margin-top:29px; }
+.sa-email-confirmed strong { font-size:14px; font-weight:550; color:var(--sa-accent); }
+.sa-email-confirmed p { margin-top:5px; color:var(--sa-muted); font-size:12px; line-height:1.8; }
+.sa-email-panel > .sa-notice { margin-top:18px !important; margin-bottom:0 !important; }
+@media(max-width:600px) {
+  .sa-email-panel { padding:22px 20px; }
+  .sa-email-form { grid-template-columns:minmax(0,1fr); gap:15px; }
+  .sa-email-form > button { justify-self:start; margin-top:0; }
+}

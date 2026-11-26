@@ -91,6 +91,43 @@ async function fixture(options: { secureCookies?: boolean; recovery?: boolean; s
   };
 }
 
+test('active customer status does not bypass email ownership for either transfer participant', async () => {
+  const f = await fixture();
+  try {
+    const sender = await f.signup('email.sender');
+    const receiver = await f.signup('email.receiver');
+    const access = new CustomerAccessStore(f.database);
+    for (const user of [sender.user, receiver.user]) {
+      await access.transition({ userId: user.id, status: 'active', expectedVersion: 1,
+        idempotencyKey: `email-policy:${user.id}`, reason: 'Isolated HTTP fixture approval without email proof.' });
+    }
+    await f.store.creditSandbox({ userId: sender.user.id, amountWon: 10_000, idempotencyKey: 'email-policy-funding' });
+    const send = (key: string) => f.request('/transfers', {
+      method: 'POST', cookie: sender.cookie,
+      headers: { 'Idempotency-Key': key, 'X-Aqua-Account': sender.user.id },
+      body: { recipientTag: receiver.user.tag, amountWon: 1_000, emailVerifiedAt: Date.now() },
+    });
+    const blockedSender = await send('email-before-proof');
+    assert.equal(blockedSender.status, 403);
+    assert.equal(blockedSender.data.error.code, 'EMAIL_VERIFICATION_REQUIRED');
+    const account = await f.request('/account', { cookie: sender.cookie });
+    assert.equal(account.data.access.status, 'active');
+    assert.equal(account.data.access.canTransact, false);
+    assert.equal(account.data.user.emailVerifiedAt, null);
+    // Trusted fixture proof only. The actual challenge/confirmation flow has separate integration coverage.
+    await f.database.query('UPDATE users SET email_verified_at=created_at WHERE id=$1', [sender.user.id]);
+    const blockedReceiver = await send('email-recipient-without-proof');
+    assert.equal(blockedReceiver.status, 403);
+    assert.equal(blockedReceiver.data.error.code, 'EMAIL_VERIFICATION_REQUIRED');
+    assert.equal((await f.store.snapshot(sender.user.id)).balanceWon, 10_000);
+    assert.equal((await f.store.snapshot(receiver.user.id)).balanceWon, 0);
+    await f.database.query('UPDATE users SET email_verified_at=created_at WHERE id=$1', [receiver.user.id]);
+    const allowed = await send('email-both-proven');
+    assert.equal(allowed.status, 200);
+    assert.equal(allowed.data.balanceWon, 9_000);
+  } finally { await f.close(); }
+});
+
 test('customer access is enforced for both transfer participants and a freeze preserves receipts and account reads', async () => {
   const f = await fixture();
   try {
@@ -377,6 +414,27 @@ test('recovery is explicitly unavailable when no delivery provider is configured
     assert.equal(response.data.error.code, 'RECOVERY_UNAVAILABLE');
     assert.equal('token' in response.data, false);
   } finally { await f.close(); }
+});
+
+test('an already-issued recovery code can be consumed while new mail issuance is unavailable', async () => {
+  const f = await fixture();
+  const withoutDelivery = createApiServer(f.store, { allowedOrigins: [ORIGIN], logger: false });
+  try {
+    await withoutDelivery.ready();
+    const account = await f.signup('recovery.outage');
+    assert.equal((await f.request('/auth/recovery/request', { method: 'POST', body: { email: account.user.email } })).status, 202);
+    assert.equal(f.mail.length, 1);
+    const unavailable = await request(withoutDelivery, '/auth/recovery/request', { method: 'POST', body: { email: account.user.email } });
+    assert.equal(unavailable.status, 503);
+    const reset = await request(withoutDelivery, '/auth/recovery/confirm', {
+      method: 'POST', body: { token: f.mail[0].token, password: 'Replacement-outage-42' },
+    });
+    assert.equal(reset.status, 200, reset.body);
+    assert.equal((await f.request('/account', { cookie: account.cookie })).status, 401);
+    assert.equal((await request(withoutDelivery, '/auth/recovery/confirm', {
+      method: 'POST', body: { token: f.mail[0].token, password: 'Replacement-outage-43' },
+    })).status, 400);
+  } finally { await withoutDelivery.close(); await f.close(); }
 });
 
 test('concurrent HTTP sends cannot spend the same PostgreSQL balance twice', async () => {

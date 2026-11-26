@@ -39,6 +39,8 @@ jobs:
       DATABASE_INGRESS_ROLE: aqua_ingress
       DATABASE_DISPATCHER_ROLE: aqua_dispatcher
       DATABASE_OPERATIONS_ROLE: aqua_operations
+      DATABASE_AUTH_MAIL_ROLE: aqua_auth_mail
+      AUTH_MAIL_DATABASE_URL: postgresql://aqua_auth_mail:aqua_auth_mail_local_only@127.0.0.1:5432/aqua
       OPERATIONS_DATABASE_URL: postgresql://aqua_operations:aqua_operations_local_only@127.0.0.1:5432/aqua
       DISPATCHER_DATABASE_URL: postgresql://aqua_dispatcher:aqua_dispatcher_local_only@127.0.0.1:5432/aqua
       INGRESS_DATABASE_URL: postgresql://aqua_ingress:aqua_ingress_local_only@127.0.0.1:5432/aqua
@@ -163,6 +165,18 @@ jobs:
               process.argv = [process.execPath, "dist-server/issuer-dispatcher.js", "--once"];
               await import("./dist-server/issuer-dispatcher.js");
             '
+          docker run --rm --network host --read-only --no-healthcheck \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m --cap-drop ALL --security-opt no-new-privileges \
+            -e NODE_ENV=development -e AUTH_MAIL_DATABASE_URL -e DATABASE_SCHEMA \
+            aqua-card-server:ci node --input-type=module -e '
+              import { randomBytes } from "node:crypto";
+              process.env.AQUA_AUTH_MAIL_KEYS = JSON.stringify({ ci: randomBytes(32).toString("base64") });
+              process.env.AQUA_AUTH_MAIL_ACTIVE_KEY = "ci";
+              process.env.AQUA_AUTH_MAIL_TRANSPORT = "file";
+              process.env.AQUA_MAIL_DIR = "/tmp/aqua-mail";
+              process.argv = [process.execPath, "dist-server/auth-mail-worker.js", "--once"];
+              await import("./dist-server/auth-mail-worker.js");
+            '
       - name: Locate a browser for the connected flow
         shell: bash
         run: |
@@ -211,3 +225,5 @@ jobs:
         run: npm run test:issuer:browser
       - name: Check customer access and session security in an isolated schema
         run: npm run test:security:browser
+      - name: Check email verification and queued recovery in an isolated schema
+        run: npm run test:email:browser

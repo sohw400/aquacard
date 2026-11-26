@@ -44,14 +44,15 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 ```
 
 4. 두 계정은 기본 `unverified` 상태다. 각 계정의 `GET /api/account`에서 `user.id`와 `access.version`을 확인한 뒤, 테스트 운영자가 `server:customer:access -- set USER_ID active VERSION REQUEST_KEY 'Disposable sandbox account approved for testing'`으로 각각 명시적으로 허용한다. [고객 거래 자격·로그인 기기 관리](customer-access-security.md)에 권한과 명령을 정리했다. 실제 본인확인이 완료된 것은 아니다.
-5. 첫 계정으로 로그인해 두 번째 계정을 태그로 찾고 10,000원을 보낸다. 양쪽 잔액 90,000원·10,000원과 거래 내역을 확인한다.
-6. 같은 적립 명령을 다시 실행해도 추가 적립되지 않는지 확인한다. API를 재시작한 뒤 계정·잔액·같은 요청의 결과가 유지되는지도 확인한다.
+5. 011 이후에는 두 계정의 이메일 확인도 필요하다. [이메일 확인·발송 설정](email-verification-delivery.md)에 따라 별도 작업자를 실행하고, 개발용 비공개 메일함의 확인 코드를 각 계정에 입력한다. 테스트 고객 승인만으로 확인을 대신하지 않는다.
+6. 첫 계정으로 로그인해 두 번째 계정을 태그로 찾고 10,000원을 보낸다. 양쪽 잔액 90,000원·10,000원과 거래 내역을 확인한다.
+7. 같은 적립 명령을 다시 실행해도 추가 적립되지 않는지 확인한다. API를 재시작한 뒤 계정·잔액·같은 요청의 결과가 유지되는지도 확인한다.
 
 `server:credit`는 개발자용 CLI다. HTTP 충전 API가 아니며 `NODE_ENV=production`에서는 거절한다. 대상 계정은 먼저 가입해야 하고 API·CLI는 같은 `DATABASE_URL`과 `DATABASE_SCHEMA`를 사용해야 한다. 새 적립에는 새 키를 쓰며 기존 키를 다른 대상·금액에 재사용하지 않는다.
 
 ## 카드 승인과 매입 확인
 
-009 이후 새 카드 승인에는 고객 상태 `active`도 필요하다. 기존 계정도 자동 승인하지 않는다. 기존 승인 건의 매입·취소·환불과 원래 요청의 재조회는 고객 상태가 제한돼도 유지된다.
+009 이후 새 카드 승인에는 고객 상태 `active`도 필요하고, 011 이후에는 이메일 확인을 함께 요구한다. 기존 계정도 자동 승인하거나 이메일을 확인한 것으로 표시하지 않는다. 기존 승인 건의 매입·취소·환불과 원래 요청의 재조회는 고객 상태가 제한돼도 유지된다.
 
 `npm run server:card -- <event.json>`으로 테스트 승인·부분 매입·승인 취소·부분 환불을 처리한다. 기존 DB에도 `db:migrate`를 먼저 적용한다. 새 승인 전에는 `npm run server:issuer -- register USER_ID sandbox-card-local active`로 회원의 테스트 카드를 연결한다. [카드 결제 서버 처리](card-payment-server.md)의 JSON 예시를 따라 승인액 확보와 마지막 매입의 잔여액 해제, 중복 환불 방지를 확인할 수 있다. [카드 승인 정책](card-authorization-policy.md)은 잠금 이후 새 승인을 차단하고 거절 재전송을 보존한다.
 
@@ -83,9 +84,11 @@ npm run server:credit -- alice@example.test 100000 local-alice-credit-001
 | `DISPATCHER_DATABASE_URL` | 발신 명령 확보·결과 기록·집계 함수만 실행하는 별도 연결. 회원·명령 생성·장부 변경 권한을 주지 않는다. |
 | `DATABASE_OPERATIONS_ROLE` | 카드 거래 운영 조회 전용 역할. 다른 런타임 역할과 분리한다. 로컬 `aqua_operations`. |
 | `OPERATIONS_DATABASE_URL` | 조회 기록 준비·결과 확인 함수만 실행하는 별도 연결. API·관리자 주소로 대체하지 않는다. |
+| `DATABASE_AUTH_MAIL_ROLE`, `AUTH_MAIL_DATABASE_URL` | 별도 메일 발송 역할과 연결. 로컬 역할은 `aqua_auth_mail`이며 API·카드 작업자·관리자와 분리한다. |
 | `AQUA_ISSUER_SANDBOX_URL`, `AQUA_ISSUER_KEY_ID`, `AQUA_ISSUER_SIGNING_KEY` | 로컬 sandbox 발신 URL과 명시적인 서명 키. [발급사 요청·복구](issuer-command-outbox.md)의 제한과 실행 방법을 따른다. |
 | `TEST_DATABASE_URL` | 서버 통합 테스트용 PostgreSQL 주소. 테스트는 고유 스키마를 만들고 자신이 만든 스키마만 정리한다. |
-| `AQUA_MAIL_DIR` | 기본 `data/mail`. 개발용 비밀번호 재설정 안내 파일 위치. |
+| `AQUA_AUTH_MAIL_KEYS`, `AQUA_AUTH_MAIL_ACTIVE_KEY` | API·메일 작업자가 공유하는 발송 암호화 키링과 활성 키 ID. [이메일 확인·복구 안내 발송](email-verification-delivery.md)의 설정을 따른다. |
+| `AQUA_AUTH_MAIL_TRANSPORT`, `AQUA_MAIL_DIR` | `file` 또는 `ses`를 명시한다. 개발용 파일 메일함 기본 경로는 `data/mail`이며 production에서는 파일 전송을 거부한다. |
 | `AQUA_HOST`, `AQUA_PORT` | 기본 `127.0.0.1`, `3001`. API 수신 주소와 포트. |
 | `AQUA_ALLOWED_ORIGINS` | 쉼표로 구분한 정확한 origin 목록. 개발 기본값은 `http://localhost:5173,http://127.0.0.1:5173`이다. 경로나 끝의 `/`를 붙이지 않는다. |
 | `AQUA_TRUSTED_PROXIES` | 신뢰하는 프록시 IP·CIDR만 쉼표로 지정한다. 기본은 전달 헤더를 신뢰하지 않는다. |
@@ -108,9 +111,9 @@ npm run db:migrate
 
 ## 비밀번호 재설정
 
-개발 모드에서 요청하면 `AQUA_MAIL_DIR`에 안내 파일이 생긴다. 새 디렉터리는 `0700`, 새 파일은 `0600` 권한으로 만든다. 실제 메일 발송이 아니며 파일의 토큰을 재설정 화면의 복구 코드로 사용한다. 토큰은 15분 동안 한 번만 쓸 수 있다. 비밀번호 변경은 기존 세션을 폐기한다.
+API는 복구 토큰과 암호화된 발송 대기열을 함께 저장한다. 키링과 별도 메일 역할을 설정하고 `npm run server:mail:worker`를 실행해야 발송을 처리한다. 개발 환경에서 `AQUA_AUTH_MAIL_TRANSPORT=file`을 선택하면 `AQUA_MAIL_DIR`에 안내 파일이 생긴다. 디렉터리는 `0700`, 파일은 `0600` 권한을 사용하며 실제 메일 발송이 아니다. 파일의 코드를 재설정 화면에 입력한다. 토큰은 15분 동안 한 번만 쓸 수 있고 비밀번호 변경은 기존 세션과 대기 중인 이메일 확인 코드를 폐기한다.
 
-토큰·비밀번호·쿠키를 로그·문서·스크린샷·Git에 남기지 않는다. 운영 모드에서는 메일 발송 어댑터가 연결되기 전까지 재설정 API가 `503`을 반환한다.
+토큰·비밀번호·쿠키를 로그·문서·스크린샷·Git에 남기지 않는다. 발송 큐 설정이 없으면 새 복구 요청은 `503`을 반환한다. 이미 받은 유효한 코드로 비밀번호를 변경하는 기능은 메일 설정이 없어도 작동한다. 실제 SES 설정, 키 교체와 장애 시 처리 범위는 [이메일 확인·복구 안내 발송](email-verification-delivery.md)을 따른다.
 
 ## API 범위
 
@@ -126,6 +129,9 @@ Fastify JSON Schema로 HTTP 경계를 정의하고 OpenAPI를 생성한다. 인�
 | `POST /api/auth/logout` | 세션 폐기. 유효한 세션에는 `X-Aqua-Account` 헤더가 필요하다. |
 | `POST /api/auth/recovery/request` | 재설정 요청. |
 | `POST /api/auth/recovery/confirm` | 토큰 확인·비밀번호 변경. |
+| `GET /api/auth/email` | 현재 계정의 이메일 확인 상태·안내 요청 가능 여부. 계정 헤더가 필요하다. |
+| `POST /api/auth/email/request` | 로그인한 계정의 이메일 확인 안내를 암호화된 발송 큐에 저장. |
+| `POST /api/auth/email/confirm` | 해당 회원·이메일에 발급한 코드로 확인. 세션과 계정 헤더를 다시 검사한다. |
 | `GET /api/account` | 사용 가능·카드 보류·전체 잔액, 송금·카드 결제 내역을 함께 조회. |
 | `GET /api/members?tag=...` | 가입된 태그로 수신자 조회. |
 | `POST /api/transfers` | 회원 송금. `Idempotency-Key`, `X-Aqua-Account` 헤더가 필요하다. |
@@ -138,6 +144,8 @@ Fastify JSON Schema로 HTTP 경계를 정의하고 OpenAPI를 생성한다. 인�
 `balanceWon`은 사용 가능 원금을 유지한다. `heldBalanceWon`은 카드에 확보한 원금이며 `totalBalanceWon`은 두 값의 합이다. 카드 전용 리워드는 `rewards`에 별도로 포함한다. `cardPayments`에는 현재 세션 회원의 결제와 원금·리워드 구성을 제공한다. 카드 승인·매입·환불이나 리워드 지급·회사 재원 변경을 직접 수행하는 HTTP API와 공급업체 웹훅 엔드포인트는 제공하지 않는다.
 
 ## 빌드와 검증
+
+2026-11-26 이메일 확인·발송 큐 추가 후 서버 테스트 302개, 제품 로직 139개, 연결 브라우저 62개가 통과했다. API·메일 워커의 별도 DB 역할, 키 교체 중 재시도, 복구 중단·응답 유실과 기존 결제 흐름을 검사한다. 이메일 브라우저 검사는 `npm run test:email:browser`로 실행하며 실제 외부 메일 발송을 대신하지 않는다.
 
 로컬 PostgreSQL을 실행하고 테스트 접속 주소를 지정한다. 테스트용 스키마를 생성할 수 있는 개발 DB를 사용한다.
 

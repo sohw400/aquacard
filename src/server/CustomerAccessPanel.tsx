@@ -12,7 +12,9 @@ const copy: Record<CustomerAccessSnapshot['status'], { title: string; descriptio
 
 export default function CustomerAccessPanel({ access }: { access: CustomerAccessSnapshot | null }) {
   const titleId = useId();
-  const content = access ? copy[access.status] : null;
+  const content = access?.status === 'active' && !access.canTransact
+    ? { title: '이메일 확인이 필요합니다', description: '가입한 이메일을 확인하면 테스트 거래를 이용할 수 있습니다. 이메일 확인은 실제 본인확인이나 금융 서비스 이용 승인을 의미하지 않습니다.' }
+    : access ? copy[access.status] : null;
   return <section className={`sa-access-panel${access?.canTransact ? ' is-active' : ''}`} aria-labelledby={titleId}
     data-testid="customer-access-panel" data-status={access?.status ?? 'loading'}>
     <div aria-live="polite" aria-atomic="true">

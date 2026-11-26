@@ -1,12 +1,10 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { isIP } from 'node:net';
-import { randomUUID } from 'node:crypto';
 import { createApiServer } from './http';
 import { LedgerStore } from './ledger';
 import { databaseFromEnvironment } from './database';
 import { verifyMigrations } from './migrations';
 import { verifyApplicationRole } from './permissions';
+import { authMailQueueFromEnvironment, type AuthMailQueue } from './auth-mail';
 
 const production = process.env.NODE_ENV === 'production';
 const host = process.env.AQUA_HOST ?? '127.0.0.1';
@@ -26,19 +24,20 @@ if (trustedProxies.some((value) => {
 
 process.umask(0o077);
 const database = await databaseFromEnvironment();
-try { await verifyMigrations(database); if (production) await verifyApplicationRole(database); }
+let mailQueue: AuthMailQueue | undefined;
+try {
+  await verifyMigrations(database);
+  if (production) await verifyApplicationRole(database);
+  mailQueue = authMailQueueFromEnvironment(database.schema);
+}
 catch (error) { await database.close(); throw error; }
 const store = new LedgerStore(database);
-const mailDirectory = resolve(process.env.AQUA_MAIL_DIR ?? 'data/mail');
 const app = createApiServer(store, {
   allowedOrigins: origins,
   secureCookies: production,
   trustedProxies,
   staticDir: process.env.AQUA_STATIC_DIR,
-  deliverRecovery: production ? undefined : async (email, token) => {
-    await mkdir(mailDirectory, { recursive: true, mode: 0o700 });
-    await writeFile(resolve(mailDirectory, String(Date.now()) + '-' + randomUUID() + '.json'), JSON.stringify({ to: email, purpose: 'password-recovery', token, expiresInMinutes: 15 }, null, 2), { mode: 0o600, flag: 'wx' });
-  },
+  mailQueue,
 });
 try { await app.listen({ port, host }); }
 catch (error) { await app.close(); await database.close(); throw error; }

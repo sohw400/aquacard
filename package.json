@@ -42,9 +42,12 @@
     "db:migrate": "node --env-file-if-exists=.env --import tsx server/migrate.ts",
     "db:migrate:prod": "node dist-server/migrate.js",
     "server:customer:access": "node --env-file-if-exists=.env --import tsx server/customer-access-operator.ts",
-    "test:security:browser": "node --env-file-if-exists=.env --import tsx scripts/security-browser-runner.mjs"
+    "test:security:browser": "node --env-file-if-exists=.env --import tsx scripts/security-browser-runner.mjs",
+    "server:mail:worker": "node --env-file-if-exists=.env --import tsx server/auth-mail-worker.ts",
+    "test:email:browser": "node --env-file-if-exists=.env --import tsx scripts/email-browser-runner.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-sesv2": "3.1178.0",
     "@fastify/cookie": "11.1.5",
     "@fastify/static": "10.1.11",
     "@fastify/swagger": "9.9.4",

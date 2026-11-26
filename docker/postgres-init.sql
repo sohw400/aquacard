@@ -22,5 +22,9 @@ BEGIN
     CREATE ROLE aqua_operations LOGIN PASSWORD 'aqua_operations_local_only'
       NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aqua_auth_mail') THEN
+    CREATE ROLE aqua_auth_mail LOGIN PASSWORD 'aqua_auth_mail_local_only'
+      NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  END IF;
 END;
 $bootstrap$;

@@ -12,7 +12,7 @@ export interface CardOperationsInput {
 export interface CardOperationsReceipt { requestId: string; preparedAt: number; duplicate: boolean }
 type EventKind = 'authorize' | 'capture' | 'reverse' | 'refund';
 type InboxStatus = 'pending' | 'retry' | 'applied' | 'dead_letter';
-type PolicyReason = 'CARD_NOT_ISSUED' | 'CARD_LOCKED' | 'CARD_STATUS_UNCONFIRMED' | 'CUSTOMER_ACCESS_REQUIRED';
+type PolicyReason = 'CARD_NOT_ISSUED' | 'CARD_LOCKED' | 'CARD_STATUS_UNCONFIRMED' | 'CUSTOMER_ACCESS_REQUIRED' | 'EMAIL_VERIFICATION_REQUIRED';
 
 export interface CardOperationsReport {
   version: 1;
@@ -27,7 +27,7 @@ export interface CardOperationsReport {
     eventId: string; paymentId: string; userId: string; decision: 'approved' | 'declined'; reason: PolicyReason | null;
     amountWon: number; policyVersion: number; eventReceivedAt: number; decidedAt: number;
     /** Absent on reports committed before customer policy was introduced. */
-    customerAtDecision?: null | { status: import('../shared/api').CustomerAccessStatus; version: number };
+    customerAtDecision?: null | { status: import('../shared/api').CustomerAccessStatus; version: number; emailVerifiedAt?: number | null };
     cardAtDecision: null | {
       id: string; version: number; desiredStatus: IssuerCardStatus; confirmedStatus: IssuerCardStatus;
       commandId: string | null; commandStatus: IssuerOutboxStatus | null;

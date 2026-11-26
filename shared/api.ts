@@ -5,6 +5,14 @@ export interface MemberProfile {
   name: string;
   tag: string;
   createdAt: number;
+  emailVerifiedAt: number | null;
+}
+
+export interface EmailVerificationSnapshot {
+  email: string;
+  verifiedAt: number | null;
+  /** A request is durably queued; it is not a claim of inbox delivery. */
+  canRequest: boolean;
 }
 
 /** Sandbox eligibility only. An active state does not represent completed live KYC. */
