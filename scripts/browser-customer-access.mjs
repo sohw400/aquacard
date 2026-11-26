@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-/** Approves only disposable browser-fixture accounts through the local owner connection. */
+/** Supplies email proof and approval only for disposable browser fixtures through the local owner connection. */
 export function approveBrowserCustomer(userId) {
   assert.equal(typeof userId, 'string');
   const result = spawnSync(process.execPath, ['--env-file-if-exists=.env', '--import', 'tsx', '--input-type=module', '-e', `
@@ -13,6 +13,7 @@ export function approveBrowserCustomer(userId) {
     if (!['localhost', '127.0.0.1', '[::1]'].includes(owner.hostname)) throw new Error('Browser fixture approval requires a local owner connection.');
     const db = await databaseFromEnvironment(true);
     try {
+      await db.query('UPDATE users SET email_verified_at=created_at WHERE id=$1 AND email_verified_at IS NULL', [process.env.AQUA_BROWSER_APPROVAL_USER]);
       await new CustomerAccessStore(db).transition({
         userId: process.env.AQUA_BROWSER_APPROVAL_USER,
         status: 'active', expectedVersion: 1,

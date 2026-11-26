@@ -133,5 +133,5 @@ export function parseIssuerReceipt(value: unknown, intent: IssuerIntent): Issuer
 export function issuerRequestWasRejected(error: unknown): boolean {
   return error instanceof ApiError && ((error.status === 409 && ['OUTBOX_VERSION_CHANGED', 'OUTBOX_PENDING'].includes(error.code))
     || (error.status === 404 && error.code === 'OUTBOX_CARD_NOT_FOUND')
-    || (error.status === 403 && error.code === 'CUSTOMER_ACCESS_REQUIRED'));
+    || (error.status === 403 && ['CUSTOMER_ACCESS_REQUIRED', 'EMAIL_VERIFICATION_REQUIRED'].includes(error.code)));
 }

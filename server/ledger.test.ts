@@ -72,7 +72,7 @@ test('신규 계정은 잔액 0원이며 공개 스냅샷에 비밀번호 해시
   const snapshot = await store.snapshot('alice');
   assert.equal(snapshot.balanceWon, 0);
   assert.deepEqual(snapshot.transactions, []);
-  assert.deepEqual(snapshot.user, { id: 'alice', email: 'alice@example.test', name: '김민수', tag: 'alice', createdAt: NOW - 60 * DAY });
+  assert.deepEqual(snapshot.user, { id: 'alice', email: 'alice@example.test', name: '김민수', tag: 'alice', createdAt: NOW - 60 * DAY, emailVerifiedAt: NOW - 60 * DAY });
   assert.equal(Object.hasOwn(snapshot.user, 'passwordHash'), false);
   assert.equal(JSON.stringify(snapshot).includes('test-password-hash:'), false);
   assert.equal(snapshot.limits.available, 0);

@@ -35,6 +35,8 @@ async function fixture(t: TestContext) {
     const database = new Database({ connectionString: base.connectionString, schema: base.schema, maxConnections: 1 });
     peers.push(database); return stores(database);
   }, async change(userId: string, status: CustomerAccessStatus) {
+    // This suite isolates customer-policy behavior. Email ownership itself is tested separately.
+    if (status === 'active') await main.database.query('UPDATE users SET email_verified_at=created_at WHERE id=$1 AND email_verified_at IS NULL', [userId]);
     const current = await main.access.snapshot(userId);
     return main.access.transition({ userId, status, expectedVersion: current.version,
       idempotencyKey: `case-${++key}`, reason: 'Sandbox eligibility decision for this test only.' });
@@ -109,7 +111,7 @@ test('unverified card approvals become durable denials and cannot turn into purc
   const f = await fixture(t); const denied = event('unverified');
   await rejectCode(f.cards.apply(denied), 'CUSTOMER_ACCESS_REQUIRED');
   const decision = (await f.database.query('SELECT * FROM card_authorization_decisions WHERE event_id=$1', [denied.eventId])).rows[0];
-  assert.equal(decision.policy_version, 2); assert.equal(decision.customer_status, 'unverified');
+  assert.equal(decision.policy_version, 3); assert.equal(decision.customer_status, 'unverified');
   assert.equal(decision.customer_version, '1'); assert.equal(decision.reason, 'CUSTOMER_ACCESS_REQUIRED');
   assert.equal((await f.ledger.snapshot('alice')).heldBalanceWon, 0);
   await f.change('alice', 'active');

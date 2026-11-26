@@ -155,6 +155,8 @@ try {
   assert.equal(firstSender.access.status, 'unverified');
   assert.equal(firstReceiver.access.status, 'unverified');
   assert.equal(firstSender.access.canTransact, false);
+  assert.equal(firstSender.user.emailVerifiedAt, null);
+  assert.equal(firstReceiver.user.emailVerifiedAt, null);
   approveBrowserCustomer(firstSender.user.id);
   approveBrowserCustomer(firstReceiver.user.id);
   assert.equal((await account(senderContext)).user.id, firstSender.user.id);

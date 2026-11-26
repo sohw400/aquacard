@@ -17,6 +17,7 @@ const failures: Record<string, { status: number; message: string }> = {
   INVALID_CUSTOMER_ACCESS_COMMAND: { status: 400, message: '고객 상태 변경 정보를 확인해 주세요.' },
   CUSTOMER_ACCESS_NOT_FOUND: { status: 404, message: '고객 상태를 찾을 수 없습니다.' },
   CUSTOMER_ACCESS_REQUIRED: { status: 403, message: '현재 고객 상태에서는 이 거래를 진행할 수 없습니다.' },
+  EMAIL_VERIFICATION_REQUIRED: { status: 403, message: '이메일 확인을 마친 뒤 거래해 주세요.' },
   CUSTOMER_ACCESS_VERSION_CHANGED: { status: 409, message: '고객 상태가 변경되었습니다. 최신 상태를 확인해 주세요.' },
   CUSTOMER_ACCESS_TRANSITION_INVALID: { status: 409, message: '현재 상태에서는 요청한 상태로 변경할 수 없습니다.' },
   CUSTOMER_ACCESS_CAPACITY: { status: 409, message: '고객 상태 변경 기록이 허용 범위를 초과했습니다.' },

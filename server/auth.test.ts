@@ -55,7 +55,8 @@ test('signup normalizes profile fields, uses independent scrypt salts, and start
   const f = await fixture(t);
   const first = await f.auth.signup({ email: '  Alice@Example.TEST ', name: '  김  아쿠아  ', tag: ' @Alice_7 ', password: PASSWORD }, 'signup-first');
   const second = await signup(f.auth, 'bobby');
-  assert.deepEqual(Object.keys(first.user).sort(), ['createdAt', 'email', 'id', 'name', 'tag']);
+  assert.deepEqual(Object.keys(first.user).sort(), ['createdAt', 'email', 'emailVerifiedAt', 'id', 'name', 'tag']);
+  assert.equal(first.user.emailVerifiedAt, null);
   assert.equal(first.user.email, 'alice@example.test');
   assert.equal(first.user.tag, 'alice_7');
   assert.equal(first.user.name, '김 아쿠아');

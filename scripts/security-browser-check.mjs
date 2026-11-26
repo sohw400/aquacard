@@ -63,6 +63,8 @@ async function login(target, member) {
   await target.getByTestId('server-balance').waitFor();
 }
 async function changeAccess(userId, status, expectedVersion) {
+  // These disposable fixtures exercise customer/session policy; email flow has its own browser suite.
+  if (status === 'active') await database.query('UPDATE users SET email_verified_at=created_at WHERE id=$1 AND email_verified_at IS NULL', [userId]);
   const response = await database.query('SELECT operator_set_customer_access($1::jsonb,$2::bigint) AS result', [JSON.stringify({
     userId, status, expectedVersion, idempotencyKey: `${runId}:${userId}:${status}:${expectedVersion}`,
     reason: 'Disposable security browser fixture state transition',
@@ -104,6 +106,7 @@ try {
   assert.equal(health.status(), 200); assert.equal((await health.json()).mode, 'sandbox');
   const account = await signup(page, owner);
   assert.equal(account.access.status, 'unverified'); assert.equal(account.access.canTransact, false);
+  assert.equal(account.user.emailVerifiedAt, null);
   await page.locator('[data-testid="customer-access-panel"][data-status="unverified"]').waitFor();
   assert.equal(await page.getByTestId('server-send').isDisabled(), true);
   await sessions(page, 1);

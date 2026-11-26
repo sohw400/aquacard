@@ -1,12 +1,15 @@
 import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
 import type { PoolClient, QueryResultRow } from 'pg';
-import type { AuthSessionRecord, MemberProfile, SessionSecuritySnapshot } from '../shared/api';
+import type { AuthSessionRecord, EmailVerificationSnapshot, MemberProfile, SessionSecuritySnapshot } from '../shared/api';
 import { LedgerError, type LedgerStore } from './ledger';
+import type { AuthMailQueue } from './auth-mail';
 
 interface SignupInput { email: string; name: string; tag: string; password: string }
 interface LoginInput { email: string; password: string }
 export interface AuthOptions {
   now?: () => number;
+  mailQueue?: AuthMailQueue;
+  /** Test-only synchronous transport. The executable API always uses the durable queue. */
   deliverRecovery?: (email: string, token: string) => Promise<void>;
 }
 /** Only the derived family label is retained. User agents are not trusted device identity. */
@@ -31,7 +34,7 @@ const RESERVED_TAGS = new Set([
 interface RateRule { scope: string; value: string; limit: number; duration: number }
 interface RateRow extends QueryResultRow { attempts: number; expires_at: string | number }
 interface RecoveryRow extends QueryResultRow { user_id: string; expires_at: string | number; used_at: string | number | null }
-interface UserRow extends QueryResultRow { id: string; email: string; name: string; tag: string; password_hash: string; created_at: string | number }
+interface UserRow extends QueryResultRow { id: string; email: string; name: string; tag: string; password_hash: string; created_at: string | number; email_verified_at: string | number | null }
 interface SessionRow extends QueryResultRow {
   session_id: string; token_hash: string; user_id: string; device_label: string;
   created_at: string | number; expires_at: string | number; last_seen_at: string | number;
@@ -42,6 +45,7 @@ type AuthResult = { user: MemberProfile; token: string };
 const digest = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
 const invalidCredentials = () => new LedgerError(401, 'INVALID_CREDENTIALS', '이메일 또는 비밀번호를 확인해 주세요.');
 const invalidRecovery = () => new LedgerError(400, 'INVALID_RECOVERY', '복구 정보가 유효하지 않거나 만료되었습니다. 다시 요청해 주세요.');
+const invalidVerification = () => new LedgerError(400, 'INVALID_EMAIL_VERIFICATION', '이메일 확인 코드가 유효하지 않거나 만료되었습니다. 다시 요청해 주세요.');
 const invalidSignup = () => new LedgerError(409, 'ACCOUNT_UNAVAILABLE', '입력한 이메일 또는 태그로 가입할 수 없습니다.');
 const validToken = (token: unknown): token is string => typeof token === 'string' && /^[a-f0-9]{64}$/.test(token);
 const authenticationRequired = () => new LedgerError(401, 'AUTH_REQUIRED', '다시 로그인해 주세요.');
@@ -63,7 +67,7 @@ function epoch(value: unknown): number {
   if (!Number.isSafeInteger(number) || number < 0 || number > 8_640_000_000_000_000) throw new LedgerError(500, 'AUTH_STATE_INVALID', '인증 정보를 처리할 수 없습니다.');
   return number;
 }
-const rowProfile = (user: UserRow): MemberProfile => ({ id: user.id, email: user.email, name: user.name, tag: user.tag, createdAt: epoch(user.created_at) });
+const rowProfile = (user: UserRow): MemberProfile => ({ id: user.id, email: user.email, name: user.name, tag: user.tag, createdAt: epoch(user.created_at), emailVerifiedAt: user.email_verified_at === null ? null : epoch(user.email_verified_at) });
 
 function emailInput(value: unknown): string {
   if (typeof value !== 'string' || value.length > 254) throw new LedgerError(400, 'INVALID_EMAIL', '이메일 형식을 확인해 주세요.');
@@ -128,10 +132,13 @@ async function verifyPassword(password: string, record: string | undefined): Pro
 export class AuthService {
   private readonly now: () => number;
   private readonly deliverRecovery: AuthOptions['deliverRecovery'];
+  private readonly mailQueue: AuthOptions['mailQueue'];
 
   constructor(private readonly store: LedgerStore, options: AuthOptions = {}) {
     this.now = options.now ?? Date.now;
     this.deliverRecovery = options.deliverRecovery;
+    this.mailQueue = options.mailQueue;
+    if (options.deliverRecovery && process.env.NODE_ENV === 'production') throw new Error('Production authentication requires the durable mail queue.');
   }
 
   private time(): number { return epoch(this.now()); }
@@ -145,6 +152,8 @@ export class AuthService {
         ORDER BY expires_at, token_hash LIMIT 256 FOR UPDATE SKIP LOCKED
       )`, [time]);
     }
+    // Keep a consumed verification receipt for same-owner retry after a lost response.
+    await this.store.database.query('SELECT cleanup_auth_email_verification($1::bigint)', [time]);
     await this.store.database.query(`DELETE FROM auth_rate_limits WHERE (scope, key_hash) IN (
       SELECT scope, key_hash FROM auth_rate_limits WHERE expires_at <= $1
       ORDER BY expires_at, scope, key_hash LIMIT 256 FOR UPDATE SKIP LOCKED
@@ -186,7 +195,7 @@ export class AuthService {
     const token = randomBytes(32).toString('hex');
     const issue = async (client: PoolClient): Promise<AuthResult> => {
       // Every credential writer locks users first, then its token/session rows.
-      const { rows } = await client.query<UserRow>('SELECT id, email, name, tag, password_hash, created_at FROM users WHERE id = $1 FOR UPDATE', [userId]);
+      const { rows } = await client.query<UserRow>('SELECT id, email, name, tag, password_hash, created_at, email_verified_at FROM users WHERE id = $1 FOR UPDATE', [userId]);
       const current = rows[0];
       if (!current || current.password_hash !== expectedHash) throw invalidCredentials();
       const time = this.time();
@@ -246,7 +255,7 @@ export class AuthService {
   async authenticate(token: string | undefined): Promise<MemberProfile | null> {
     await this.cleanup();
     if (!validToken(token)) return null;
-    const { rows } = await this.store.database.query<UserRow>(`SELECT u.id, u.email, u.name, u.tag, u.password_hash, u.created_at
+    const { rows } = await this.store.database.query<UserRow>(`SELECT u.id, u.email, u.name, u.tag, u.password_hash, u.created_at, u.email_verified_at
       FROM auth_sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.expires_at > $2`, [digest(token), this.time()]);
     if (rows[0]) {
@@ -309,7 +318,7 @@ export class AuthService {
       { scope: 'reauth:account', value: userId, limit: 5, duration: 5 * MINUTE },
     ]);
     if (!validToken(token)) throw authenticationRequired();
-    const { rows } = await this.store.database.query<UserRow>(`SELECT u.id, u.email, u.name, u.tag, u.password_hash, u.created_at
+    const { rows } = await this.store.database.query<UserRow>(`SELECT u.id, u.email, u.name, u.tag, u.password_hash, u.created_at, u.email_verified_at
       FROM auth_sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.user_id = $2 AND s.expires_at > $3`, [digest(token), userId, this.time()]);
     const expected = rows[0];
@@ -377,28 +386,95 @@ export class AuthService {
     await this.rateLimit([{ scope: 'issuer:card-status', value: userId, limit: 20, duration: MINUTE }]);
   }
 
+  async emailVerificationSnapshot(token: string | undefined, userId: string): Promise<EmailVerificationSnapshot> {
+    return this.store.database.transaction(async (client) => {
+      await this.lockedSession(client, token, userId);
+      const { rows } = await client.query<{ email: string; email_verified_at: string | null }>(
+        'SELECT email, email_verified_at FROM users WHERE id = $1', [userId]);
+      if (!rows[0]) throw authenticationRequired();
+      return { email: rows[0].email, verifiedAt: rows[0].email_verified_at === null ? null : epoch(rows[0].email_verified_at),
+        canRequest: Boolean(this.mailQueue) && rows[0].email_verified_at === null };
+    });
+  }
+
+  async requestEmailVerification(token: string | undefined, userId: string, rateKey: string): Promise<void> {
+    await this.rateLimit([
+      { scope: 'email:request:ip', value: this.ip(rateKey), limit: 10, duration: 15 * MINUTE },
+      { scope: 'email:request:account', value: userId, limit: 3, duration: 15 * MINUTE },
+    ]);
+    try {
+      await this.store.database.transaction(async (client) => {
+        await this.lockedSession(client, token, userId);
+        const { rows } = await client.query<{ email: string; email_verified_at: string | null }>(
+          'SELECT email, email_verified_at FROM users WHERE id=$1', [userId]);
+        const user = rows[0];
+        if (!user) throw authenticationRequired();
+        if (user.email_verified_at !== null) return;
+        if (!this.mailQueue) throw new LedgerError(503, 'EMAIL_VERIFICATION_UNAVAILABLE', '이메일 확인 안내를 보낼 수 없습니다. 잠시 후 다시 시도해 주세요.');
+        const code = randomBytes(32).toString('hex');
+        const time = this.time(), expiresAt = epoch(time + RECOVERY_TTL);
+        await client.query('DELETE FROM auth_email_verification WHERE user_id=$1', [userId]);
+        await client.query(`INSERT INTO auth_email_verification(token_hash,user_id,email,created_at,expires_at,used_at)
+          VALUES($1,$2,$3,$4,$5,NULL)`, [digest(code), userId, user.email, time, expiresAt]);
+        await this.mailQueue.enqueue(client, { purpose: 'email-verification', userId, email: user.email, token: code, createdAt: time, expiresAt });
+      });
+    } catch (error) {
+      if (error instanceof LedgerError) throw error;
+      throw new LedgerError(503, 'EMAIL_VERIFICATION_UNAVAILABLE', '이메일 확인 안내를 접수하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    }
+  }
+
+  async confirmEmailVerification(token: string | undefined, userId: string, code: string, rateKey: string): Promise<void> {
+    await this.rateLimit([
+      { scope: 'email:confirm:ip', value: this.ip(rateKey), limit: 10, duration: 15 * MINUTE },
+      { scope: 'email:confirm:account', value: userId, limit: 5, duration: 15 * MINUTE },
+    ]);
+    if (!validToken(code)) throw invalidVerification();
+    try {
+      await this.store.database.transaction(async (client) => {
+        await this.lockedSession(client, token, userId);
+        await client.query('SELECT confirm_auth_email_verification($1::text,$2::text,$3::bigint)', [userId, code, this.time()]);
+      });
+    } catch (error) {
+      if (error instanceof LedgerError) throw error;
+      const pg = error as { message?: string; code?: string } | null;
+      if (pg?.message === 'INVALID_EMAIL_VERIFICATION') throw invalidVerification();
+      if (['55P03', '40P01', '40001'].includes(pg?.code ?? '')) throw new LedgerError(503, 'DATABASE_BUSY', '다른 요청을 처리하고 있습니다. 같은 코드로 다시 확인해 주세요.');
+      throw error;
+    }
+  }
+
   async requestRecovery(rawEmail: string, rateKey: string): Promise<void> {
     const email = emailInput(rawEmail);
     await this.rateLimit([
       { scope: 'recovery:ip', value: this.ip(rateKey), limit: 5, duration: 15 * MINUTE },
       { scope: 'recovery:account', value: email, limit: 3, duration: 15 * MINUTE },
     ]);
-    if (!this.deliverRecovery) throw new LedgerError(503, 'RECOVERY_UNAVAILABLE', '비밀번호 복구를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.');
+    if (!this.mailQueue && !this.deliverRecovery) throw new LedgerError(503, 'RECOVERY_UNAVAILABLE', '비밀번호 복구를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.');
     const user = await this.store.getUserByEmail(email);
     if (!user) return;
     const token = randomBytes(32).toString('hex');
     const tokenHash = digest(token);
-    const issued = await this.store.database.transaction(async (client) => {
+    let issued: boolean;
+    try { issued = await this.store.database.transaction(async (client) => {
       const owner = await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [user.id]);
       if (owner.rowCount !== 1) return false;
       const time = this.time();
       await client.query('DELETE FROM auth_recovery WHERE user_id = $1', [user.id]);
       await client.query('INSERT INTO auth_recovery (token_hash, user_id, created_at, expires_at, used_at) VALUES ($1, $2, $3, $4, NULL)',
         [tokenHash, user.id, time, epoch(time + RECOVERY_TTL)]);
+      if (this.mailQueue) await this.mailQueue.enqueue(client, { purpose: 'password-recovery', userId: user.id, email: user.email,
+        token, createdAt: time, expiresAt: epoch(time + RECOVERY_TTL) });
       return true;
-    });
-    if (!issued) return;
-    try { await this.deliverRecovery(user.email, token); }
+    }); } catch (error) {
+      if (!this.mailQueue) throw error;
+      // An enqueue failure must not distinguish a known address from an unknown one.
+      // The challenge replacement rolls back with the queue write; never log either secret.
+      console.error(JSON.stringify({ event: 'auth_mail_enqueue_failed', purpose: 'password-recovery' }));
+      return;
+    }
+    if (!issued || this.mailQueue) return;
+    try { await this.deliverRecovery!(user.email, token); }
     catch {
       await this.store.database.query('DELETE FROM auth_recovery WHERE token_hash = $1', [tokenHash]);
       // Transport failures must not reveal whether the requested account exists.
@@ -431,6 +507,7 @@ export class AuthService {
       if (updated.rowCount !== 1) throw invalidRecovery();
       await client.query('DELETE FROM auth_sessions WHERE user_id = $1', [current.user_id]);
       await client.query('DELETE FROM auth_recovery WHERE user_id = $1', [current.user_id]);
+      await client.query('DELETE FROM auth_email_verification WHERE user_id = $1', [current.user_id]);
     });
   }
 }

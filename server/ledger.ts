@@ -9,7 +9,7 @@ export { LedgerError } from './errors';
 export interface UserRecord extends MemberProfile { passwordHash: string }
 
 interface UserRow extends QueryResultRow {
-  id: string; email: string; name: string; tag: string; password_hash: string; created_at: string;
+  id: string; email: string; name: string; tag: string; password_hash: string; created_at: string; email_verified_at?: string | null;
 }
 interface AccountRow extends QueryResultRow { id: string; user_id: string | null; balance_won: string }
 interface JournalRow extends QueryResultRow {
@@ -51,7 +51,8 @@ function safeInteger(value: unknown): number {
 }
 
 function rowToUser(row: UserRow | undefined): UserRecord | undefined {
-  return row ? { id: row.id, email: row.email, name: row.name, tag: row.tag, passwordHash: row.password_hash, createdAt: safeInteger(row.created_at) } : undefined;
+  return row ? { id: row.id, email: row.email, name: row.name, tag: row.tag, passwordHash: row.password_hash, createdAt: safeInteger(row.created_at),
+    emailVerifiedAt: row.email_verified_at == null ? null : safeInteger(row.email_verified_at) } : undefined;
 }
 
 function maskName(value: string): string {
@@ -71,6 +72,7 @@ function checkRequestKey(value: string): void {
 
 function domainError(error: unknown): never {
   const pg = error as { code?: string; constraint?: string; message?: string };
+  if (pg.message === 'EMAIL_VERIFICATION_REQUIRED') throw new LedgerError(403, 'EMAIL_VERIFICATION_REQUIRED', '이메일 확인을 마친 뒤 거래해 주세요.');
   if (pg.message === 'CUSTOMER_ACCESS_REQUIRED') throw new LedgerError(403, 'CUSTOMER_ACCESS_REQUIRED', '현재 고객 상태에서는 이 거래를 진행할 수 없습니다.');
   if (pg.code === '23505') {
     if (pg.constraint === 'users_email_key') throw new LedgerError(409, 'EMAIL_TAKEN', '이미 가입한 이메일입니다.');

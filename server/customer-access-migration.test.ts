@@ -38,7 +38,7 @@ test('customer access upgrade blocks existing members without rewriting historic
     await applyMigrations(database); await verifyMigrations(database);
     assert.deepEqual((await database.query('SELECT * FROM card_payment_events ORDER BY event_id')).rows, oldEvents);
     const upgradedDecision = (await database.query('SELECT * FROM card_authorization_decisions')).rows[0];
-    assert.deepEqual(upgradedDecision, { ...oldDecision, customer_status: null, customer_version: null });
+    assert.deepEqual(upgradedDecision, { ...oldDecision, customer_status: null, customer_version: null, email_verified_at: null });
     const access = await new CustomerAccessStore(database).snapshot('legacy');
     assert.equal(access.status, 'unverified'); assert.equal(access.version, 1); assert.equal(access.canTransact, false);
     assert.deepEqual(await cards.apply(event), approved);

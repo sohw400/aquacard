@@ -5,6 +5,7 @@ import swagger from '@fastify/swagger';
 import { extname, resolve } from 'node:path';
 import type { IssuerCardStatus, MemberProfile } from '../shared/api';
 import { AuthService } from './auth';
+import type { AuthMailQueue } from './auth-mail';
 import { LedgerError, LedgerStore } from './ledger';
 import { RewardsStore } from './rewards';
 import { IssuerOutboxStore } from './issuer-outbox';
@@ -17,6 +18,7 @@ export interface ServerOptions {
   allowedOrigins: string[];
   secureCookies?: boolean;
   deliverRecovery?: (email: string, token: string) => Promise<void>;
+  mailQueue?: AuthMailQueue;
   staticDir?: string;
   exposeOpenApi?: boolean;
   logger?: boolean | FastifyLoggerOptions;
@@ -31,8 +33,8 @@ const errorSchema = {
   properties: { error: { type: 'object', additionalProperties: false, required: ['code', 'message'], properties: { code: { type: 'string' }, message: { type: 'string' } } } },
 };
 const profileSchema = {
-  $id: 'AquaMember', type: 'object', additionalProperties: false, required: ['id', 'email', 'name', 'tag', 'createdAt'],
-  properties: { id: { type: 'string' }, email: { type: 'string' }, name: { type: 'string' }, tag: { type: 'string' }, createdAt: { type: 'integer', minimum: 0 } },
+  $id: 'AquaMember', type: 'object', additionalProperties: false, required: ['id', 'email', 'name', 'tag', 'createdAt', 'emailVerifiedAt'],
+  properties: { id: { type: 'string' }, email: { type: 'string' }, name: { type: 'string' }, tag: { type: 'string' }, createdAt: { type: 'integer', minimum: 0 }, emailVerifiedAt: { anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }] } },
 };
 const recordSchema = {
   $id: 'AquaTransfer', type: 'object', additionalProperties: false, required: ['id', 'direction', 'amountWon', 'counterpartyName', 'counterpartyTag', 'createdAt'],
@@ -145,7 +147,7 @@ function tokenOf(request: FastifyRequest): string | undefined {
 
 /** Plugins and routes are registered synchronously; callers await ready/listen and close their own database. */
 export function createApiServer(store: LedgerStore, options: ServerOptions): FastifyInstance {
-  const auth = new AuthService(store, { deliverRecovery: options.deliverRecovery });
+  const auth = new AuthService(store, { deliverRecovery: options.deliverRecovery, mailQueue: options.mailQueue });
   const rewards = new RewardsStore(store.database);
   const issuer = new IssuerOutboxStore(store.database);
   const sandboxIssuerWritesEnabled = process.env.NODE_ENV !== 'production';
@@ -216,7 +218,7 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
     await api.register(swagger, {
       openapi: {
         openapi: '3.0.3',
-        info: { title: 'Aqua sandbox API', version: '0.6.0', description: '계정, 거래 자격, 세션 보안, 원장, 송금, 카드 결제, 결제 전용 리워드와 테스트 발급사 상태 동기화 API. 실제 고객확인, 자금 이동이나 카드 발급은 제공하지 않습니다.' },
+        info: { title: 'Aqua sandbox API', version: '0.7.0', description: '계정, 거래 자격, 세션 보안, 원장, 송금, 카드 결제, 결제 전용 리워드와 테스트 발급사 상태 동기화 API. 실제 고객확인, 자금 이동이나 카드 발급은 제공하지 않습니다.' },
         components: { securitySchemes: { aquaSession: { type: 'apiKey', in: 'cookie', name: COOKIE } } },
       },
     });
@@ -265,6 +267,25 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
       accountMatches(request, request.aquaUser!);
     };
     const securityHeaders = { type: 'object', required: ['x-aqua-account'], properties: { 'x-aqua-account': { type: 'string', minLength: 1, maxLength: 128 } } };
+    api.get('/api/auth/email', { preValidation: securityAccount, schema: {
+      tags: ['authentication'], summary: '가입 이메일 확인 상태', security: secured, headers: securityHeaders,
+      response: { 200: objectBody({ email: text, verifiedAt: { anyOf: [amount, { type: 'null' }] }, canRequest: { type: 'boolean' } }), ...errorResponses },
+    } }, async (request) => auth.emailVerificationSnapshot(tokenOf(request), request.aquaUser!.id));
+    api.post('/api/auth/email/request', { preValidation: securityAccount, schema: {
+      tags: ['authentication'], summary: '이메일 확인 안내 접수', security: secured, headers: securityHeaders,
+      body: objectBody({}), response: { 202: okaySchema, ...errorResponses },
+    } }, async (request, reply) => {
+      await auth.requestEmailVerification(tokenOf(request), request.aquaUser!.id, request.ip);
+      return reply.code(202).send({ ok: true });
+    });
+    api.post<{ Body: { token: string } }>('/api/auth/email/confirm', { preValidation: securityAccount, schema: {
+      tags: ['authentication'], summary: '현재 계정의 이메일 확인', security: secured, headers: securityHeaders,
+      body: objectBody({ token: { type: 'string', minLength: 64, maxLength: 64, pattern: '^[a-f0-9]{64}$', writeOnly: true } }),
+      response: { 200: okaySchema, ...errorResponses },
+    } }, async (request) => {
+      await auth.confirmEmailVerification(tokenOf(request), request.aquaUser!.id, request.body.token, request.ip);
+      return { ok: true };
+    });
     api.get('/api/auth/sessions', { preValidation: securityAccount, schema: {
       tags: ['authentication'], summary: '내 로그인 기기와 최근 인증 상태', security: secured, headers: securityHeaders,
       response: { 200: sessionSecuritySchema, ...errorResponses },
@@ -288,11 +309,9 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
       body: objectBody({}), response: { 200: objectBody({ revokedCount: amount }), ...errorResponses },
     } }, async (request) => auth.revokeOtherSessions(tokenOf(request), request.aquaUser!.id));
     api.post<{ Body: { email: string } }>('/api/auth/recovery/request', { schema: { tags: ['authentication'], summary: '복구 안내 요청', body: objectBody({ email: text }), response: { 202: okaySchema, ...errorResponses } } }, async (request, reply) => {
-      if (!options.deliverRecovery) throw new LedgerError(503, 'RECOVERY_UNAVAILABLE', '계정 복구를 준비하고 있어요. 잠시 뒤 다시 시도해 주세요.');
       await auth.requestRecovery(request.body.email, request.ip); return reply.code(202).send({ ok: true });
     });
     api.post<{ Body: { token: string; password: string } }>('/api/auth/recovery/confirm', { schema: { tags: ['authentication'], summary: '비밀번호 재설정', body: objectBody({ token: { type: 'string', writeOnly: true }, password: { type: 'string', minLength: 12, maxLength: 128, writeOnly: true } }), response: { 200: okaySchema, ...errorResponses } } }, async (request, reply) => {
-      if (!options.deliverRecovery) throw new LedgerError(503, 'RECOVERY_UNAVAILABLE', '계정 복구를 준비하고 있어요. 잠시 뒤 다시 시도해 주세요.');
       await auth.resetPassword(request.body.token, request.body.password, request.ip); sessionCookie(reply, '', true); return { ok: true };
     });
     api.get('/api/account', { preValidation: signedIn, schema: { tags: ['ledger'], summary: '내 잔액과 거래 내역', security: secured,

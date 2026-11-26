@@ -206,6 +206,8 @@ export function useIssuerCard(ownerId: string, onSessionExpired: () => void) {
         syncSaved();
         setWriteError(cleanupError || (issue instanceof ApiError && issue.code === 'CUSTOMER_ACCESS_REQUIRED'
           ? '계정의 거래가 제한되어 카드 잠금을 해제할 수 없습니다. 계정 상태를 확인해 주세요.'
+          : issue instanceof ApiError && issue.code === 'EMAIL_VERIFICATION_REQUIRED'
+          ? '이메일 확인 후 카드 잠금을 해제할 수 있습니다.'
           : '카드 상태가 변경됐거나 다른 요청을 처리 중입니다. 최신 상태를 확인한 뒤 다시 선택해 주세요.'));
       } else {
         setWriteError(issue instanceof ApiError && issue.status === 429
