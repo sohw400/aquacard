@@ -19,7 +19,7 @@ class StagingRestoreTemplateTest(unittest.TestCase):
         resources = self.template["Resources"]
         self.assertCountEqual(
             (value["Type"] for value in resources.values()),
-            ["AWS::RDS::DBInstance", "AWS::EC2::SecurityGroup"],
+            ["AWS::RDS::DBInstance", "AWS::EC2::SecurityGroup", "AWS::EC2::SecurityGroupEgress"],
         )
         db = self.database["Properties"]
         self.assertEqual(db["SourceDbiResourceId"], {"Ref": "SourceDbiResourceId"})
@@ -44,6 +44,18 @@ class StagingRestoreTemplateTest(unittest.TestCase):
         for rule in group["SecurityGroupEgress"]:
             self.assertTrue(ipaddress.ip_network(rule["CidrIp"]).is_loopback)
             self.assertFalse({"CidrIpv6", "DestinationSecurityGroupId", "DestinationPrefixListId"} & rule.keys())
+
+    def test_opt_in_egress_connects_verifier_only_to_the_drill_database(self):
+        self.assertEqual(self.template["Parameters"]["ManageVerifierEgress"]["Default"], "false")
+        rule = self.template["Resources"]["VerifierToRestore"]
+        self.assertEqual(self.template["Conditions"][rule["Condition"]], {
+            "Fn::Equals": [{"Ref": "ManageVerifierEgress"}, "true"],
+        })
+        self.assertEqual(rule["Properties"], {
+            "GroupId": {"Ref": "VerifierSecurityGroupId"},
+            "IpProtocol": "tcp", "FromPort": 5432, "ToPort": 5432,
+            "DestinationSecurityGroupId": {"Fn::GetAtt": ["RestoreSecurityGroup", "GroupId"]},
+        })
 
     def test_stack_deletion_cleans_up_the_disposable_copy(self):
         self.assertEqual(self.database["DeletionPolicy"], "Delete")

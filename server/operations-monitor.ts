@@ -24,7 +24,7 @@ async function run() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === '--help') {
     console.log(usage);
-    console.log('Set AQUA_MONITOR_ENVIRONMENT and MONITOR_DATABASE_URL. Exit 0 for completed checks, 1 for ledger findings, review or recent failures, 2 for incomplete checks. Queue age thresholds are applied by CloudWatch.');
+    console.log('Set AQUA_MONITOR_ENVIRONMENT and either MONITOR_DATABASE_URL or MONITOR_DATABASE_SECRET. Exit 0 for completed checks, 1 for ledger findings, review or recent failures, 2 for incomplete checks. Queue age thresholds are applied by CloudWatch.');
     return;
   }
   const environment = process.env.AQUA_MONITOR_ENVIRONMENT;

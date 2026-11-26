@@ -1,0 +1,230 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private network for the Aqua Card Seoul staging database, monitor and recovery drills.
+
+Parameters:
+  PrimaryAvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: ap-northeast-2a
+    Description: Private subnet for Fargate tasks and the interface endpoint ENIs.
+  SecondaryAvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: ap-northeast-2c
+    Description: Second private subnet for the RDS subnet group and Fargate tasks.
+  S3PrefixListId:
+    Type: String
+    AllowedPattern: 'pl-[0-9a-f]+'
+    Description: AWS-managed IPv4 prefix list for com.amazonaws.ap-northeast-2.s3.
+
+Rules:
+  DistinctAvailabilityZones:
+    Assertions:
+      - Assert: !Not [!Equals [!Ref PrimaryAvailabilityZone, !Ref SecondaryAvailabilityZone]]
+        AssertDescription: The RDS subnet group requires two distinct Availability Zones.
+  SeoulOnly:
+    Assertions:
+      - Assert: !Equals [!Ref 'AWS::Region', ap-northeast-2]
+        AssertDescription: Deploy this network in Seoul with the regional S3 prefix list.
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.84.0.0/20
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref PrimaryAvailabilityZone
+      CidrBlock: 10.84.0.0/24
+      MapPublicIpOnLaunch: false
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref SecondaryAvailabilityZone
+      CidrBlock: 10.84.1.0/24
+      MapPublicIpOnLaunch: false
+
+  PrivateRoutes:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+
+  SubnetARoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRoutes
+      SubnetId: !Ref PrivateSubnetA
+
+  SubnetBRoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRoutes
+      SubnetId: !Ref PrivateSubnetB
+
+  SourceDatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Source staging PostgreSQL
+      VpcId: !Ref Vpc
+      # Suppress EC2's default allow-all egress. Responses to inbound connections are stateful.
+      SecurityGroupEgress:
+        - { IpProtocol: '-1', CidrIp: 127.0.0.1/32 }
+
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Private ECR, Logs and Secrets Manager endpoints
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - { IpProtocol: '-1', CidrIp: 127.0.0.1/32 }
+
+  MonitorSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Scheduled read-only staging monitor
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, DestinationSecurityGroupId: !GetAtt SourceDatabaseSecurityGroup.GroupId }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, DestinationSecurityGroupId: !GetAtt EndpointSecurityGroup.GroupId }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, DestinationPrefixListId: !Ref S3PrefixListId }
+
+  BootstrapSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: One-off source database setup and staging validation
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, DestinationSecurityGroupId: !GetAtt SourceDatabaseSecurityGroup.GroupId }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, DestinationSecurityGroupId: !GetAtt EndpointSecurityGroup.GroupId }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, DestinationPrefixListId: !Ref S3PrefixListId }
+
+  VerifierSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Private recovery verifier, with database egress scoped by the active drill stack
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, DestinationSecurityGroupId: !GetAtt EndpointSecurityGroup.GroupId }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, DestinationPrefixListId: !Ref S3PrefixListId }
+
+  MonitorToSource:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt SourceDatabaseSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !GetAtt MonitorSecurityGroup.GroupId
+
+  BootstrapToSource:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt SourceDatabaseSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !GetAtt BootstrapSecurityGroup.GroupId
+
+  MonitorToEndpoints:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt EndpointSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !GetAtt MonitorSecurityGroup.GroupId
+
+  BootstrapToEndpoints:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt EndpointSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !GetAtt BootstrapSecurityGroup.GroupId
+
+  VerifierToEndpoints:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt EndpointSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !GetAtt VerifierSecurityGroup.GroupId
+
+  S3Gateway:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Gateway
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      RouteTableIds: [!Ref PrivateRoutes]
+      # ECR hands the client a signed S3 URL for the image layers.
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::prod-${AWS::Region}-starport-layer-bucket/*'
+
+  # Four billed interface endpoint ENIs in AZ A, reachable from both private subnets.
+  EcrApiEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.api'
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnetA]
+      SecurityGroupIds: [!GetAtt EndpointSecurityGroup.GroupId]
+
+  EcrRegistryEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.dkr'
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnetA]
+      SecurityGroupIds: [!GetAtt EndpointSecurityGroup.GroupId]
+
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.secretsmanager'
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnetA]
+      SecurityGroupIds: [!GetAtt EndpointSecurityGroup.GroupId]
+
+  LogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.logs'
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnetA]
+      SecurityGroupIds: [!GetAtt EndpointSecurityGroup.GroupId]
+
+Outputs:
+  VpcId:
+    Value: !Ref Vpc
+  PrivateSubnetIds:
+    Description: Comma-separated private subnet IDs in distinct Availability Zones.
+    Value: !Join [',', [!Ref PrivateSubnetA, !Ref PrivateSubnetB]]
+  MonitorSecurityGroupId:
+    Value: !GetAtt MonitorSecurityGroup.GroupId
+  BootstrapSecurityGroupId:
+    Value: !GetAtt BootstrapSecurityGroup.GroupId
+  VerifierSecurityGroupId:
+    Value: !GetAtt VerifierSecurityGroup.GroupId
+  SourceDatabaseSecurityGroupId:
+    Value: !GetAtt SourceDatabaseSecurityGroup.GroupId

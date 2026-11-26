@@ -23,6 +23,15 @@ Parameters:
     Type: AWS::EC2::SecurityGroup::Id
     Description: Dedicated verifier security group in the same VPC with no API or worker tasks attached.
 
+  ManageVerifierEgress:
+    Type: String
+    AllowedValues: ['false', 'true']
+    Default: 'false'
+    Description: Add outbound TCP 5432 to this restored DB on the dedicated verifier group for this drill.
+
+Conditions:
+  AddVerifierEgress: !Equals [!Ref ManageVerifierEgress, 'true']
+
 Rules:
   VerifierInTargetVpc:
     Assertions:
@@ -48,6 +57,16 @@ Resources:
       SecurityGroupEgress:
         - IpProtocol: '-1'
           CidrIp: 127.0.0.1/32
+
+  VerifierToRestore:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: AddVerifierEgress
+    Properties:
+      GroupId: !Ref VerifierSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      DestinationSecurityGroupId: !GetAtt RestoreSecurityGroup.GroupId
 
   RestoredDB:
     Type: AWS::RDS::DBInstance

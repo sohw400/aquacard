@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Register a one-off private Fargate task to initialize the Seoul staging database.
+
+Parameters:
+  EcrRepositoryName:
+    Type: String
+    AllowedPattern: '[a-z0-9]+(?:[._/-][a-z0-9]+)*'
+    Description: EcrRepositoryName from the staging foundation.
+  ImageDigest:
+    Type: String
+    AllowedPattern: 'sha256:[a-f0-9]{64}'
+    Description: Digest of the Linux amd64 server image containing the checked Seoul RDS CA bundle.
+  DatabaseHost:
+    Type: String
+    AllowedPattern: '[a-z0-9-]+\.[a-z0-9-]+\.ap-northeast-2\.rds\.amazonaws\.com'
+    Description: DBEndpoint of the staging source instance.
+  AdminSecretArn:
+    Type: String
+    AllowedPattern: 'arn:aws:secretsmanager:ap-northeast-2:[0-9]{12}:secret:[A-Za-z0-9/_+=.@!-]+'
+    Description: DBMasterSecretArn managed by RDS for the source instance.
+  MonitorDatabaseSecretArn:
+    Type: String
+    AllowedPattern: 'arn:aws:secretsmanager:ap-northeast-2:[0-9]{12}:secret:[A-Za-z0-9/_+=.@!-]+'
+    Description: MonitorDatabaseSecretArn with the generated monitor credentials for the same instance.
+
+Rules:
+  SeoulOnly:
+    Assertions:
+      - Assert: !Equals [!Ref 'AWS::Region', ap-northeast-2]
+        AssertDescription: Deploy the bootstrap task alongside the Seoul staging foundation.
+  SeparateSecrets:
+    Assertions:
+      - Assert: !Not [!Equals [!Ref AdminSecretArn, !Ref MonitorDatabaseSecretArn]]
+        AssertDescription: Supply the independent RDS-managed master and generated monitor secrets.
+
+Resources:
+  BootstrapLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 30
+  BootstrapExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { 'aws:SourceAccount': !Ref 'AWS::AccountId' }
+              ArnLike: { 'aws:SourceArn': !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*' }
+      Policies:
+        - PolicyName: BootstrapTaskStartup
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action: [ecr:BatchGetImage, ecr:GetDownloadUrlForLayer, ecr:BatchCheckLayerAvailability]
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrRepositoryName}'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt BootstrapLogs.Arn
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: [!Ref AdminSecretArn, !Ref MonitorDatabaseSecretArn]
+                Condition:
+                  StringEquals: { 'aws:ResourceAccount': !Ref 'AWS::AccountId' }
+  BootstrapTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      RuntimePlatform: { CpuArchitecture: X86_64, OperatingSystemFamily: LINUX }
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt BootstrapExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: bootstrap
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/${EcrRepositoryName}@${ImageDigest}'
+          Essential: true
+          ReadonlyRootFilesystem: true
+          User: node
+          Command: [node, dist-server/staging-bootstrap.js]
+          Environment:
+            - { Name: NODE_ENV, Value: production }
+            - { Name: DATABASE_HOST, Value: !Ref DatabaseHost }
+            - { Name: DATABASE_NAME, Value: aqua }
+            - { Name: DATABASE_SCHEMA, Value: aqua }
+            - { Name: DATABASE_CA_FILE, Value: /etc/aqua/rds-ca.pem }
+          Secrets:
+            - { Name: AQUA_STAGING_DB_ADMIN_JSON, ValueFrom: !Ref AdminSecretArn }
+            - { Name: MONITOR_DATABASE_SECRET, ValueFrom: !Ref MonitorDatabaseSecretArn }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BootstrapLogs
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: bootstrap
+              mode: blocking
+
+Outputs:
+  BootstrapTaskDefinitionArn:
+    Value: !Ref BootstrapTask
+  BootstrapExecutionRoleArn:
+    Value: !GetAtt BootstrapExecutionRole.Arn
+  BootstrapLogGroup:
+    Value: !Ref BootstrapLogs

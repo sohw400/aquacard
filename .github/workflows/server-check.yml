@@ -71,8 +71,8 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/aqua-cfn"
           source "$RUNNER_TEMP/aqua-cfn/bin/activate"
           python -m pip install --disable-pip-version-check cfn-lint==1.40.4
-          cfn-lint --regions ap-northeast-2 --template infra/operations-monitoring.yaml infra/staging-pitr.yaml
-          python -B -m unittest discover -s scripts -p test_pitr_template.py
+          cfn-lint --regions ap-northeast-2 --template infra/operations-monitoring.yaml infra/staging-pitr.yaml infra/staging-network.yaml infra/staging-foundation.yaml infra/staging-bootstrap.yaml
+          python -B -m unittest discover -s scripts -p "test_*template.py"
           node --import tsx scripts/check-operations-alarms.mjs
       - name: Verify trust bundle packaging
         run: node --test scripts/rds-ca.test.mjs
@@ -129,6 +129,8 @@ jobs:
             assert.equal(statSync(path).mode & 0o777, 0o444);
             assert.equal(createHash("sha256").update(readFileSync(path)).digest("hex"), process.argv[1]);
           ' "$aqua_ca_hash"
+      - name: Initialize a private PostgreSQL fixture from the release image
+        run: bash scripts/staging-bootstrap-smoke.sh aqua-card-server:ci
       - name: Check the compiled container with a read-only filesystem
         shell: bash
         run: |

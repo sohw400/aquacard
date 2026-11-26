@@ -37,6 +37,8 @@ npm run dev
 
 ## 검증
 
+서울 AWS 계정에 스테이징을 처음 만들 때는 사설 네트워크, RDS·ECR·ECS, DB 초기화, 점검기 순서로 설치합니다. 배포 입력과 대기 중 과금되는 항목을 정리했습니다. [서울 스테이징 설치](docs/staging-setup.md)
+
 원장 차이, 미처리 거래, 작업자 중단은 `npm run server:monitor`와 CloudWatch 경보로 점검합니다. 점검 계정은 건수·대기 시간만 읽습니다. [운영 경보와 장애 대응](docs/operations-monitoring.md) · [실거래 개방 전 확인할 사항](docs/launch-readiness.md)
 
 합성 거래가 담긴 PostgreSQL 논리 백업은 `npm run test:recovery`로 복원합니다. `npm run test:pitr`는 물리 백업 이후의 거래 기록을 지정 시각까지 재생하고, 복원본에서 환불과 중복 요청을 검증합니다. [복원 훈련과 기대 금액](docs/server-development.md#postgresql-백업-복원-훈련) · [서울 스테이징 시점 복구와 경보 수신](docs/staging-recovery.md)
