@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { MemberProfile } from '../../shared/api';
 import { api, errorMessage } from './api';
+import cards from '../assets/aqua-cards.webp';
+import './AuthPanel.css';
 
 type AuthView = 'login' | 'signup' | 'recovery-request' | 'recovery-confirm';
 const PASSWORD_HELP = '12~128자, 영문 대문자·소문자·숫자·기호 중 3종류를 사용해 주세요.';
@@ -20,6 +22,13 @@ export default function AuthPanel({ onAuthenticated, notice }: { onAuthenticated
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const title = useRef<HTMLHeadingElement>(null);
+  const previousView = useRef(view);
+  useEffect(() => {
+    if (previousView.current !== view) title.current?.focus();
+    previousView.current = view;
+  }, [view]);
+
   const mounted = useRef(true);
   const flight = useRef<AbortController | null>(null);
   const generation = useRef(0);
@@ -29,7 +38,7 @@ export default function AuthPanel({ onAuthenticated, notice }: { onAuthenticated
   }, []);
 
   function changeView(next: AuthView) {
-    if (flight.current) return;
+    if (flight.current || next === view) return;
     generation.current++;
     setView(next); setError(''); setMessage(''); setPassword(''); setToken('');
   }
@@ -88,19 +97,32 @@ export default function AuthPanel({ onAuthenticated, notice }: { onAuthenticated
   }
 
   const recovery = view.startsWith('recovery');
-  return <div className="sa-auth-layout"><section className="sa-auth-intro"><span className="sa-overline">Aqua 계정</span><h1>태그로 찾고,<br />계정으로 보내세요.</h1><p>회원 간 송금을 위한 테스트 서비스입니다.<br />잔액과 거래 내역은 서버에서 관리됩니다.</p><div className="sa-intro-note"><strong>실제 자금이 아닙니다.</strong><p>입금과 카드 발급은 아직 연결되지 않았습니다.</p></div></section><section className="sa-auth-card" aria-label="계정 인증">
-    {!recovery ? <div className="sa-auth-tabs" role="tablist" aria-label="계정 메뉴"><button role="tab" aria-selected={view === 'login'} data-testid="auth-login-tab" disabled={busy} onClick={() => changeView('login')}>로그인</button><button role="tab" aria-selected={view === 'signup'} data-testid="auth-signup-tab" disabled={busy} onClick={() => changeView('signup')}>회원가입</button></div> : <div className="sa-auth-heading"><button className="sa-text-button" disabled={busy} onClick={() => changeView('login')}>로그인으로 돌아가기</button><h2>비밀번호 재설정</h2></div>}
+  const heading = {
+    login: '로그인',
+    signup: '계정 만들기',
+    'recovery-request': '복구 코드 받기',
+    'recovery-confirm': '새 비밀번호 설정',
+  }[view];
+  return <div className="sa-entry">
+    <div className="sa-entry-art" aria-hidden="true"><img src={cards} width="960" height="630" alt="" /></div>
+    <section className="sa-auth-card sa-entry-form" aria-labelledby="server-entry-title">
+      {recovery && <button type="button" className="sa-text-button sa-entry-back" disabled={busy} onClick={() => changeView('login')}>로그인으로 돌아가기</button>}
+      <h1 ref={title} tabIndex={-1} id="server-entry-title">{heading}</h1>
+      {!recovery ? <div className="sa-entry-switch" role="group" aria-label="계정 메뉴">
+        <button type="button" aria-pressed={view === 'login'} data-testid="auth-login-tab" disabled={busy} onClick={() => changeView('login')}>로그인</button>
+        <button type="button" aria-pressed={view === 'signup'} data-testid="auth-signup-tab" disabled={busy} onClick={() => changeView('signup')}>회원가입</button>
+      </div> : <p className="sa-entry-instruction">{view === 'recovery-request' ? '가입할 때 사용한 이메일을 입력해 주세요.' : '복구 메일에서 받은 코드와 새 비밀번호를 입력해 주세요.'}</p>}
     {(message || notice) && <p className="sa-notice" role="status">{message || notice}</p>}
     <form onSubmit={submit} aria-busy={busy}>
       {view === 'signup' && <div className="sa-field"><label htmlFor="server-name">이름</label><input id="server-name" data-testid="auth-name" disabled={busy} value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" minLength={2} maxLength={40} required /></div>}
-      {view !== 'recovery-confirm' && <div className="sa-field"><label htmlFor="server-email">이메일</label><input id="server-email" data-testid="auth-email" disabled={busy} type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" maxLength={254} required /></div>}
-      {view === 'signup' && <div className="sa-field"><label htmlFor="server-tag">Aqua 태그</label><div className="sa-tag-input"><span>@</span><input id="server-tag" data-testid="auth-tag" disabled={busy} value={tag} onChange={(event) => setTag(event.target.value.replace(/^@/, '').toLowerCase())} autoComplete="off" autoCapitalize="none" spellCheck={false} minLength={3} maxLength={20} placeholder="aqua.member" required /></div><p className="sa-field-help">영문 소문자·숫자·점·밑줄, 3~20자</p></div>}
-      {view === 'recovery-confirm' && <div className="sa-field"><label htmlFor="server-recovery-token">복구 코드</label><input id="server-recovery-token" data-testid="recovery-token" maxLength={128} disabled={busy} value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} required /><p className="sa-field-help">가장 최근에 요청한 복구 코드로 확인해 주세요. 이메일 인증 코드는 사용할 수 없습니다.</p></div>}
-      {view !== 'recovery-request' && <div className="sa-field"><label htmlFor="server-password">{view === 'recovery-confirm' ? '새 비밀번호' : '비밀번호'}</label><input id="server-password" data-testid={view === 'recovery-confirm' ? 'recovery-password' : 'auth-password'} disabled={busy} type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={view === 'login' ? 'current-password' : 'new-password'} minLength={12} maxLength={128} required />{view !== 'login' && <p className="sa-field-help">{PASSWORD_HELP}</p>}</div>}
+      {view !== 'recovery-confirm' && <div className="sa-field"><label htmlFor="server-email">이메일</label><input id="server-email" data-testid="auth-email" disabled={busy} type="email" autoCapitalize="none" spellCheck={false} value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" maxLength={254} required /></div>}
+      {view === 'signup' && <div className="sa-field"><label htmlFor="server-tag">Aqua 태그</label><div className="sa-tag-input"><span>@</span><input id="server-tag" data-testid="auth-tag" aria-describedby="server-tag-help" disabled={busy} value={tag} onChange={(event) => setTag(event.target.value.replace(/^@/, '').toLowerCase())} autoComplete="off" autoCapitalize="none" spellCheck={false} minLength={3} maxLength={20} placeholder="aqua.member" required /></div><p id="server-tag-help" className="sa-field-help">송금받을 때 쓰는 이름이에요. 영문 소문자·숫자·점·밑줄로 3~20자를 입력해 주세요.</p></div>}
+      {view === 'recovery-confirm' && <div className="sa-field"><label htmlFor="server-recovery-token">복구 코드</label><input id="server-recovery-token" data-testid="recovery-token" aria-describedby="server-code-help" maxLength={128} disabled={busy} value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} required /><p className="sa-field-help" id="server-code-help">가장 최근에 요청한 비밀번호 복구 코드를 사용해 주세요.</p></div>}
+      {view !== 'recovery-request' && <div className="sa-field"><label htmlFor="server-password">{view === 'recovery-confirm' ? '새 비밀번호' : '비밀번호'}</label><input id="server-password" aria-describedby={view === 'login' ? undefined : 'server-password-help'} data-testid={view === 'recovery-confirm' ? 'recovery-password' : 'auth-password'} disabled={busy} type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={view === 'login' ? 'current-password' : 'new-password'} minLength={12} maxLength={128} required />{view !== 'login' && <p className="sa-field-help" id="server-password-help">{PASSWORD_HELP}</p>}</div>}
       {error && <p className="sa-error" role="alert" data-testid="auth-error">{error}</p>}
       <button className="sa-primary sa-full" data-testid={view === 'recovery-request' ? 'recovery-request' : view === 'recovery-confirm' ? 'recovery-confirm' : 'auth-submit'} disabled={busy} type="submit">{busy ? '확인 중' : view === 'signup' ? '계정 만들기' : view === 'recovery-request' ? '복구 안내 요청' : view === 'recovery-confirm' ? '비밀번호 변경' : '로그인'}</button>
     </form>
-    {!recovery && <button className="sa-text-button sa-auth-recovery" data-testid="auth-recovery" disabled={busy} onClick={() => changeView('recovery-request')}>비밀번호를 잊으셨나요?</button>}{view === 'recovery-request' && <button className="sa-text-button sa-auth-recovery" disabled={busy} onClick={() => changeView('recovery-confirm')}>복구 코드가 있어요</button>}
-    {view === 'signup' && <p className="sa-auth-footnote">새 계정의 잔액은 0원으로 시작합니다.</p>}
+    {view === 'login' && <button className="sa-text-button sa-auth-recovery" data-testid="auth-recovery" disabled={busy} onClick={() => changeView('recovery-request')}>비밀번호 찾기</button>}{view === 'recovery-request' && <button className="sa-text-button sa-auth-recovery" disabled={busy} onClick={() => changeView('recovery-confirm')}>복구 코드가 있어요</button>}
+    {view === 'recovery-confirm' && <button type="button" className="sa-text-button sa-auth-recovery" disabled={busy} onClick={() => changeView('recovery-request')}>복구 코드 다시 요청하기</button>}
   </section></div>;
 }

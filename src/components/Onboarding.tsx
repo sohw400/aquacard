@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Check, ChevronLeft, CircleAlert } from 'lucide-react';
+import { Check, ChevronLeft } from 'lucide-react';
 import AddressSheet from './AddressSheet';
 import CardHero from './CardHero';
 import Logo from './Logo';
@@ -167,6 +167,8 @@ export default function Onboarding({ state, dispatch, farewell = null, onFarewel
   useEffect(() => { heading.current?.focus(); }, [screen]);
 
   const birthDate = /^\d{8}$/.test(birth) ? `${birth.slice(0, 4)}-${birth.slice(4, 6)}-${birth.slice(6, 8)}` : '';
+  const emailCodeMismatch = Boolean(emailCode && emailInput.length === 6 && !emailVerified);
+  const phoneCodeMismatch = Boolean(phoneCode && phoneInput.length === 6 && !phoneVerified);
   const passwordProblem = password ? passwordIssue(password) : '';
   const passwordsReady = password !== '' && !passwordProblem && password === confirm;
 
@@ -255,23 +257,24 @@ export default function Onboarding({ state, dispatch, farewell = null, onFarewel
         : prefix === 'signup' ? <button type="button" className="onboarding-text-button" data-testid="signup-email-sample" onClick={() => { setEmail(SAMPLE.email); setEmailCode(null); setError(''); }}>체험용 주소 넣기</button> : undefined)}
     {!emailVerified && (emailCode ? <>
       <p className="onboarding-code-note" data-testid={`${prefix}-demo-code`}>체험판이라 메일은 보내지 않아요. 인증 코드 <strong>{emailCode}</strong></p>
-      {field(`${prefix}-code`, '인증 코드 6자리', <input id={id(`${prefix}-code`)} data-testid={`${prefix}-code`} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={emailInput} onChange={(event) => setEmailInput(event.target.value.replace(/\D/g, ''))} />, <button type="button" className="onboarding-text-button" onClick={sendEmailCode}>다시 받기</button>)}
+      {field(`${prefix}-code`, '인증 코드 6자리', <input id={id(`${prefix}-code`)} data-testid={`${prefix}-code`} aria-invalid={emailCodeMismatch} aria-describedby={emailCodeMismatch ? id('email-code-error') : undefined} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={emailInput} onChange={(event) => setEmailInput(event.target.value.replace(/\D/g, ''))} />, <button type="button" className="onboarding-text-button" onClick={sendEmailCode}>다시 받기</button>)}
+      {emailCodeMismatch && <p id={id('email-code-error')} role="alert" className="onboarding-hint bad">위에 표시된 인증 코드 6자리를 확인해 주세요.</p>}
     </> : <button type="button" className="btn neutral block" data-testid={`${prefix}-send-code`} disabled={!EMAIL_PATTERN.test(email.trim())} onClick={sendEmailCode}>인증 코드 받기</button>)}
   </>;
   const passwordBlock = (prefix: 'signup' | 'reset') => emailVerified && <>
-    {field(`${prefix}-password`, prefix === 'signup' ? '비밀번호' : '새 비밀번호', <input id={id(`${prefix}-password`)} data-testid={`${prefix}-password`} type="password" autoComplete="new-password" value={password} onChange={(event) => { setPassword(event.target.value); setError(''); }} aria-invalid={Boolean(passwordProblem)} />)}
-    <p className={`onboarding-hint${passwordProblem ? ' bad' : ''}`}>{passwordProblem || '영문과 숫자를 섞어 8자 이상'}</p>
-    {field(`${prefix}-password-confirm`, '비밀번호 확인', <input id={id(`${prefix}-password-confirm`)} data-testid={`${prefix}-password-confirm`} type="password" autoComplete="new-password" value={confirm} onChange={(event) => { setConfirm(event.target.value); setError(''); }} />)}
-    {confirm && password !== confirm && <p className="onboarding-hint bad">비밀번호가 서로 달라요.</p>}
+    {field(`${prefix}-password`, prefix === 'signup' ? '비밀번호' : '새 비밀번호', <input id={id(`${prefix}-password`)} data-testid={`${prefix}-password`} type="password" autoComplete="new-password" value={password} onChange={(event) => { setPassword(event.target.value); setError(''); }} aria-describedby={id('password-help')} aria-invalid={Boolean(passwordProblem)} />)}
+    <p id={id('password-help')} className={`onboarding-hint${passwordProblem ? ' bad' : ''}`}>{passwordProblem || '영문과 숫자를 섞어 8자 이상'}</p>
+    {field(`${prefix}-password-confirm`, '비밀번호 확인', <input id={id(`${prefix}-password-confirm`)} data-testid={`${prefix}-password-confirm`} aria-invalid={Boolean(confirm && password !== confirm)} aria-describedby={confirm && password !== confirm ? id('confirm-help') : undefined} type="password" autoComplete="new-password" value={confirm} onChange={(event) => { setConfirm(event.target.value); setError(''); }} />)}
+    {confirm && password !== confirm && <p id={id('confirm-help')} className="onboarding-hint bad">비밀번호가 서로 달라요.</p>}
   </>;
 
   let body: ReactNode;
   if (screen === 'welcome') {
     body = <div className="onboarding-form welcome">
-      <CardHero className="onboarding-hero" alt="Aqua 카드 두 장" />
-      <h1 ref={heading} tabIndex={-1}>코인을 보내면<br />원화로 쓰는 카드</h1>
-      <p className="onboarding-lead">받은 코인은 바로 원화 스테이블 잔액이 돼요. 카드로 쓸&nbsp;때마다 1%를 돌려받고, 리저브에 둔 돈에는 1초마다 보상이 쌓여요.</p>
-      <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="auth-signup" onClick={() => go('terms')}>시작하기</button><button type="button" className="btn neutral block" data-testid="auth-login" onClick={() => go('login')}>로그인</button></div>
+      <div className="onboarding-card-stage"><CardHero className="onboarding-hero" alt="Aqua 카드 두 장" /></div>
+      <div className="onboarding-welcome-copy"><h1 ref={heading} tabIndex={-1}>코인을 충전하고<br />카드로 결제하세요</h1>
+      <p className="onboarding-lead">원화 스테이블 잔액으로 결제하고 페이백을 받아요. 가입부터 첫 결제까지 샘플 정보로 체험할 수 있어요.</p>
+      <div className="onboarding-actions"><button type="button" className="btn primary block" data-testid="auth-signup" onClick={() => go('terms')}>가입하고 체험하기</button><button type="button" className="btn neutral block" data-testid="auth-login" onClick={() => go('login')}>로그인</button></div></div>
     </div>;
   } else if (screen === 'terms') {
     body = <form className="onboarding-form" noValidate onSubmit={(event) => { event.preventDefault(); if (allAgreed) go('account'); }}>
@@ -311,7 +314,8 @@ export default function Onboarding({ state, dispatch, farewell = null, onFarewel
         phoneVerified ? <span className="onboarding-done" data-testid="kyc-phone-verified"><Check size={15} strokeWidth={2.6} />인증 완료</span> : undefined)}
       {!phoneVerified && (phoneCode ? <>
         <p className="onboarding-code-note" data-testid="kyc-demo-code">체험판이라 문자는 보내지 않아요. 인증번호 <strong>{phoneCode}</strong></p>
-        {field('phone-code', '인증번호 6자리', <input id={id('phone-code')} data-testid="kyc-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={phoneInput} onChange={(event) => setPhoneInput(event.target.value.replace(/\D/g, ''))} />, <button type="button" className="onboarding-text-button" onClick={sendPhoneCode}>다시 받기</button>)}
+        {field('phone-code', '인증번호 6자리', <input id={id('phone-code')} data-testid="kyc-code" aria-invalid={phoneCodeMismatch} aria-describedby={phoneCodeMismatch ? id('phone-code-error') : undefined} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={phoneInput} onChange={(event) => setPhoneInput(event.target.value.replace(/\D/g, ''))} />, <button type="button" className="onboarding-text-button" onClick={sendPhoneCode}>다시 받기</button>)}
+        {phoneCodeMismatch && <p id={id('phone-code-error')} role="alert" className="onboarding-hint bad">위에 표시된 인증번호 6자리를 확인해 주세요.</p>}
       </> : <button type="button" className="btn neutral block" data-testid="kyc-send-code" onClick={sendPhoneCode}>인증번호 받기</button>)}
       {errorBox}
       <div className="onboarding-actions"><button type="submit" className="btn primary block" data-testid="kyc-next" disabled={!phoneVerified}>다음</button></div>
@@ -410,9 +414,7 @@ export default function Onboarding({ state, dispatch, farewell = null, onFarewel
   } else if (screen === 'review') {
     const rejected = review === 'rejected';
     body = <div className="onboarding-form review" data-testid="kyc-review" data-status={review}>
-      {review === 'done' ? <span className="onboarding-review-icon" aria-hidden="true"><Check size={28} strokeWidth={2.4} /></span>
-        : rejected ? <span className="onboarding-review-icon muted" aria-hidden="true"><CircleAlert size={28} strokeWidth={2.2} /></span> : <span className="onboarding-spinner" aria-hidden="true" />}
-      <h1 ref={heading} tabIndex={-1}>{review === 'done' ? '가입을 마쳤어요' : rejected ? '가입을 승인하지 못했어요' : appealed ? '담당자가 다시 보고 있어요' : '확인하고 있어요'}</h1>
+      <h1 ref={heading} tabIndex={-1} aria-live="polite">{review === 'done' ? '가입을 마쳤어요' : rejected ? '가입을 승인하지 못했어요' : appealed ? '담당자가 다시 보고 있어요' : '확인하고 있어요'}</h1>
       <p className="onboarding-lead">{review === 'done' ? `${name}님, 이제 코인을 보내 충전하고 카드를 만들 수 있어요.`
         : rejected ? '자동 심사에서 승인되지 않았어요. 사람이 다시 보도록 요청할 수 있어요.'
         : appealed ? '보통 1~2영업일 걸리고 결과는 메일로 알려 드려요. 체험판에서는 바로 끝나요.' : '보통 몇 분 걸리는데 체험판에서는 바로 끝나요.'}</p>
@@ -423,7 +425,6 @@ export default function Onboarding({ state, dispatch, farewell = null, onFarewel
     </div>;
   } else if (screen === 'closed' && farewell) {
     body = <div className="onboarding-form review" data-testid="closure-done">
-      <span className="onboarding-review-icon" aria-hidden="true"><Check size={28} strokeWidth={2.4} /></span>
       <h1 ref={heading} tabIndex={-1}>탈퇴를 마쳤어요</h1>
       <p className="onboarding-lead">그동안 Aqua를 써 주셔서 고마워요.</p>
       <dl className="onboarding-facts">
@@ -457,12 +458,12 @@ export default function Onboarding({ state, dispatch, farewell = null, onFarewel
     </form>;
   }
 
-  return <main className="onboarding" data-testid="onboarding">
+  return <main className="onboarding" data-screen={screen} data-testid="onboarding">
     <div className="onboarding-inner">
       <div className="onboarding-brand"><Logo size={30} /><span className="demo-tag">체험판</span></div>
       {progress}
       {body}
-      <p className="onboarding-note">체험판이에요. 실제 이름, 휴대폰 번호, 주소, 신분증, 계좌&nbsp;정보는 넣지 마세요. 입력한 내용은 이&nbsp;브라우저에만 남고 비밀번호는 해시로만 저장돼요.</p>
+      <p className="onboarding-note">실제 이름, 연락처, 신분증, 계좌 정보는 넣지 마세요. 샘플로 입력한 정보는 이 브라우저에 저장돼요.</p>
     </div>
   </main>;
 }

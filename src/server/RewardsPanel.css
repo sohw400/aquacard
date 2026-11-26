@@ -49,3 +49,25 @@
 .sa-rewards-record dt { flex-shrink:0; }
 .sa-rewards-record dd { min-width:0; margin:0; color:var(--sa-ink); text-align:right; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
 @media(max-width:700px) { .sa-rewards-panel > .sa-section-heading { gap:10px; flex-wrap:wrap; } .sa-rewards-program { max-width:none; text-align:left; } .sa-rewards-balances { gap:15px; } .sa-rewards-balances > div + div { padding-left:15px; } .sa-rewards-balances dd { font-size:24px; } .sa-rewards-month-heading { flex-wrap:wrap; gap:8px; } .sa-rewards-month-heading > span { text-align:left; } .sa-rewards-month-amounts { grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 15px; } .sa-rewards-month-amounts dd { font-size:16px; } .sa-rewards-unknown .sa-secondary { width:100%; } }
+
+.sa-benefits-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:40px; }
+.sa-benefits-grid .sa-rewards-month { border:0; padding:0; }
+.sa-benefits-grid .sa-rewards-wallet { border-left:1px solid var(--sa-line); padding-left:40px; min-width:0; }
+.sa-month-total { margin:18px 0 4px; }
+.sa-month-total dt { font-size:12px; color:var(--sa-muted); }
+.sa-month-total dd { margin:2px 0 0; color:var(--sa-ink); font-size:32px; line-height:1.3; letter-spacing:-.045em; font-weight:620; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.sa-rewards-policy { color:var(--sa-muted); font-size:12px; }
+.sa-rewards-policy b { font-weight:550; }
+.sa-cashback-meter { display:block; width:100%; height:5px; margin:13px 0; appearance:none; background:#e2e8eb; border:0; border-radius:8px; }
+.sa-cashback-meter::-webkit-meter-bar { height:5px; border:0; background:#e2e8eb; border-radius:8px; }
+.sa-cashback-meter::-webkit-meter-optimum-value { background:#326883; border-radius:8px; }
+.sa-cashback-meter::-moz-meter-bar { background:#326883; border-radius:8px; }
+.sa-cashback-details { display:flex; flex-wrap:wrap; gap:12px 24px; margin:12px 0; }
+.sa-cashback-details dt { font-size:12px; color:var(--sa-muted); }
+.sa-cashback-details dd { margin:2px 0 0; font-size:14px; font-weight:550; color:var(--sa-ink); overflow-wrap:anywhere; }
+.sa-rewards-month .sa-rewards-program { display:inline-block; width:auto; }
+.sa-rewards-wallet .sa-rewards-preference { padding-bottom:0; }
+@media(max-width:700px) {
+  .sa-benefits-grid { grid-template-columns:minmax(0,1fr); gap:21px; }
+  .sa-benefits-grid .sa-rewards-wallet { border-left:0; border-top:1px solid var(--sa-line); padding:18px 0 0; }
+}

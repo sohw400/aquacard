@@ -14,24 +14,15 @@
 .sa-issuer-card-top > span { color:#bcc8cf; font-size:8px; letter-spacing:1.2px; font-weight:500; white-space:nowrap; }
 .sa-issuer-card-bottom { color:#b6c3cc; font-size:10px; line-height:1.6; letter-spacing:.3px; }
 .sa-issuer-card-contour { position:absolute; inset:0; width:100%; height:100%; stroke:#a4b8c6; stroke-width:.55px; opacity:.23; }
-.sa-issuer-face-lock { display:flex; align-items:center; justify-content:center; width:25px; height:25px; color:#d2dce0; }
-.sa-issuer-face-mark { display:block; width:19px; height:19px; border:1px solid #9fb0bc; border-radius:50%; position:relative; overflow:hidden; opacity:.8; }
-.sa-issuer-face-mark::before { content:''; position:absolute; width:23px; height:15px; left:-4px; top:8px; border-top:1px solid #a8bac6; border-radius:50%; transform:rotate(-18deg); }
 .sa-issuer-stage.is-empty .sa-issuer-card-face { opacity:.56; filter:saturate(.55); }
 .sa-issuer-stage.is-empty .sa-issuer-card-shadow { opacity:.06; }
 .sa-issuer-details { min-width:0; padding-top:3px; }
-.sa-issuer-status-symbol { display:grid; place-items:center; width:39px; height:39px; margin-bottom:12px; border:1px solid #e0e7eb; border-radius:11px; color:#46667b; background:#f4f7f9; }
-.sa-issuer-status-symbol.locked { color:#324e64; }
-.sa-issuer-status-symbol.pending,.sa-issuer-status-symbol.confirming,.sa-issuer-status-symbol.review { background:#f8f6f1; border-color:#e8e2d5; color:#846a40; }
-.sa-issuer-status-symbol.unavailable,.sa-issuer-status-symbol.rejected { color:#6d747c; background:#f5f6f6; border-color:#e1e4e6; }
 .sa-issuer-state h3 { color:var(--sa-ink); font-size:21px; font-weight:600; line-height:1.5; letter-spacing:-.55px; text-wrap:balance; }
 .sa-issuer-state h3:focus { outline:0; }
 .sa-issuer-panel .sa-issuer-state > p { margin-top:7px; color:var(--sa-muted); font-size:12px; line-height:1.9; word-break:keep-all; overflow-wrap:break-word; }
 .sa-issuer-confirmed { display:grid; gap:7px; margin:20px 0 0; padding-top:17px; border-top:1px solid var(--sa-line); }
 .sa-issuer-confirmed > div { display:flex; align-items:center; justify-content:space-between; gap:15px; color:var(--sa-muted); font-size:11px; line-height:1.7; }
 .sa-issuer-confirmed dd { display:flex; align-items:center; gap:6px; margin:0; color:#3a4c5b; font-size:12px; font-weight:500; font-variant-numeric:tabular-nums; text-align:right; }
-.sa-issuer-confirmed dd > span { width:5px; height:5px; border-radius:50%; background:#5d7c8f; }
-.sa-issuer-confirmed dd > span.is-locked { background:#3c5264; }
 .sa-issuer-confirmed time { color:var(--sa-muted); font-size:11px; font-weight:400; white-space:nowrap; }
 .sa-issuer-actions { margin-top:20px; }
 .sa-issuer-button { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:46px; padding:11px 20px; border:1px solid #253e50; border-radius:8px; color:#fff; background:#253e50; font:inherit; font-size:13px; font-weight:550; line-height:1.6; cursor:pointer; }
@@ -49,7 +40,6 @@
 .sa-issuer-retry:disabled,.sa-issuer-refresh:disabled { color:#8b969f; cursor:not-allowed; }
 .sa-shell .sa-issuer-error { margin-top:12px; padding:10px 12px; border-left:2px solid #b57f70; color:#855648; background:#fbf6f3; font-size:12px; line-height:1.8; overflow-wrap:anywhere; }
 .sa-shell .sa-issuer-notice { display:flex; align-items:flex-start; gap:6px; margin-top:11px; color:#577285; font-size:11px; line-height:1.8; }
-.sa-issuer-notice > svg { flex-shrink:0; margin-top:2px; }
 .sa-shell .sa-issuer-readonly { margin-top:15px; color:var(--sa-muted); font-size:12px; line-height:1.8; }
 .sa-shell .sa-issuer-footnote { padding:15px 0 16px; border-top:1px solid var(--sa-line); color:#697582; font-size:11px; line-height:1.8; }
 .sa-issuer-dialog-backdrop { position:fixed; z-index:1500; inset:0; display:grid; place-items:center; padding:24px; background:#15232f70; }
@@ -83,7 +73,6 @@
   .sa-issuer-card-top > .aqua-wordmark { width:104px; height:33px; }
   .sa-issuer-card-top > span { font-size:7px; }
   .sa-issuer-details { padding-top:0; }
-  .sa-issuer-status-symbol { display:none; }
   .sa-issuer-state h3 { font-size:20px; }
   .sa-issuer-state > p { font-size:12px; }
   .sa-issuer-confirmed { margin-top:17px; padding-top:15px; gap:8px; }
@@ -106,3 +95,13 @@
   .sa-issuer-dialog { padding:28px 21px 22px; }
 }
 @media(prefers-reduced-motion:reduce) { .sa-issuer-card-face { transition:none; transform:none; } }
+.sa-issuer-heading-actions { display:flex; align-items:center; gap:8px; margin-block:-6px; }
+.sa-issuer-disclosure { display:inline-flex; align-items:center; gap:4px; min-height:44px; padding:4px 6px; color:#39545d; border:0; background:transparent; cursor:pointer; }
+.sa-issuer-panel .sa-issuer-disclosure { font-size:12px; font-weight:550; }
+.sa-issuer-disclosure[aria-expanded=true] svg { transform:rotate(180deg); }
+.sa-issuer-panel dl[hidden] { display:none; }
+.sa-card-slot .sa-issuer-details.is-compact { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px 10px; }
+.sa-issuer-details.is-compact .sa-issuer-state { grid-column:1; grid-row:1; }
+.sa-card-slot .sa-issuer-details.is-compact .sa-issuer-state h3 { font-size:clamp(17px,1.6vw,22px); }
+.sa-card-slot .sa-issuer-details.is-compact .sa-issuer-actions { grid-column:2; grid-row:1; margin:0; }
+.sa-issuer-details.is-compact > :not(.sa-issuer-state,.sa-issuer-actions) { grid-column:1/-1; }

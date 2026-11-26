@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, Check, Clock3, LockKeyhole, RefreshCw, ShieldCheck, UnlockKeyhole, X } from 'lucide-react';
+import { ArrowRight, ChevronDown, RefreshCw, UnlockKeyhole, X } from 'lucide-react';
 import type { CustomerAccessSnapshot } from '../../shared/api';
 import { Wordmark } from '../components/Logo';
 import { useModal } from '../components/useModal';
@@ -9,6 +9,7 @@ import './IssuerCardPanel.css';
 
 interface IssuerCardPanelProps {
   ownerId: string;
+  visible: boolean;
   access: CustomerAccessSnapshot | null;
   onSessionExpired: () => void;
 }
@@ -18,7 +19,7 @@ const checkedAt = (timestamp: number) => new Intl.DateTimeFormat('ko-KR', {
   month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul',
 }).format(timestamp);
 
-function CardFace({ locked, empty }: { locked: boolean; empty: boolean }) {
+function CardFace({ empty }: { empty: boolean }) {
   return <div className={`sa-issuer-stage${empty ? ' is-empty' : ''}`} aria-hidden="true">
     <div className="sa-issuer-card-shadow" />
     <div className="sa-issuer-card-face">
@@ -30,7 +31,7 @@ function CardFace({ locked, empty }: { locked: boolean; empty: boolean }) {
           <path d="M-40 257C88 125 208 278 290 117C328 48 376 45 435 33" />
           <path d="M-40 271C94 144 222 293 306 130C342 61 389 64 439 53" />
         </svg>
-        <div className="sa-issuer-card-bottom"><span>테스트 카드</span><span className="sa-issuer-face-lock">{locked ? <LockKeyhole size={20} strokeWidth={1.5} /> : <span className="sa-issuer-face-mark" />}</span></div>
+        <div className="sa-issuer-card-bottom"><span>테스트 카드</span></div>
       </div>
     </div>
   </div>;
@@ -62,10 +63,12 @@ function UnlockConfirmation({ onCancel, onConfirm }: { onCancel: () => void; onC
   </div>, document.body);
 }
 
-export default function IssuerCardPanel({ ownerId, access, onSessionExpired }: IssuerCardPanelProps) {
+export default function IssuerCardPanel({ ownerId, visible, access, onSessionExpired }: IssuerCardPanelProps) {
   const model = useIssuerCard(ownerId, onSessionExpired);
   const [unlockOpen, setUnlockOpen] = useState<{ cardId: string; version: number } | null>(null);
   const headingId = useId();
+  const detailId = useId();
+  const [detailOpen, setDetailOpen] = useState(false);
   const statusHeading = useRef<HTMLHeadingElement>(null);
   const card = model.snapshot?.card ?? null;
   const locked = card?.confirmedStatus === 'locked';
@@ -87,12 +90,12 @@ export default function IssuerCardPanel({ ownerId, access, onSessionExpired }: I
   const closeUnlock = useCallback(() => setUnlockOpen(null), []);
 
   useEffect(() => {
-    if (unlockOpen && (!access?.canTransact || !model.canChange || !locked || unlockOpen.cardId !== card?.id || unlockOpen.version !== card.version)) setUnlockOpen(null);
-  }, [access?.canTransact, model.canChange, locked, card?.id, card?.version, unlockOpen]);
+    if (unlockOpen && (!visible || !access?.canTransact || !model.canChange || !locked || unlockOpen.cardId !== card?.id || unlockOpen.version !== card.version)) setUnlockOpen(null);
+  }, [visible, access?.canTransact, model.canChange, locked, card?.id, card?.version, unlockOpen]);
 
   let stage = locked ? 'locked' : 'active';
-  let title = locked ? '카드가 잠겨 있어요' : '잠금이 해제되어 있어요';
-  let description = locked ? '새 결제는 승인되지 않아요. 이미 승인된 결제의 취소와 환불은 계속 처리돼요.' : '새 결제를 승인할 수 있어요. 필요할 때 아래 버튼으로 카드를 잠글 수 있어요.';
+  let title = locked ? '카드가 잠겨 있어요' : '카드 잠금 해제';
+  let description = locked ? '새 결제는 승인되지 않아요. 이미 승인된 결제의 취소와 환불은 계속 처리돼요.' : '카드를 잠그면 새 결제 승인이 중단돼요.';
   if (model.loading && !model.snapshot) {
     stage = 'loading'; title = '카드 상태를 확인하고 있어요'; description = '잠시만 기다려 주세요.';
   } else if (model.submitting) {
@@ -112,13 +115,15 @@ export default function IssuerCardPanel({ ownerId, access, onSessionExpired }: I
   } else if (card && rejected) {
     stage = 'rejected'; title = `${targetLabel} 요청이 반영되지 않았어요`; description = '새 결제 승인은 중단된 상태예요. 아래에서 다시 요청할 수 있어요.';
   } else if (model.snapshot && !card) {
-    stage = 'empty'; title = '연결된 카드가 없어요'; description = '카드가 연결되면 여기에서 상태를 확인하고 잠금을 설정할 수 있어요.';
+    stage = 'empty'; title = '연결된 카드가 없어요'; description = '테스트 카드가 연결되면 잠금을 설정할 수 있어요.';
   } else if (card && !access?.canTransact) {
     description = access ? '계정의 거래가 제한되어 새 결제를 승인할 수 없어요. 카드 잠금과 기존 결제의 취소·환불은 계속 이용할 수 있어요.'
       : '계정 상태를 확인하고 있어요. 확인이 끝나면 새 결제 승인 가능 여부를 알려드릴게요.';
   }
+  const showApprovalHeading = Boolean(card) && (stage === 'active' || stage === 'locked');
   const inProgress = ['confirming', 'pending', 'review'].includes(stage);
   const feedback = model.storageError || model.error;
+  const compact = stage === 'active' && authorizationState === 'allowed' && model.canChange && !feedback;
   const lastConfirmed = !model.fresh || inProgress || rejected;
   const retryDisabled = !model.fresh || !model.snapshot?.canRequestStatus || model.submitting || model.awaitingConfirmation || Boolean(model.storageError);
 
@@ -132,33 +137,41 @@ export default function IssuerCardPanel({ ownerId, access, onSessionExpired }: I
   return <section className="sa-issuer-panel" aria-labelledby={headingId} data-testid="issuer-card-panel"
     data-card-id={card?.id ?? ''} data-confirmed-status={card?.confirmedStatus ?? ''}
     data-command-status={card?.command?.status ?? ''} data-fresh={String(model.fresh)} data-stage={stage}>
-    <header className="sa-issuer-heading"><h2 id={headingId}>내 카드</h2><span>테스트 카드</span></header>
+    <header className="sa-issuer-heading"><h2 id={headingId}>내 카드</h2>
+      <div className="sa-issuer-heading-actions">
+        {compact && <button type="button" className="sa-issuer-disclosure" data-testid="issuer-details-toggle"
+          aria-label="카드 상태 상세" aria-controls={detailId} aria-expanded={detailOpen} onClick={() => setDetailOpen(!detailOpen)}>
+          상태 상세<ChevronDown size={14} aria-hidden="true" />
+        </button>}
+        <button className="sa-icon-button" data-testid="issuer-refresh" disabled={model.refreshing || model.submitting}
+        onClick={model.refresh} aria-label="카드 상태 다시 확인"><RefreshCw size={17} aria-hidden="true" /></button>
+      </div>
+    </header>
     <div className="sa-issuer-content">
-      <CardFace locked={Boolean(locked)} empty={!card} />
-      <div className="sa-issuer-details">
-        <div className={`sa-issuer-status-symbol ${stage}`} aria-hidden="true">{inProgress || model.loading ? <Clock3 size={21} strokeWidth={1.7} /> : unavailable ? <RefreshCw size={21} strokeWidth={1.7} /> : locked ? <LockKeyhole size={21} strokeWidth={1.7} /> : <ShieldCheck size={21} strokeWidth={1.7} />}</div>
+      <CardFace empty={!card} />
+      <div className={`sa-issuer-details${compact ? ' is-compact' : ''}`}>
         <div className="sa-issuer-state" aria-live="polite" aria-atomic="true">
-          <h3 ref={statusHeading} tabIndex={-1} data-testid="issuer-request-state">{title}</h3>
-          <p {...(stage === 'empty' ? { 'data-testid': 'issuer-empty' } : {})}>{description}</p>
+          <h3 ref={statusHeading} tabIndex={-1} data-testid="issuer-request-state">{showApprovalHeading
+            ? <span data-testid="issuer-authorization-state" data-authorization={authorizationState}>결제 {authorizationLabel}</span>
+            : title}</h3>
+          {(stage !== 'active' || !access?.canTransact) && <p {...(stage === 'empty' ? { 'data-testid': 'issuer-empty' } : {})}>{description}</p>}
         </div>
-        {card && <dl className="sa-issuer-confirmed">
-          <div><dt>새 결제 승인</dt><dd data-testid="issuer-authorization-state" data-authorization={authorizationState}>{authorizationLabel}</dd></div>
-          <div><dt>{lastConfirmed ? '마지막으로 확인한 상태' : '확인된 카드 상태'}</dt>
-            <dd data-testid="issuer-confirmed-state"><span className={locked ? 'is-locked' : ''} aria-hidden="true" />{locked ? '잠금' : '잠금 해제'}</dd></div>
-          <div><dt>최근 변경 기록</dt><dd><time dateTime={new Date(card.updatedAt).toISOString()}>{checkedAt(card.updatedAt)}</time></dd></div>
+        {card && <dl className="sa-issuer-confirmed" id={detailId} hidden={compact && !detailOpen}>
+          {!showApprovalHeading && <div><dt>새 결제 승인</dt><dd data-testid="issuer-authorization-state" data-authorization={authorizationState}>{authorizationLabel}</dd></div>}
+          <div><dt>{lastConfirmed ? '마지막 확인 상태' : '카드 상태'}</dt>
+            <dd data-testid="issuer-confirmed-state">{locked ? '잠금' : '잠금 해제'}</dd></div>
+          <div><dt>변경 시각</dt><dd><time dateTime={new Date(card.updatedAt).toISOString()}>{checkedAt(card.updatedAt)}</time></dd></div>
         </dl>}
         {readonly && <p className="sa-issuer-readonly" data-testid="issuer-readonly">현재는 카드 상태만 확인할 수 있어요.</p>}
         {card && !readonly && <div className="sa-issuer-actions">
-          {locked ? <button className="sa-issuer-button" data-testid="issuer-unlock" disabled={!access?.canTransact || !model.canChange} onClick={() => { if (access?.canTransact && model.canChange) setUnlockOpen({ cardId: card.id, version: card.version }); }}><UnlockKeyhole size={18} />잠금 해제</button>
-            : <button className="sa-issuer-button secondary" data-testid="issuer-lock" disabled={!model.canChange} onClick={() => model.requestStatus('locked')}><LockKeyhole size={18} />카드 잠그기</button>}
+          {locked ? <button className="sa-issuer-button" data-testid="issuer-unlock" disabled={!access?.canTransact || !model.canChange} onClick={() => { if (access?.canTransact && model.canChange) setUnlockOpen({ cardId: card.id, version: card.version }); }}>잠금 해제</button>
+            : <button className="sa-issuer-button secondary" data-testid="issuer-lock" disabled={!model.canChange} onClick={() => model.requestStatus('locked')}>잠그기</button>}
         </div>}
         {outstanding && <button className="sa-issuer-retry" data-testid="issuer-retry" disabled={retryDisabled} onClick={model.retryIntent}>이전 요청 확인<ArrowRight size={16} /></button>}
         {feedback && <p className="sa-issuer-error" role="alert" data-testid="issuer-error">{feedback}</p>}
-        {!feedback && model.notice && <p className="sa-issuer-notice" role="status"><Check size={15} aria-hidden="true" />{model.notice}</p>}
-        <button className="sa-issuer-refresh" data-testid="issuer-refresh" disabled={model.refreshing || model.submitting} onClick={model.refresh} aria-label="카드 상태 다시 확인"><RefreshCw size={15} aria-hidden="true" />{model.refreshing ? '상태 확인 중' : '상태 다시 확인'}</button>
+        {!feedback && model.notice && <p className="sa-issuer-notice" role="status">{model.notice}</p>}
       </div>
     </div>
-    <p className="sa-issuer-footnote">테스트 거래에 적용되는 설정입니다. 실제 카드 결제는 연결되어 있지 않습니다.</p>
-    {unlockOpen && access?.canTransact && model.canChange && locked && unlockOpen.cardId === card?.id && unlockOpen.version === card.version && <UnlockConfirmation onCancel={closeUnlock} onConfirm={confirmUnlock} />}
+    {visible && unlockOpen && access?.canTransact && model.canChange && locked && unlockOpen.cardId === card?.id && unlockOpen.version === card.version && <UnlockConfirmation onCancel={closeUnlock} onConfirm={confirmUnlock} />}
   </section>;
 }

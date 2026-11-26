@@ -96,9 +96,9 @@ export default function ReceiveSheet({ account, onClose, dispatch, notify }: {
             <strong className="receive-tag" data-testid="receive-tag">@{account.tag}</strong>
             <span className="receive-name">{maskName(account.name)}</span>
           </div>
-          <p className="receive-help">Aqua 회원이 이 QR을 찍거나 태그를 넣으면 바로 보낼 수 있어요. 받을 때 수수료는 없어요.</p>
+          <p className="receive-help">보내는 Aqua 회원에게 QR이나 태그를 보여 주세요. 수수료는 0원이에요.</p>
           <div className="receive-actions">
-            <button type="button" className="itd-button itd-secondary" data-testid="receive-copy" onClick={copyTag}>{copied ? <><Check size={17} aria-hidden="true" />복사했어요</> : <><Copy size={17} aria-hidden="true" />태그 복사</>}</button>
+            <button type="button" className="itd-button itd-primary" data-testid="receive-copy" onClick={copyTag}>{copied ? <><Check size={17} aria-hidden="true" />복사했어요</> : <><Copy size={17} aria-hidden="true" />태그 복사</>}</button>
             <button type="button" className="itd-button itd-secondary" data-testid="receive-edit" onClick={() => { setDraft(''); setError(''); setNote(null); setEditing(true); }}><PencilLine size={17} aria-hidden="true" />태그 바꾸기</button>
           </div>
           <span className="sr-only" role="status">{copied ? `${josa(`@${account.tag}`, '을', '를')} 복사했어요.` : ''}</span>
@@ -112,9 +112,9 @@ export default function ReceiveSheet({ account, onClose, dispatch, notify }: {
             <button type="button" className="itd-button itd-secondary" data-testid="receive-demo" onClick={receiveDemo}>받기</button>
           </div>
         </> : <form onSubmit={save} noValidate>
-          <label className="send-tag-field" htmlFor={`${uid}-tag`}><span aria-hidden="true">@</span><input ref={input} id={`${uid}-tag`} data-testid="tag-input" value={draft} maxLength={21} placeholder={account.tag} onChange={(event) => { setDraft(event.target.value); setError(''); }} autoComplete="off" autoCapitalize="none" spellCheck={false} aria-describedby={`${uid}-rules`} /></label>
+          <label className="send-tag-field" htmlFor={`${uid}-tag`}><span aria-hidden="true">@</span><input ref={input} id={`${uid}-tag`} data-testid="tag-input" aria-label="새 Aqua 태그" value={draft} maxLength={21} placeholder={account.tag} onChange={(event) => { setDraft(event.target.value); setError(''); }} autoComplete="off" autoCapitalize="none" spellCheck={false} aria-invalid={Boolean(message)} aria-describedby={`${uid}-rules ${uid}-status`} /></label>
           {/* Room for one message, so the rules and the button below do not jump while typing. */}
-          <div className="receive-status" aria-live="polite">{message ? <p className="itd-field-error" data-testid="tag-issue">{message}</p>
+          <div id={`${uid}-status`} className="receive-status" aria-live="polite">{message ? <p className="itd-field-error" data-testid="tag-issue">{message}</p>
             : typed.length >= 3 && <p className="receive-note receive-available" data-testid="tag-available"><Check size={15} strokeWidth={2.6} aria-hidden="true" />쓸 수 있는 태그예요.</p>}</div>
           <ul className="receive-rules" id={`${uid}-rules`}>
             <li>영문 소문자, 숫자, 점(.), 밑줄(_)로 3~20자예요.</li>

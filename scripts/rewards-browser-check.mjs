@@ -84,6 +84,7 @@ async function snapshot(expected) {
 }
 
 async function card(id, status, funding, cashback) {
+  await page.getByTestId('dashboard-history').click();
   await page.waitForFunction(({ id, status }) => document.querySelector(`[data-testid="server-card-payment-${id}"]`)?.getAttribute('data-status') === status, { id, status });
   const row = page.getByTestId(`server-card-payment-${id}`);
   if (!await row.evaluate((node) => node.open)) await row.locator('summary').click();
@@ -100,6 +101,8 @@ async function card(id, status, funding, cashback) {
     await moneyIs(`server-card-cashback-${name}-${id}`, amount);
     assert.equal(record.cashback[`${name}Won`], amount, `${id}: cashback ${name}`);
   }
+  await fits('Expanded mixed-funding receipt');
+  await page.getByTestId('dashboard-home').click();
   return record;
 }
 
@@ -267,11 +270,12 @@ try {
   await snapshot({ cash: 97_900, cashHeld: 0, cashTotal: 97_900, reward: 2_121, rewardHeld: 0, debt: 0, confirmed: 21, pending: 0, reversed: 121, remaining: 9_979 });
   await settledPreference(true);
   await card(paymentA, 'partially_refunded', { principal: { captured: 4_200, refunded: 2_100 }, rewards: { captured: 1_800, refunded: 900 } }, { awarded: 42, reversed: 21 });
-  await fits('Desktop rewards and receipt details');
+  await fits('Desktop rewards');
   await page.screenshot({ path: new URL('rewards-desktop.png', artifacts).pathname, fullPage: true });
   await page.setViewportSize({ width: 320, height: 740 });
-  await fits('320px rewards and receipt details');
+  await fits('320px rewards');
   await page.screenshot({ path: new URL('rewards-mobile.png', artifacts).pathname, fullPage: true });
+  await card(paymentA, 'partially_refunded', { principal: { captured: 4_200, refunded: 2_100 }, rewards: { captured: 1_800, refunded: 900 } }, { awarded: 42, reversed: 21 });
   assert.deepEqual(runtimeErrors, []);
   pass('Reward preferences, balances, monthly cashback and mixed-funding receipts persist after reload and fit a 320px screen.');
 

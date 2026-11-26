@@ -1,26 +1,27 @@
 import { useId } from 'react';
+import { ChevronRight } from 'lucide-react';
 import type { CustomerAccessSnapshot } from '../../shared/api';
 
 const copy: Record<CustomerAccessSnapshot['status'], { title: string; description: string }> = {
-  unverified: { title: '거래 전 확인이 필요합니다', description: '계정 확인이 끝나면 송금과 새 카드 결제를 이용할 수 있습니다. 현재는 잔액과 내역을 확인할 수 있습니다.' },
-  pending_review: { title: '계정을 확인하고 있습니다', description: '확인이 끝날 때까지 송금과 새 카드 결제가 제한됩니다. 이미 승인된 결제의 취소와 환불은 계속 처리됩니다.' },
-  active: { title: '테스트 거래를 이용할 수 있습니다', description: '계정의 거래 제한이 해제된 상태입니다. 실제 본인확인이나 금융 서비스 이용 승인을 의미하지 않습니다.' },
-  restricted: { title: '거래가 제한되어 있습니다', description: '현재 송금과 새 카드 결제, 카드 잠금 해제를 이용할 수 없습니다. 잔액과 내역 확인, 카드 잠금은 가능합니다.' },
-  frozen: { title: '계정 거래가 중단되었습니다', description: '현재 송금과 새 카드 결제, 카드 잠금 해제를 이용할 수 없습니다. 이미 승인된 결제의 취소와 환불은 계속 처리됩니다.' },
-  closed: { title: '거래 이용이 종료된 계정입니다', description: '새로운 거래를 할 수 없습니다. 기존 내역과 남아 있는 잔액은 계속 확인할 수 있습니다.' },
+  unverified: { title: '거래 전 계정 확인이 필요해요', description: '계정 심사와 이메일 확인이 끝나면 송금과 카드 결제를 이용할 수 있어요.' },
+  pending_review: { title: '계정 심사 중', description: '심사가 끝날 때까지 새 거래가 제한돼요. 기존 결제의 취소와 환불은 계속 처리돼요.' },
+  active: { title: '거래 가능', description: '테스트 송금과 카드 결제를 이용할 수 있어요.' },
+  restricted: { title: '거래 제한', description: '새 거래와 카드 잠금 해제가 제한돼요. 잔액 조회와 카드 잠금은 가능해요.' },
+  frozen: { title: '계정 거래 중단', description: '송금과 새 결제, 카드 잠금 해제가 제한돼요. 기존 결제의 취소와 환불은 계속 처리돼요.' },
+  closed: { title: '거래 이용 종료', description: '남은 잔액과 기존 내역을 확인할 수 있어요.' },
 };
 
-export default function CustomerAccessPanel({ access }: { access: CustomerAccessSnapshot | null }) {
+export default function CustomerAccessPanel({ access, showEmailLink }: { access: CustomerAccessSnapshot | null; showEmailLink: boolean }) {
   const titleId = useId();
   const content = access?.status === 'active' && !access.canTransact
-    ? { title: '이메일 확인이 필요합니다', description: '가입한 이메일을 확인하면 테스트 거래를 이용할 수 있습니다. 이메일 확인은 실제 본인확인이나 금융 서비스 이용 승인을 의미하지 않습니다.' }
+    ? { title: '이메일 확인이 필요해요', description: '가입한 이메일을 확인하면 테스트 거래를 이용할 수 있어요.' }
     : access ? copy[access.status] : null;
   return <section className={`sa-access-panel${access?.canTransact ? ' is-active' : ''}`} aria-labelledby={titleId}
     data-testid="customer-access-panel" data-status={access?.status ?? 'loading'}>
     <div aria-live="polite" aria-atomic="true">
-      <h2 id={titleId}>{content?.title ?? '계정 상태를 확인하고 있습니다'}</h2>
-      <p>{content?.description ?? '현재 상태가 확인되면 이용 가능한 기능을 안내합니다.'}</p>
+      <h2 id={titleId}>{content?.title ?? '계정 확인 중'}</h2>
+      {content && <p>{content.description}</p>}
     </div>
-    {access && <span className="sa-access-label">{access.canTransact ? '거래 가능' : '거래 제한'}</span>}
+    {showEmailLink && <a href="#account" className="sa-access-link" data-testid="dashboard-verify-email">이메일 확인<ChevronRight size={15} aria-hidden="true" /></a>}
   </section>;
 }

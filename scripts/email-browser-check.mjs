@@ -45,6 +45,7 @@ async function signup(target, member) {
   await target.getByTestId('auth-password').fill(password);
   await target.getByTestId('auth-submit').click();
   await target.getByTestId('server-balance').waitFor();
+  await target.getByTestId('dashboard-account').click();
   await target.locator('[data-testid="email-verification-panel"][data-verified="false"]').waitFor();
   const response = await target.context().request.get(url('/api/account'));
   assert.equal(response.status(), 200);
@@ -110,12 +111,16 @@ try {
   assert.equal(initial.access.status, 'unverified'); assert.equal(initial.access.canTransact, false);
   await database.query('SELECT operator_set_customer_access($1::jsonb,$2::bigint)', [JSON.stringify({ userId: initial.user.id,
     status: 'active', expectedVersion: 1, idempotencyKey: `${runId}:approve`, reason: 'Explicit disposable browser fixture approval before email proof' }), Date.now()]);
+  await page.getByTestId('dashboard-home').click();
   await page.getByTestId('server-refresh').click();
   await page.locator('[data-testid="customer-access-panel"][data-status="active"]').waitFor();
   assert.match(await page.getByTestId('customer-access-panel').innerText(), /이메일/);
   assert.equal((await account(context)).access.canTransact, false);
   pass('Signup has no email proof, and explicit customer approval alone cannot enable transactions.');
 
+  await page.getByTestId('dashboard-verify-email').click();
+  await page.getByTestId('email-verification-panel').waitFor();
+  assert.equal(new URL(page.url()).hash, '#account');
   const first = await requestVerification(page, alice);
   await confirm(otherPage, first.token);
   await otherPage.getByTestId('email-error').waitFor();
@@ -188,6 +193,8 @@ try {
   assert.ok(Number.isSafeInteger((await account(recovery)).user.emailVerifiedAt));
   pass('A delivered recovery code resets the password, revokes existing sessions, and preserves established email proof.');
 
+  await recoveryPage.getByTestId('dashboard-account').click();
+  await recoveryPage.getByTestId('email-verified').waitFor();
   const switched = await recovery.request.post(url('/api/auth/login'), { headers: { Origin: base.origin }, data: { email: bob.email, password } });
   assert.equal(switched.status(), 200);
   await recoveryPage.getByTestId('email-refresh').click();

@@ -22,7 +22,10 @@ export function useModal(panel: RefObject<HTMLElement | null>, onClose: () => vo
         const last = targets[targets.length - 1];
         if (!first || !last) { event.preventDefault(); panel.current?.focus(); return; }
         const active = document.activeElement as HTMLElement | null;
-        if (!active || !targets.includes(active)) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
+        // Browsers can also tab to a scrolling region. Let its next Tab reach the footer.
+        const startsOutsideOrder = !active || !panel.current?.contains(active) || active === panel.current
+          || (active === initialFocus?.current && active.tabIndex < 0);
+        if (startsOutsideOrder) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
         else if (event.shiftKey && active === first) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
       }

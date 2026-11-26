@@ -640,7 +640,11 @@ try {
   await submitAmount('refund', 50_000);
   state = await stateWhen((current) => current.payments[0].refunded === 50_000);
   assert.equal(state.payments[0].status, 'partially_refunded');
-  await page.getByRole('button', { name: '한강커피 환불', exact: true }).click();
+  await page.getByRole('button', { name: '한강커피 상세', exact: true }).click();
+  const refundedReceipt = page.getByTestId('transaction-sheet');
+  assert.equal(await displayedAmount(refundedReceipt.getByTestId('transaction-amount')), bigPayment - 50_000);
+  assert.match(await refundedReceipt.locator('.tx-refund-summary').innerText(), /누적 환불액\s+50,000원/);
+  await refundedReceipt.getByTestId('transaction-refund').click();
   await submitAmount('refund', bigPayment - 50_000);
   state = await stateWhen((current) => current.payments[0].status === 'refunded');
   assert.equal(state.payments[0].id, paymentId);
@@ -648,6 +652,10 @@ try {
   assert.equal(state.reserve, START.reserve - fromReserve);
   assert.equal(state.rewards, START.rewards);
   assert.equal(state.monthlyCashback, 0);
+  await page.getByRole('button', { name: '한강커피 상세', exact: true }).click();
+  assert.equal(await displayedAmount(refundedReceipt.getByTestId('transaction-amount')), 0);
+  assert.equal(await refundedReceipt.getByTestId('transaction-refund').count(), 0);
+  await page.keyboard.press('Escape');
   pass('부분·전액 환불과 원금·리워드 복원·페이백 조정');
 
   await nav('home');

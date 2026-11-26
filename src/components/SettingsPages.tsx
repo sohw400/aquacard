@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Minus, Plus } from 'lucide-react';
+import './PaymentSettings.css';
 import { LIMIT_STEP } from '../lib/engine';
 import { dateLabel, money } from '../lib/format';
 import { PLANS, POLICY } from '../lib/policy';
@@ -16,6 +18,7 @@ export function LimitsPage({ state, onSave }: { state: AppState; onSave: (limits
   const [daily, setDaily] = useState(state.controls.daily);
   const [monthly, setMonthly] = useState(state.controls.monthly);
   const changed = perPayment !== state.controls.perPayment || daily !== state.controls.daily || monthly !== state.controls.monthly;
+  const [saveFailed, setSaveFailed] = useState(false);
   const rows = [
     { key: 'perPayment', label: '1회 한도', value: perPayment, max: POLICY.perPaymentLimit, min: LIMIT_STEP, used: null,
       set: (value: number) => { setPerPayment(value); if (daily < value) setDaily(value); if (monthly < Math.max(daily, value)) setMonthly(Math.max(daily, value)); } },
@@ -25,27 +28,52 @@ export function LimitsPage({ state, onSave }: { state: AppState; onSave: (limits
       set: (value: number) => setMonthly(value) },
   ] as const;
 
-  return <div className="page-stack settings-detail" data-testid="page-limits">
+  return <div className="page-stack settings-detail payment-settings" data-testid="page-limits">
     <section className="panel">
-      <p className="panel-lead">한도를 낮춰 두면 카드 번호가 새어 나가도 피해를 줄일&nbsp;수 있어요. 최대 한도까지는 언제든 다시 올릴&nbsp;수&nbsp;있어요.</p>
-      <div className="limit-list">{rows.map((row) => <div className="limit-row" key={row.key}>
-        <div className="limit-head"><label htmlFor={`limit-${row.key}`}>{row.label}</label><strong data-testid={`limit-value-${row.key}`}>{money(row.value)}</strong></div>
-        <input id={`limit-${row.key}`} data-testid={`limit-${row.key}`} type="range" min={row.min} max={row.max} step={LIMIT_STEP} value={row.value} aria-valuetext={money(row.value)} onChange={(event) => row.set(Number(event.target.value))} />
-        <div className="limit-scale"><span>{manWon(row.min)}</span><span>최대 {manWon(row.max)}</span></div>
-        {row.used && <p className="limit-used">{row.used.label} {money(row.used.value)} · 남은 한도 {money(Math.max(0, row.value - row.used.value))}</p>}
-      </div>)}</div>
-      <button type="button" className="btn primary block" data-testid="limits-save" disabled={!changed} onClick={() => onSave({ perPayment, daily, monthly })}>저장</button>
+      <p className="panel-lead">1만원 단위로 조정한 뒤 저장해 주세요.</p>
+      <div className="limit-list">{rows.map((row) => {
+        const current = state.controls[row.key];
+        const edited = current !== row.value;
+        function update(value: number) {
+          setSaveFailed(false);
+          row.set(value);
+        }
+        return <div className="limit-row" key={row.key}>
+          <div className="limit-head"><label htmlFor={`limit-${row.key}`}>{row.label}</label><strong data-testid={`limit-value-${row.key}`}>{money(row.value)}</strong></div>
+          <div className="limit-adjust">
+            <button type="button" aria-label={`${row.label} 1만원 낮추기`} disabled={row.value <= row.min} onClick={() => update(row.value - LIMIT_STEP)}><Minus size={17} /></button>
+            <input id={`limit-${row.key}`} data-testid={`limit-${row.key}`} type="range" min={row.min} max={row.max} step={LIMIT_STEP} value={row.value}
+              aria-valuetext={money(row.value)} onChange={(event) => update(Number(event.target.value))} />
+            <button type="button" aria-label={`${row.label} 1만원 올리기`} disabled={row.value >= row.max} onClick={() => update(row.value + LIMIT_STEP)}><Plus size={17} /></button>
+          </div>
+          <div className="limit-scale"><span>최소 {manWon(row.min)}</span><span>최대 {manWon(row.max)}</span></div>
+          {row.used && <dl className="limit-usage">
+            <div><dt>{row.used.label}</dt><dd>{money(row.used.value)}</dd></div>
+            <div><dt>{edited ? '저장 후 남은 한도' : '남은 한도'}</dt><dd>{money(Math.max(0, row.value - row.used.value))}</dd></div>
+          </dl>}
+          {edited && <p className="limit-before">현재 적용 중 {money(current)}</p>}
+        </div>;
+      })}</div>
+      {saveFailed && <p className="form-error" role="alert">한도를 저장하지 못했어요. 설정 금액을 확인한 뒤 다시 저장해 주세요.</p>}
+      <button type="button" className="btn primary block" data-testid="limits-save" disabled={!changed}
+        onClick={() => setSaveFailed(!onSave({ perPayment, daily, monthly }))}>{changed ? '변경한 한도 저장' : '변경 사항 없음'}</button>
     </section>
-    <p className="panel-footnote">최대 한도는 1회 {manWon(POLICY.perPaymentLimit)}, 하루 {manWon(POLICY.dailyPaymentLimit)}, 한 달 {manWon(POLICY.monthlyPaymentLimit)}이에요. 하루 한도는 매일 자정, 한 달 한도는 매달 1일에 한국 시간 기준으로 다시 채워져요.</p>
+    <p className="panel-footnote">하루 한도는 매일 자정, 한 달 한도는 매달 1일 자정에 다시 계산해요. 한국 시간 기준이에요.</p>
   </div>;
 }
 
 export function ChannelsPage({ state, onChange }: { state: AppState; onChange: (channel: 'online' | 'overseas', enabled: boolean) => void }) {
-  return <div className="page-stack settings-detail" data-testid="page-channels">
+  return <div className="page-stack settings-detail payment-settings" data-testid="page-channels">
     <section className="panel">
-      <Switch checked={state.controls.online} label="온라인 결제" detail="쇼핑몰이나 앱에서 카드 번호로 결제해요." testId="channel-online" onChange={(value) => onChange('online', value)} />
-      <Switch checked={state.controls.overseas} label="해외 결제" detail="해외 가맹점과 해외 사이트에서 결제해요." testId="channel-overseas" onChange={(value) => onChange('overseas', value)} />
-      <p className="panel-caption">꺼 두면 해당 결제는 바로 거절돼요. 매장 결제와 휴대폰 결제는 그대로 쓸 수 있어요.</p>
+      {state.card.locked && <p className="channel-lock-note">카드가 잠겨 있어요. 잠금을 해제하면 아래 설정으로 결제할 수 있어요.</p>}
+      {([['online', '온라인 결제', '쇼핑몰·앱에서 카드 번호로 결제'], ['overseas', '해외 결제', '해외 가맹점에서 결제']] as const).map(([key, label, detail]) =>
+        <button type="button" key={key} className="channel-control" role="switch" aria-checked={state.controls[key]}
+          aria-label={label} aria-describedby={`channel-detail-${key}`} data-testid={`channel-${key}`} onClick={() => onChange(key, !state.controls[key])}>
+          <span className="channel-copy"><strong>{label}</strong><small id={`channel-detail-${key}`}>{detail}</small></span>
+          <span className="channel-value" aria-hidden="true">{state.controls[key] ? '허용' : '차단'}</span>
+          <span className={`switch${state.controls[key] ? ' on' : ''}`} aria-hidden="true"><span /></span>
+        </button>)}
+      <p className="panel-caption">변경한 설정은 다음 결제부터 바로 적용돼요.</p>
     </section>
   </div>;
 }

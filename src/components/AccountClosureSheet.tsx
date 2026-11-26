@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react';
-import { CircleAlert, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useModal } from './useModal';
 import { accountClosureBlockers, recordsKeptUntil } from '../lib/engine';
 import { hashPassword } from '../lib/auth';
@@ -65,7 +65,7 @@ export default function AccountClosureSheet({ state, onDelete, onClose }: {
           <p className="itd-demo-note">체험판이라 이 브라우저에 남은 기록까지 모두 지워요.</p>
         </> : <>
           <p className="closure-lead">탈퇴하기 전에 아래를 먼저 정리해 주세요.</p>
-          <ul className="closure-blockers" data-testid="closure-blockers">{blockers.map((item) => <li key={item}><CircleAlert size={17} aria-hidden="true" />{item}</li>)}</ul>
+          <ul className="closure-blockers" data-testid="closure-blockers">{blockers.map((item) => <li key={item}>{item}</li>)}</ul>
         </>}
       </div>
       <footer className="itd-footer">{ready
