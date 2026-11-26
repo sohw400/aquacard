@@ -35,7 +35,7 @@ docker run --rm --entrypoint node aqua-server:rds \
 1. 격리 환경에서 `npm run server:monitor` 또는 빌드된 `node dist-server/operations-monitor.js`로 권한과 마이그레이션을 확인한다. 종료값 `0`은 점검 완료, `1`은 확인된 원장 차이·검토 대기·최근 실패, `2`는 점검 미완료다. 대기 시간과 선행 거래 지연의 통지 기준은 CloudWatch에 둔다.
 2. `cfn-lint --regions ap-northeast-2 --template infra/operations-monitoring.yaml`로 리전 스키마를 검사한다. 같은 Python 환경에서 프로젝트 의존성을 설치하고 `node --import tsx scripts/check-operations-alarms.mjs`를 실행하면 경보가 실제 점검 결과와 작업자 신호를 구독하는지도 확인할 수 있다. 배포 담당자가 스테이징에서 템플릿과 위 입력으로 CloudFormation 변경 세트를 만든다. 스택에 IAM 역할이 있어 `CAPABILITY_IAM` 승인이 필요하다. 예상 리소스와 SNS 대상을 확인하고 변경 세트를 적용한다.
 3. `MonitorScheduleArn`의 스케줄이 켜졌는지, `MonitorTaskDefinitionArn`으로 뜬 작업이 종료값 `0`을 냈는지 확인한다. `MonitorLogGroup`에서 `Environment`, `MonitorHealthy=1`, `LedgerFindings=0`과 세 큐의 지표를 함께 확인한다. 이어지는 실행에서도 지표가 들어오는지 보고 각 경보의 실제 상태와 SNS 구독자 수신 경로를 확인한다.
-4. 스테이징의 시험용 구독에서 부재 경보를 점검한다. 스케줄을 잠시 중단하고 부재 알림을 받은 시각을 기록한 뒤 바로 재개한다. 다음 정상 표본과 정상 복귀 알림을 확인한다. 상시 작업자도 시험 환경에서 건별로 중단·복구해 대기열이 비어 있을 때의 통지를 확인한다. 장애 감지까지 걸린 시간, 담당자, 대응 시간과 알림 수신 기록을 남긴다.
+4. [스테이징 경보 훈련 절차](staging-recovery.md)에 따라 시험용 구독에서 부재 경보를 점검한다. 스케줄을 잠시 중단하고 부재 알림을 받은 시각을 기록한 뒤 바로 재개한다. 다음 정상 표본과 정상 복귀 알림을 확인한다. 상시 작업자도 시험 환경에서 건별로 중단·복구해 대기열이 비어 있을 때의 통지를 확인한다. 장애 감지까지 걸린 시간, 담당자, 대응 시간과 알림 수신 기록을 남긴다.
 5. 실제 규모의 비식별 데이터로 5분 주기 대사의 DB 읽기 부하와 실행 시간을 측정한다. 현재 검사에는 원장 전체 조회가 포함되며 대사 SQL 문당 제한은 30초, 명령 실행 제한은 75초다. 지연이 반복되면 운영 전 데이터량에 맞춰 대사 실행 방식을 조정한다. 운영 전환 때는 검증한 이미지·스키마 조합으로 설치하고 운영 당직 채널에서 수신을 확인한다.
 
 ## 당직자가 확인할 내용
