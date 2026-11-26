@@ -1157,7 +1157,9 @@ try {
   await sendPage.getByTestId(`tx-detail-${sent.id}`).click();
   const sentSheet = sendPage.getByTestId('transaction-sheet');
   await sentSheet.waitFor({ state: 'visible' });
-  assert.match(await sentSheet.innerText(), /보내기 ·[\s\S]*완료[\s\S]*@minji\.k에게 수수료 없이 바로 보냈어요/);
+  assert.equal(await sentSheet.locator('.tx-state').innerText(), '완료');
+  assert.equal(await sentSheet.getByText('보내기 금액', { exact: true }).isVisible(), true);
+  assert.match(await sentSheet.locator('.tx-memo').innerText(), /@minji\.k에게 수수료 없이 바로 보냈어요/);
   assert.equal(await sentSheet.getByTestId('transaction-amount').innerText(), '−30,000원');
   await sendPage.keyboard.press('Escape');
   await sentSheet.waitFor({ state: 'hidden' });
@@ -1271,7 +1273,10 @@ try {
   assert.match(await sendPage.locator('.activity-page').innerText(), /김\*지님이 보냄[\s\S]*\+10,000원/);
   await sendPage.getByTestId(`tx-detail-${receivedEntry.id}`).click();
   await sentSheet.waitFor({ state: 'visible' });
-  assert.match(await sentSheet.innerText(), /받기 ·[\s\S]*@minji\.k님이 내 태그 @aqua\.tester로 보냈어요/);
+  assert.equal(await sentSheet.locator('.tx-state').innerText(), '완료');
+  assert.equal(await sentSheet.getByText('받기 금액', { exact: true }).isVisible(), true);
+  assert.equal(await sentSheet.getByTestId('transaction-amount').innerText(), '+10,000원');
+  assert.match(await sentSheet.locator('.tx-memo').innerText(), /@minji\.k님이 내 태그 @aqua\.tester로 보냈어요/);
   await sendPage.keyboard.press('Escape');
   await sentSheet.waitFor({ state: 'hidden' });
   pass('회원에게 받기 체험: 잔액에 바로 더하고 받은 돈 알림·거래 내역의 받기·상세에 반영');
