@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "settlementDate": "2025-11-27",
+  "currency": "TEST_KRW",
+  "accountRef": "sandbox-settlement",
+  "controls": {
+    "rowCount": 2,
+    "debitedWon": "153",
+    "creditedWon": "30"
+  },
+  "rows": [
+    {
+      "postingId": "bank-debit-a",
+      "batchId": "clearing-a",
+      "direction": "debit",
+      "amountWon": "153"
+    },
+    {
+      "postingId": "bank-credit-b",
+      "batchId": "clearing-b",
+      "direction": "credit",
+      "amountWon": "30"
+    }
+  ]
+}

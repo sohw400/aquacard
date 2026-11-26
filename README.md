@@ -37,7 +37,7 @@ npm run dev
 
 ## 검증
 
-마감된 날의 매입·환불은 `npm run --silent server:reconcile:statement -- <파일>`로 외부 테스트 명세서와 대조할 수 있습니다. [명세서 예시와 정산 차이 확인](docs/issuer-statement-reconciliation.md)
+마감된 날의 매입·환불은 `npm run --silent server:reconcile:statement -- <파일>`로 외부 테스트 명세서와 대조할 수 있습니다. [명세서 예시와 정산 차이 확인](docs/issuer-statement-reconciliation.md) 은행 대사는 정산 통지서의 수수료까지 반영해 예상 출금·입금액을 은행 전표와 대조합니다. [은행 대사 실행](docs/bank-settlement-reconciliation.md)
 
 서울 AWS 계정에 스테이징을 처음 만들 때는 사설 네트워크, RDS·ECR·ECS, DB 초기화, 점검기 순서로 설치합니다. 배포 입력과 대기 중 과금되는 항목을 정리했습니다. [서울 스테이징 설치](docs/staging-setup.md)
 

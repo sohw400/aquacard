@@ -77,6 +77,8 @@ docker exec -i "$cluster" pg_restore -U aqua --single-transaction --exit-on-erro
 node --import tsx scripts/recovery-fixture.ts verify
 # Reconcile the independent, normalized example against the restored ledger.
 node --import tsx server/reconcile-issuer-statement.ts docs/examples/issuer-statement.json
+node --import tsx server/reconcile-bank-settlement.ts docs/examples/issuer-statement.json \
+  docs/examples/settlement-advice.json docs/examples/bank-statement.json
 
 # Generate the short-lived certificates as postgres on this container's tmpfs.
 # Only the two public trust anchors are copied out. PostgreSQL checks key modes.

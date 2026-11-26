@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "businessDate": "2025-11-26",
+  "settlementDate": "2025-11-27",
+  "currency": "TEST_KRW",
+  "accountRef": "sandbox-settlement",
+  "batches": [
+    {
+      "batchId": "clearing-a",
+      "eventIds": ["purchase-capture", "hold-capture"],
+      "feeWon": "3"
+    },
+    {
+      "batchId": "clearing-b",
+      "eventIds": ["purchase-refund"],
+      "feeWon": "0"
+    }
+  ]
+}

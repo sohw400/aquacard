@@ -190,7 +190,9 @@ jobs:
               assert.equal(event.LedgerFindings, 0);
               assert.equal(event.CardInboxDueCount, 0);
             '
-          aqua_statement="$RUNNER_TEMP/closed-issuer-statement.json"
+          aqua_settlement_dir="$RUNNER_TEMP/closed-settlement"
+          mkdir -m 0755 "$aqua_settlement_dir"
+          aqua_statement="$aqua_settlement_dir/issuer.json"
           printf '%s\n' '{"version":1,"businessDate":"2025-11-26","currency":"TEST_KRW","controls":{"rowCount":0,"capturedWon":"0","refundedWon":"0"},"rows":[]}' > "$aqua_statement"
           chmod 0444 "$aqua_statement"
           docker run --rm --network host --read-only --no-healthcheck --cap-drop ALL --security-opt no-new-privileges \
@@ -207,6 +209,21 @@ jobs:
               assert.equal(report.matchedEventCount, 0);
               assert.equal(report.statementSha256, createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"));
             ' "$aqua_statement"
+          printf '%s\n' '{"version":1,"currency":"TEST_KRW","businessDate":"2025-11-26","settlementDate":"2025-11-27","accountRef":"ci-settlement","batches":[]}' > "$aqua_settlement_dir/advice.json"
+          printf '%s\n' '{"version":1,"currency":"TEST_KRW","settlementDate":"2025-11-27","accountRef":"ci-settlement","controls":{"rowCount":0,"debitedWon":"0","creditedWon":"0"},"rows":[]}' > "$aqua_settlement_dir/bank.json"
+          chmod 0444 "$aqua_settlement_dir/advice.json" "$aqua_settlement_dir/bank.json"
+          docker run --rm --network host --read-only --no-healthcheck --cap-drop ALL --security-opt no-new-privileges \
+            --mount "type=bind,src=$aqua_settlement_dir,dst=/inputs,readonly" \
+            -e NODE_ENV=development -e SETTLEMENT_DATABASE_URL -e DATABASE_SCHEMA \
+            aqua-card-server:ci node dist-server/reconcile-bank-settlement.js /inputs/issuer.json /inputs/advice.json /inputs/bank.json | \
+            node --input-type=module -e '
+              import assert from "node:assert/strict";
+              let input = ""; for await (const chunk of process.stdin) input += chunk;
+              const report = JSON.parse(input);
+              assert.equal(report.ok, true);
+              assert.equal(report.bankSettlement.matchedBatchCount, 0);
+              assert.equal(report.accountRef, "ci-settlement");
+            '
           aqua_report="$(docker run --rm --network host --read-only --no-healthcheck --cap-drop ALL --security-opt no-new-privileges \
             -e NODE_ENV=development -e OPERATIONS_DATABASE_URL -e DATABASE_SCHEMA \
             aqua-card-server:ci node dist-server/card-operations-operator.js \
