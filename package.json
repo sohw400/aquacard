@@ -32,6 +32,7 @@
     "build:server": "npm run typecheck:server && node scripts/build-server.mjs",
     "build:connected": "tsc --noEmit && VITE_DATA_MODE=server vite build",
     "test:server": "node --env-file-if-exists=.env --import tsx --test server/*.test.ts",
+    "test:recovery": "bash scripts/recovery-drill.sh",
     "test:server:browser": "node scripts/server-browser-check.mjs",
     "test:card:browser": "node scripts/card-browser-check.mjs",
     "test:rewards:browser": "node scripts/rewards-browser-check.mjs",

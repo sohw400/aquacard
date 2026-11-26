@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+cd "$(dirname "$0")/.."
+
+# Only the PostgreSQL image is taken from Compose. Never connect to its service or volume.
+pg_image=$(docker compose --env-file /dev/null -f compose.yaml config --images postgres)
+scratch=$(mktemp -d)
+cidfile="$scratch/container.id"
+archive="$scratch/aqua.dump"
+
+remove_cluster() {
+  if [[ -s "$cidfile" ]]; then
+    docker rm --force --volumes "$(<"$cidfile")" >/dev/null || return 1
+    rm -f -- "$cidfile"
+  fi
+}
+
+cleanup() {
+  local status=$?
+  trap - EXIT
+  remove_cluster || status=1
+  rm -f -- "$archive"
+  rmdir -- "$scratch" || status=1
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+export NODE_ENV=test DATABASE_SCHEMA=aqua
+export DATABASE_RUNTIME_ROLE=aqua_app DATABASE_INGRESS_ROLE=aqua_ingress DATABASE_WORKER_ROLE=aqua_worker
+export DATABASE_DISPATCHER_ROLE=aqua_dispatcher DATABASE_OPERATIONS_ROLE=aqua_operations DATABASE_AUTH_MAIL_ROLE=aqua_auth_mail
+unset DATABASE_CA_FILE DATABASE_POOL_SIZE MIGRATION_DATABASE_URL
+admin_password=$(node -e "process.stdout.write(require('node:crypto').randomBytes(24).toString('hex'))")
+
+start_cluster() {
+  local db=$1 binding address attempt
+  POSTGRES_PASSWORD="$admin_password" docker run --detach --cidfile "$cidfile" \
+    --tmpfs /var/lib/postgresql --publish 127.0.0.1::5432 \
+    --env POSTGRES_USER=aqua --env POSTGRES_PASSWORD --env "POSTGRES_DB=$db" "$pg_image" >/dev/null
+  cluster=$(<"$cidfile")
+  for ((attempt=0; attempt<60; attempt++)); do
+    if docker exec "$cluster" pg_isready -q -h 127.0.0.1 -U aqua -d "$db"; then break; fi
+    [[ $(docker inspect --format '{{.State.Running}}' "$cluster") == true ]] || break
+    sleep 1
+  done
+  docker exec "$cluster" pg_isready -h 127.0.0.1 -U aqua -d "$db"
+  docker exec -i "$cluster" psql -X -v ON_ERROR_STOP=1 -U aqua -d "$db" < docker/postgres-init.sql >/dev/null
+  binding=$(docker port "$cluster" 5432/tcp)
+  [[ "$binding" =~ ^127\.0\.0\.1:[0-9]+$ ]] || { echo 'Expected a private loopback port for the recovery drill.' >&2; return 1; }
+  address="$binding/$db"
+  export DATABASE_URL="postgresql://aqua_app:aqua_app_local_only@$address"
+  export INGRESS_DATABASE_URL="postgresql://aqua_ingress:aqua_ingress_local_only@$address"
+  export WORKER_DATABASE_URL="postgresql://aqua_worker:aqua_worker_local_only@$address"
+  export DISPATCHER_DATABASE_URL="postgresql://aqua_dispatcher:aqua_dispatcher_local_only@$address"
+  export OPERATIONS_DATABASE_URL="postgresql://aqua_operations:aqua_operations_local_only@$address"
+  export AUTH_MAIL_DATABASE_URL="postgresql://aqua_auth_mail:aqua_auth_mail_local_only@$address"
+  owner_url="postgresql://aqua:$admin_password@$address"
+}
+
+start_cluster aqua_recovery_source
+MIGRATION_DATABASE_URL="$owner_url" node --import tsx server/migrate.ts
+MIGRATION_DATABASE_URL="$owner_url" node --import tsx scripts/recovery-fixture.ts seed
+docker exec "$cluster" pg_dump -U aqua --format=custom --dbname=aqua_recovery_source > "$archive"
+remove_cluster
+
+start_cluster aqua_recovery_restored
+# Restore dependencies, owners, ACLs and data together. Global roles were bootstrapped in the fresh cluster.
+docker exec -i "$cluster" pg_restore -U aqua --single-transaction --exit-on-error \
+  --dbname=aqua_recovery_restored < "$archive"
+node --import tsx scripts/recovery-fixture.ts verify

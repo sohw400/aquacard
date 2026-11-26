@@ -37,6 +37,8 @@ npm run dev
 
 ## 검증
 
+합성 카드 거래를 포함한 PostgreSQL 백업 복원은 `npm run test:recovery`로 검사합니다. [복원 훈련과 기대 금액](docs/server-development.md#postgresql-백업-복원-훈련)
+
 ```bash
 npm test
 npm run build
