@@ -49,6 +49,7 @@ docker run --pull=never --detach --cidfile "$scratch/db.cid" --network "$network
     rm ca.key server.csr
     printf "%s\n" "local all all trust" "hostssl aqua aqua_admin,aqua_monitor all scram-sha-256" > hba.conf
     chown postgres:postgres server.key server.pem hba.conf
+    umask 022
     exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/aqua-fixture/server.pem \
       -c ssl_key_file=/run/aqua-fixture/server.key -c hba_file=/run/aqua-fixture/hba.conf
   ' >/dev/null
