@@ -1,0 +1,33 @@
+.sa-transfer-sheet .sa-transfer-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.sa-transfer-sheet .sa-step-count { color: var(--sa-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.sa-transfer-sheet .sa-recipient-search { margin-top: 0; }
+.sa-transfer-sheet .sa-recipient-result,
+.sa-transfer-sheet .sa-recipient-mini { margin: 0 0 20px; padding: 14px 16px; border: 0; border-radius: 12px; background: #f2f5f7; }
+.sa-transfer-sheet .sa-recipient-result { display: block; margin: 18px 0 0; overflow-wrap: anywhere; }
+.sa-transfer-sheet .sa-transfer-review-heading { padding: 2px 0 24px; }
+.sa-transfer-sheet .sa-transfer-review-heading > span { overflow-wrap: anywhere; }
+.sa-transfer-sheet .sa-transfer-review-heading > strong,
+.sa-transfer-sheet .sa-receipt-amount { font-size: clamp(30px, 7vw, 40px); line-height: 1.25; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.sa-transfer-sheet .sa-summary { gap: 12px; margin: 0 0 12px; border: 0; border-radius: 12px; padding: 16px; background: #f2f5f7; }
+.sa-transfer-sheet .sa-summary-row:last-child { border-top: 1px solid var(--sa-line); padding-top: 12px; }
+.sa-transfer-sheet .sa-summary-row:last-child dd { font-weight: 650; }
+.sa-transfer-sheet .sa-receipt .sa-summary { margin-top: 20px; }
+.sa-transfer-sheet .sa-transfer-pending-note { margin: 0; padding: 14px 16px; border-radius: 12px; background: #f2f5f7; color: var(--sa-ink); }
+.sa-transfer-sheet .sa-limits summary,
+.sa-transfer-sheet .sa-request-details summary { display: list-item; padding-block: 12px; }
+.sa-transfer-sheet .sa-progress-state h3 { overflow-wrap: anywhere; }
+
+@media (max-width: 700px) {
+  .sa-modal-backdrop:has(> .sa-transfer-sheet) { align-items: flex-end; }
+  .sa-transfer-sheet.sa-modal {
+    width: 100%;
+    min-height: 0;
+    height: auto;
+    max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -12px 40px rgb(18 36 53 / 12%);
+  }
+  .sa-transfer-sheet .sa-modal-header { padding: 18px 20px 15px; }
+  .sa-transfer-sheet .sa-modal-body { flex: 0 1 auto; padding: 20px; }
+  .sa-transfer-sheet .sa-modal-footer { padding: 14px 20px max(16px, env(safe-area-inset-bottom)); }
+}

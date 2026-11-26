@@ -109,6 +109,7 @@ try {
   assert.equal(account.user.emailVerifiedAt, null);
   await page.locator('[data-testid="customer-access-panel"][data-status="unverified"]').waitFor();
   assert.equal(await page.getByTestId('server-send').isDisabled(), true);
+  await page.getByTestId('dashboard-account').click();
   await sessions(page, 1);
   const firstList = await context.request.get(url('/api/auth/sessions'), { headers: { 'X-Aqua-Account': account.user.id } });
   assert.equal(firstList.status(), 200);
@@ -121,6 +122,7 @@ try {
   const recipientId = (await recipientResponse.json()).user.id;
   await changeAccess(account.user.id, 'active', 1); await changeAccess(recipientId, 'active', 1);
   await fund();
+  await page.getByTestId('dashboard-home').click();
   await page.getByTestId('server-refresh').click();
   await page.locator('[data-testid="customer-access-panel"][data-status="active"]').waitFor();
   await page.getByTestId('server-send').click();
@@ -138,6 +140,7 @@ try {
 
   const secondPage = await secondContext.newPage(); watch(secondPage);
   await login(secondPage, owner);
+  await page.getByTestId('dashboard-account').click();
   await sessions(page, 2);
   await page.locator('[data-testid="security-session"][data-current="false"]').getByTestId('security-revoke-session').click();
   await page.getByTestId('security-revoke-dialog').waitFor();
@@ -189,6 +192,7 @@ try {
   pass('Revoking the current session returns to login and removes server account access.');
 
   await login(page, owner);
+  await page.getByTestId('dashboard-account').click();
   await page.getByTestId('security-sessions-panel').waitFor();
   const switched = await context.request.post(url('/api/auth/login'), { headers: { Origin: base.origin }, data: { email: recipient.email, password } });
   assert.equal(switched.status(), 200);

@@ -273,9 +273,22 @@ try {
   cardId = (await operator(['register', ownerId, `sandbox-card-${runId}`, 'active'])).cardId;
   await refresh(); await state('active', 'none');
   assert.equal(await panel().getAttribute('data-card-id'), cardId);
-  assert.match(await page.getByTestId('issuer-confirmed-state').innerText(), /잠금 해제/);
-  assert.equal(await page.getByTestId('issuer-lock').isEnabled(), true);
   await approvalState('allowed');
+  assert.equal(await page.getByTestId('issuer-lock').isEnabled(), true);
+  const toggle = page.getByTestId('issuer-details-toggle');
+  const confirmed = page.getByTestId('issuer-confirmed-state');
+  await toggle.waitFor();
+  assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+  assert.equal(await confirmed.isVisible(), false);
+  await toggle.click();
+  assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+  await confirmed.waitFor();
+  assert.match(await confirmed.innerText(), /잠금 해제/);
+  assert.equal(await toggle.evaluate((button) =>
+    document.getElementById(button.getAttribute('aria-controls'))?.contains(document.querySelector('[data-testid="issuer-confirmed-state"]'))), true);
+  await toggle.click();
+  assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+  assert.equal(await confirmed.isVisible(), false);
   assert.deepEqual(await cardEvent(noCardAuthorization), { accepted: false, code: 'CARD_NOT_ISSUED' });
   const funded = await child('server/credit.ts', [owner.email, '20000', `${runId}-card-policy-funds`]);
   assert.equal(funded.code, 0, `Test funding failed: ${funded.stderr.slice(-1500)}`);
@@ -285,7 +298,27 @@ try {
   const reverseAuthorization = authorize('reverse-after-lock', 2_000);
   assert.equal((await cardEvent(reverseAuthorization)).accepted, true);
   let beforeMoney = await (await context.request.get(new URL('/api/account', base).href)).json();
+  await page.getByTestId('server-refresh').click();
+  await page.waitForFunction((expected) =>
+    document.querySelector('[data-testid="server-balance"]')?.textContent.includes(expected),
+  beforeMoney.balanceWon.toLocaleString('ko-KR'));
   await page.screenshot({ path: new URL('issuer-active.png', artifacts).pathname, fullPage: true });
+  const desktopSize = page.viewportSize();
+  for (const size of [{ width: 1280, height: 900 }, { width: 320, height: 740 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(size);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await fits(page, `${size.width}px active card home`);
+    await page.screenshot({ path: new URL(`connected-home-${size.width}.png`, artifacts).pathname });
+  }
+  const payback = page.getByRole('button', { name: /이번 달 확정 페이백.*상세 보기/ });
+  const shortcut = await payback.boundingBox();
+  const navigation = await page.getByRole('navigation', { name: '주 메뉴' }).boundingBox();
+  assert.ok(shortcut && navigation && shortcut.y >= 0 && shortcut.y + shortcut.height <= navigation.y,
+    'The 390px opening viewport must show the earned cashback shortcut above bottom navigation.');
+  await payback.click();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'cashback-heading');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.setViewportSize(desktopSize);
   pass('The connected card panel reads the registered owner card and displays only the server-confirmed status.');
 
   await lock(); await state('active', 'pending');
@@ -303,7 +336,9 @@ try {
   pass('A pending lock immediately stops new authorization, preserves the original approved replay and leaves funds untouched on decline.');
   await page.screenshot({ path: new URL('issuer-pending.png', artifacts).pathname, fullPage: true });
   await finishSuccess('locked');
-  assert.match(await page.getByTestId('issuer-confirmed-state').innerText(), /^잠금$/);
+  assert.equal(await page.getByTestId('issuer-details-toggle').count(), 0);
+  await confirmed.waitFor();
+  assert.match(await confirmed.innerText(), /^잠금$/);
   assert.equal(providerCalls.filter((call) => call.method === 'POST').length, 1);
   await approvalState('blocked');
   const capturedPayment = await cardEvent(paymentEvent(originalAuthorization, 'capture', { amountWon: 4_000, finalCapture: true }));
@@ -556,7 +591,7 @@ try {
     mutationPaths: ['Authenticated issuer status API', 'Restricted dispatcher with signed HTTP', 'Restricted application role card authorization and settlement', 'Local operator registration and audited recovery'],
     faultInjection: ['Lost committed 202 response', 'Delayed pre-write GET', 'Storage write/removal failures', 'Offline browser', 'Cross-tab cookie replacement'],
     virtualClock: 'Only bounded provider-pending retry exhaustion uses an injected worker clock; stored states and HTTP outcomes are real.',
-    screenshots: ['issuer-active.png', 'issuer-pending.png', 'issuer-review.png', 'issuer-desktop.png', 'issuer-320.png', 'issuer-390.png', 'issuer-430.png'],
+    screenshots: ['connected-home-320.png', 'connected-home-390.png', 'connected-home-1280.png', 'issuer-active.png', 'issuer-pending.png', 'issuer-review.png', 'issuer-desktop.png', 'issuer-320.png', 'issuer-390.png', 'issuer-430.png'],
   }, null, 2));
   console.log(`${checks.length} issuer browser checks passed with real sessions, PostgreSQL and signed local provider requests.`);
 } catch (error) {

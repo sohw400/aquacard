@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { BadgePercent, Check, LockKeyhole, ScanFace, X } from 'lucide-react';
+import { BadgePercent, LockKeyhole, ScanFace, X } from 'lucide-react';
 import TierCard from './TierCard';
 import { useModal } from './useModal';
 import { demoCode, maskPhone } from '../lib/auth';
@@ -24,6 +24,7 @@ export default function WalletSheet({ wallet, card, phone, onAdd, onClose }: {
   const [terms, setTerms] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [input, setInput] = useState('');
+  const codeField = useRef<HTMLInputElement>(null);
   const panel = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const headingId = `${useId()}-heading`;
@@ -31,6 +32,7 @@ export default function WalletSheet({ wallet, card, phone, onAdd, onClose }: {
   const verified = code !== null && input === code;
   useModal(panel, onClose, heading);
   useEffect(() => { heading.current?.focus(); }, [step]);
+  useEffect(() => { if (code) codeField.current?.focus(); }, [code]);
 
   function add() {
     if (!verified) return;
@@ -54,17 +56,18 @@ export default function WalletSheet({ wallet, card, phone, onAdd, onClose }: {
         {step === 'verify' && <>
           {code ? <>
             <p className="wallet-code-note" data-testid="wallet-demo-code">체험판이라 문자는 보내지 않아요. 인증번호 <strong>{code}</strong></p>
-            <div className="form-field"><label htmlFor={`${headingId}-code`}>인증번호 6자리</label><input id={`${headingId}-code`} data-testid="wallet-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={input} onChange={(event) => setInput(event.target.value.replace(/\D/g, ''))} /></div>
-            {verified && <p className="wallet-verified"><Check size={16} strokeWidth={2.6} />인증을 마쳤어요.</p>}
+            <div className="form-field"><label htmlFor={`${headingId}-code`}>인증번호 6자리</label><input id={`${headingId}-code`} ref={codeField} data-testid="wallet-code" aria-invalid={input.length === 6 && !verified} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={input} onChange={(event) => setInput(event.target.value.replace(/\D/g, ''))} /></div>
+            {input.length === 6 && !verified && <p role="alert" className="itd-field-error">인증번호 6자리를 다시 확인해 주세요.</p>}
+            {verified && <p className="wallet-verified" role="status">인증 완료</p>}
           </> : <p className="wallet-code-note"><span className="nowrap">{maskPhone(phone)}</span> 번호로 인증번호를 보낼게요.</p>}
         </>}
         {step === 'done' && <div className="itd-completed wallet-done" data-testid="wallet-done-view">
-          <span className="itd-result-icon"><Check size={27} strokeWidth={1.8} /></span>
+
           <p>결제할 때 {name}에서 끝번호 {card.last4} 카드를 골라 주세요.</p>
         </div>}
         <p className="itd-demo-note">실제 지원 여부는 카드 발급사와 {name}의 제휴에 따라 달라져요.</p>
       </div>
-      <footer className="itd-footer">{step === 'intro' ? <button type="button" className="itd-button itd-primary" data-testid="wallet-next" disabled={!terms} onClick={() => setStep('verify')}>다음</button>
+      <footer className="itd-footer">{step === 'intro' ? <button type="button" className="itd-button itd-primary" data-testid="wallet-next" disabled={!terms} onClick={() => setStep('verify')}>휴대폰 인증</button>
         : step === 'verify' ? code ? <button type="button" className="itd-button itd-primary" data-testid="wallet-confirm" disabled={!verified} onClick={add}>{name}에 추가하기</button>
           : <button type="button" className="itd-button itd-primary" data-testid="wallet-send-code" onClick={() => { setCode(demoCode()); setInput(''); }}>인증번호 받기</button>
         : <button type="button" className="itd-button itd-primary" data-testid="wallet-done" onClick={onClose}>확인</button>}</footer>

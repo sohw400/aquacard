@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type Ref } from 'react';
 import { ChevronRight } from 'lucide-react';
-import { liveRewards, reserveEarnings } from '../lib/engine';
+import { reserveEarnings } from '../lib/engine';
 import { won } from '../lib/format';
 import type { AppState } from '../lib/types';
 
@@ -21,12 +21,6 @@ export function useTicker(): number {
 }
 
 const fraction = (value: number) => (Math.floor(Math.min(Math.max(value, 0), 0.9999) * 10_000) / 10_000).toFixed(4).slice(1);
-
-/** Whole won come from the ledger; only the fraction moves between engine ticks. */
-export function LiveRewards({ state, testId }: { state: AppState; testId?: string }) {
-  const now = useTicker();
-  return <span className="live-figure"><strong data-testid={testId}>{won(state.rewards)}</strong><span className="live-fraction">{fraction(liveRewards(state, now) - state.rewards)}</span><small>원</small></span>;
-}
 
 export function LiveEarnings({ state, period, testId }: { state: AppState; period: 'today' | 'total'; testId?: string }) {
   const value = reserveEarnings(state, useTicker())[period];

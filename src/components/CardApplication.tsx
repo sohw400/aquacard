@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  ArrowRight, CalendarClock, Check, ChevronLeft, CircleAlert, Clock3, CreditCard,
+  ArrowRight, CalendarClock, Check, ChevronLeft, CreditCard,
   Eye, EyeOff, LockKeyhole, MapPin, Package, RefreshCw, Smartphone, Truck, UnlockKeyhole,
 } from 'lucide-react';
 import { cardApplicationFee, nextRenewalNotice, renewalMessage, renewalNotice, unusedAnnualFee, upgradePhysical } from '../lib/engine';
@@ -77,6 +77,8 @@ export default function CardApplication({ card, account, spend, now, controls, o
   const [pendingAddress, setPendingAddress] = useState<ShippingAddress | null>(null);
   const [pinSheet, setPinSheet] = useState<'activate' | 'change' | 'replacement' | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  const previousStage = useRef(card.stage);
   const latest = useRef({ card, onChange, onNotify });
   const plan = PLANS[card.plan];
   const applicationStep = stepByStage[card.stage];
@@ -90,6 +92,11 @@ export default function CardApplication({ card, account, spend, now, controls, o
   const refund = unusedAnnualFee(card, now);
 
   useEffect(() => { latest.current = { card, onChange, onNotify }; }, [card, onChange, onNotify]);
+
+  useEffect(() => {
+    if (previousStage.current !== card.stage) stepHeading.current?.focus();
+    previousStage.current = card.stage;
+  }, [card.stage]);
 
   const stopTimer = () => {
     if (timer.current !== null) {
@@ -180,34 +187,34 @@ export default function CardApplication({ card, account, spend, now, controls, o
       )}
 
       {card.stage === 'not_applied' && <div className="cf-intro">
-        <CardHero className="cf-intro-art" />
-        <h2>잔액으로 바로 쓰는 카드</h2>
-        <p className="cf-lead">가상카드는 신청하면 바로 나와요. 멤버십에 따라 페이백과 리저브 보상이 달라져요.</p>
+        <div className="cf-intro-stage"><CardHero className="cf-intro-art" /></div>
+        <h2 ref={stepHeading} tabIndex={-1}>Aqua 카드 신청</h2>
+        <p className="cf-lead">체험용 가상카드를 발급받고 결제할 수 있어요. 실물카드는 신청 단계에서 선택해요.</p>
+        <button type="button" className="cf-button cf-primary" data-testid="card-apply" onClick={() => nextStage('identity')}>카드 신청하기 <ArrowRight size={17} /></button>
+        <h3 className="cf-compare-title">멤버십별 혜택과 연회비</h3>
         <ul className="cf-tiers" aria-label="멤버십">{PLAN_ORDER.map((key) => <li key={key}><TierCard plan={key} /><span className="cf-tier-main"><strong>{PLANS[key].short}</strong><TierFacts plan={key} /></span><span className="cf-tier-fee">{feeText(key)}</span></li>)}</ul>
-        <button type="button" className="cf-button cf-primary" data-testid="card-apply" onClick={() => nextStage('identity')}>카드 만들기 <ArrowRight size={17} /></button>
-        <p className="cf-disclaimer">체험판이라 실제 카드는 나오지 않아요.</p>
       </div>}
 
       {card.stage === 'identity' && <div className="cf-step">
-        <h2>본인확인</h2><p className="cf-lead">가입할 때 확인한 정보로 신청해요. 다시 촬영하지 않아도 돼요.</p>
+        <h2 ref={stepHeading} tabIndex={-1}>신청인 확인</h2><p className="cf-lead">가입할 때 확인한 이름으로 카드를 신청해요.</p>
         <div className="cf-profile"><span className="cf-avatar" aria-hidden="true">{account.name.charAt(0)}</span><div><strong>{account.name}</strong><p><Facts items={[account.birthDate.replaceAll('-', '.'), maskPhone(account.phone)]} /></p></div><span className="cf-profile-status"><Check size={13} strokeWidth={2.6} />확인됨</span></div>
         <label className="cf-final-consent"><input type="checkbox" data-testid="card-identity-consent" checked={identityConsent} onChange={(event) => setIdentityConsent(event.target.checked)} /><span>본인확인 정보를 카드 발급사에 제공하는 데 동의해요.</span></label>
-        <button type="button" className="cf-button cf-primary" data-testid="card-identity-next" disabled={!identityConsent} onClick={() => patch({ identityVerified: true, stage: 'plan' })}>다음 <ArrowRight size={17} /></button>
+        <button type="button" className="cf-button cf-primary" data-testid="card-identity-next" disabled={!identityConsent} onClick={() => patch({ identityVerified: true, stage: 'plan' })}>멤버십 선택 <ArrowRight size={17} /></button>
         <button type="button" className="cf-text-button" onClick={() => nextStage('not_applied')}><ChevronLeft size={15} /> 그만두기</button>
       </div>}
 
       {selectingCard && <div className="cf-step">
-        <h2>멤버십 고르기</h2><p className="cf-lead">나중에 카드 화면에서 언제든 바꿀 수 있어요.</p>
+        <h2 ref={stepHeading} tabIndex={-1}>멤버십 고르기</h2><p className="cf-lead">나중에 카드 화면에서 언제든 바꿀 수 있어요.</p>
         <fieldset className="cf-options"><legend className="cf-sr-only">멤버십</legend>{PLAN_ORDER.map((key) => { const option = PLANS[key]; return <label key={key} className={`cf-option ${card.plan === key ? 'cf-option-selected' : ''}`}><input type="radio" name="card-plan" value={key} checked={card.plan === key} onChange={() => choosePlan(key)} /><TierCard plan={key} /><span className="cf-option-main"><span className="cf-option-title">{option.short}</span><span className="cf-option-price">{feeText(key)}</span><TierFacts plan={key} /></span></label>; })}</fieldset>
         {card.plan === 'standard' ? <label className="cf-physical-option" data-testid="card-physical-row"><input type="checkbox" data-testid="card-physical-choice" checked={card.physical} onChange={(event) => patch({ physical: event.target.checked })} /><span><strong>실물카드도 받기</strong><small><Facts items={[PLANS.standard.physicalFee ? `발급비 ${won(PLANS.standard.physicalFee)}` : '무료', `배송 ${POLICY.deliveryEstimate}`]} /></small></span></label>
           : <p className="cf-included"><Package size={16} aria-hidden="true" /><span><span className="nowrap">{plan.card}가 함께 나와요.</span> <span className="nowrap">배송까지 {POLICY.deliveryEstimate}이 걸려요.</span></span></p>}
         {card.physical && <div className="cf-address" data-testid="card-address"><MapPin size={17} /><div>{card.address ? <><strong>{card.address.road}</strong><p><Facts items={[card.address.detail || '상세 주소 없음', card.address.zip]} /></p></> : <><strong>받을 주소를 넣어 주세요</strong><p>본인만 받을 수 있어요.</p></>}</div><button type="button" className="cf-address-button" data-testid="card-address-open" onClick={() => setAddressSheet('select')}>{card.address ? '변경' : '입력'}</button></div>}
-        <button type="button" className="cf-button cf-primary" data-testid="card-selection-next" disabled={card.physical && !card.address} onClick={review}>다음 <ArrowRight size={17} /></button>
+        <button type="button" className="cf-button cf-primary" data-testid="card-selection-next" disabled={card.physical && !card.address} onClick={review}>신청 내용 확인 <ArrowRight size={17} /></button>
         <button type="button" className="cf-text-button" onClick={backToIdentity}><ChevronLeft size={15} /> 이전</button>
       </div>}
 
       {card.stage === 'review' && <div className="cf-step">
-        <h2>신청 확인</h2>
+        <h2 ref={stepHeading} tabIndex={-1}>신청 내용 확인</h2>
         <dl className="cf-summary"><div><dt>신청하는 분</dt><dd>{account.name}</dd></div><div><dt>멤버십</dt><dd>{plan.name}</dd></div><div><dt>페이백</dt><dd>{percent(plan.cashbackRate)} · 월 {won(plan.cashbackCap)}까지</dd></div><div><dt>카드</dt><dd>{card.physical ? `가상카드와 ${physicalName(card.plan)}` : '가상카드'}</dd></div>{card.physical && card.address && <div><dt>받을 주소</dt><dd>{addressLine(card.address)}</dd></div>}</dl>
         <div className="cf-cost" data-testid="card-fee">
           <div className="cf-cost-head"><span>지금 낼 금액</span><strong data-testid="card-fee-total">{fee ? won(fee) : '없음'}</strong></div>
@@ -221,20 +228,20 @@ export default function CardApplication({ card, account, spend, now, controls, o
       </div>}
 
       {preparingCard && <div className="cf-step" aria-live="polite" data-testid="card-preparing">
-        <div className="cf-status-head"><span className="cf-status-icon"><Clock3 /></span><div><h2>카드를 만들고 있어요</h2><p>{card.stage === 'submitted' ? '신청 내용을 확인하고 있어요.' : card.stage === 'approved' ? '가상카드를 발급하고 있어요.' : '카드를 쓸 수 있게 준비하고 있어요.'}</p></div></div>
+        <div className="cf-status-head"><h2>카드를 만들고 있어요</h2><p>{card.stage === 'submitted' ? '신청 내용을 확인하고 있어요.' : card.stage === 'approved' ? '가상카드를 발급하고 있어요.' : '카드를 쓸 수 있게 준비하고 있어요.'}</p></div>
         <div className="cf-progress" aria-hidden="true"><span style={{ width: `${preparingProgress[card.stage] ?? 0}%` }} /></div>
         <div className="cf-reference"><span>접수번호</span><strong>{card.reference}</strong></div>
         <p className="cf-disclaimer">체험판이라 잠시 뒤 자동으로 끝나요.</p>
       </div>}
 
       {card.stage === 'needs_info' && <div className="cf-step">
-        <div className="cf-status-head cf-status-warning"><span className="cf-status-icon"><CircleAlert /></span><div><h2>본인확인을 한 번 더 해 주세요</h2><p>발급사가 본인확인 정보를 다시 확인해 달라고 했어요. 낸 비용은 돌려드렸고, 다시 신청할 때 내면 돼요.</p></div></div>
+        <div className="cf-status-head"><h2>본인확인을 한 번 더 해 주세요</h2><p>발급사가 본인확인 정보를 다시 확인해 달라고 했어요. 낸 비용은 돌려드렸고, 다시 신청할 때 내면 돼요.</p></div>
         <div className="cf-reference"><span>접수번호</span><strong>{card.reference}</strong></div>
         <button type="button" className="cf-button cf-primary" data-testid="card-resubmit" onClick={() => { setIdentityConsent(false); setReviewConsent(false); setToolsOpen(false); patch({ stage: 'identity', identityVerified: false }); }}>다시 확인하기 <ArrowRight size={17} /></button>
       </div>}
 
       {card.stage === 'rejected' && <div className="cf-step">
-        <div className="cf-status-head cf-status-danger"><span className="cf-status-icon"><CircleAlert /></span><div><h2>신청이 승인되지 않았어요</h2><p>신청할 때 낸 비용은 잔액으로 돌려드렸어요.</p></div></div>
+        <div className="cf-status-head"><h2>신청이 승인되지 않았어요</h2><p>신청할 때 낸 비용은 잔액으로 돌려드렸어요.</p></div>
         <button type="button" className="cf-button cf-primary" data-testid="card-restart" onClick={restart}>다시 신청하기 <RefreshCw size={17} /></button>
       </div>}
 

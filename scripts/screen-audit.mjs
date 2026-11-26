@@ -644,6 +644,7 @@ async function audit(profileName, profile) {
     await shot(page, 'home-active');
     await tid(page, 'open-payment').click();
     await shot(page, 'payment-dialog');
+    await page.getByText('예시 결제 선택', { exact: true }).click();
     await page.locator('.preset-amounts button').nth(1).click();
     await shot(page, 'payment-online');
     await tid(page, 'action-amount').fill('9999999');
@@ -655,6 +656,7 @@ async function audit(profileName, profile) {
     await shot(page, 'payment-receipt');
     await tid(page, 'receipt-close').click();
     await tid(page, 'open-payment').click();
+    await page.getByText('예시 결제 선택', { exact: true }).click();
     await page.locator('.preset-amounts button').nth(2).click();
     await tid(page, 'confirm-action').click();
     await tid(page, 'payment-receipt').waitFor();

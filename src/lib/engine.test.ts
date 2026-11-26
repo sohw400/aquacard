@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { accountClosureBlockers, addYear, applyAction, availableToSpend, cardApplicationFee, createInitialState, loadState, memberSendRoom, nextRenewalNotice, portfolioValue, recordsKeptUntil, renewalMessage, renewalNotice, reserveTerms, saveState, STORAGE_KEY, unusedAnnualFee } from './engine';
 import { josa, ro } from './format';
+import { mobilePreviewScenario } from './mobilePreview';
 import { assertFundingQuoteFresh, getFundingQuote } from './funding';
 import { getFundingNetworks, getHeldFundingWon } from './movements';
 import { PLAN_ORDER, PLANS, POLICY } from './policy';
@@ -63,6 +64,42 @@ test('초기 총 자산과 선택한 결제 잔액만 계산한다', () => {
   assert.equal(availableToSpend({ ...state, reserveAuto: true }), 1_382_780);
   assert.equal(availableToSpend({ ...state, rewardsAuto: false }), 128_500);
 });
+
+test('모바일 프리뷰는 신규 가입·발급 후 계정과 기본 데모를 분리하고 기존 거래를 복원한다', () => withFundingStorage(({ values }) => {
+  const path = '/aquacard/previews/pr-26/';
+  const signup = mobilePreviewScenario('?scenario=signup', path);
+  const issued = mobilePreviewScenario('?scenario=issued', path);
+  const other = mobilePreviewScenario('?scenario=issued', '/aquacard/previews/pr-27/');
+  assert.equal(mobilePreviewScenario('', path).storageKey, signup.storageKey);
+  assert.equal(mobilePreviewScenario('?scenario=unknown', path).storageKey, signup.storageKey);
+
+  const existing = applyAction(createInitialState(), { type: 'SET_RESERVE_AUTO', enabled: true });
+  saveState(existing);
+  const officialSnapshot = values.get(STORAGE_KEY);
+  const newcomer = loadState(signup.storageKey, signup.initialState);
+  assert.equal(newcomer.account, null);
+  assert.equal(newcomer.reserveAuto, false);
+  saveState(newcomer, signup.storageKey);
+
+  const seeded = loadState(issued.storageKey, issued.initialState);
+  assert.equal(seeded.card.stage, 'active');
+  assert.equal(availableToSpend(seeded), 65_163);
+  assert.equal(seeded.monthlyCashback, 683);
+  const paid = applyAction(seeded, { type: 'PAY', merchant: '테스트 가게', amount: 27_500 });
+  const loggedOut = applyAction(confirm(paid), { type: 'SIGN_OUT' });
+  saveState(loggedOut, issued.storageKey);
+  const restored = loadState(issued.storageKey, issued.initialState);
+  assert.equal(restored.signedIn, false);
+  assert.equal(restored.payments[0].amount, 27_500);
+  assert.equal(restored.rewards, 225);
+  assert.equal(loadState(signup.storageKey, signup.initialState).account, null);
+  const secondPreview = loadState(other.storageKey, other.initialState);
+  assert.equal(secondPreview.signedIn, true);
+  assert.equal(secondPreview.payments.length, 3);
+  saveState(secondPreview, other.storageKey);
+  assert.equal(values.get(STORAGE_KEY), officialSnapshot);
+  assert.equal(values.size, 4);
+}));
 
 test('결제는 리워드→결제 지갑→옵트인 Reserve 순서이며 확정 전 페이백을 지급하지 않는다', () => {
   const before = activeState();

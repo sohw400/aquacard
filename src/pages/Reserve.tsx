@@ -1,3 +1,4 @@
+import './MoneyPages.css';
 import { LiveEarnings, Toggle, Won } from '../components/ui';
 import { reserveTerms } from '../lib/engine';
 import { money, percent, shortDate } from '../lib/format';
@@ -9,15 +10,18 @@ export default function Reserve({ state, onMove, onAutoUse }: { state: AppState;
   const plan = PLANS[state.card.stage === 'active' ? state.card.plan : 'standard'];
   const daily = Math.min(state.reserve, terms.cap) * terms.rate / 365;
   return <div className="page reserve-page">
-    <section className="live-card reserve-live" aria-label="리저브">
-      <div className="live-card-head"><span className="live-label">리저브</span><span className="live-rate">연 {percent(terms.rate)}</span></div>
+    <section className="live-card reserve-live balance-panel" aria-label="리저브">
+      <div className="live-card-head"><span className="live-label">리저브 잔액</span><span className="live-rate">연 {percent(terms.rate)}</span></div>
       <div className="live-amount"><Won value={state.reserve} className="hero-amount" testId="reserve-principal" /></div>
-      <dl className="live-stats"><div><dt>오늘 쌓인 보상</dt><dd><LiveEarnings state={state} period="today" testId="reserve-accrual" /></dd></div><div><dt>지금까지</dt><dd><LiveEarnings state={state} period="total" /></dd></div></dl>
       <div className="button-pair"><button type="button" className="btn live-primary" onClick={() => onMove('in')}>넣기</button><button type="button" className="btn live-neutral" onClick={() => onMove('out')}>빼기</button></div>
     </section>
 
-    <section className="plain-section">
+    <section className="plain-section reserve-earned" aria-labelledby="reserve-earned-title">
+      <div className="section-title"><h2 id="reserve-earned-title">리저브 보상</h2></div>
+      <dl className="reserve-earnings-list"><div><dt>오늘 쌓인 보상</dt><dd><LiveEarnings state={state} period="today" testId="reserve-accrual" /></dd></div><div><dt>누적 보상</dt><dd><LiveEarnings state={state} period="total" /></dd></div></dl>
       <p className="lead-text">{state.reserve > 0 ? `지금 금액이면 하루에 약 ${money(daily)}이 쌓여요.` : '잔액 일부를 리저브에 두면 1초마다 보상이 쌓여요.'} 보상은 1원이 될&nbsp;때마다 리워드에 들어가요.</p>
+    </section>
+    <section className="reserve-preference">
       <Toggle checked={state.reserveAuto} onChange={onAutoUse} label="잔액이 모자랄 때 리저브로 결제" detail="모자란 만큼만 리저브에서 빠져요." testId="reserve-auto" />
     </section>
 

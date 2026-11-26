@@ -186,6 +186,18 @@ try {
   pass('A cookie belonging to another user cannot submit a stale account’s transfer intent; neither balance changes.');
 
   await prepareTransfer(senderPage, receiver, amounts.normal);
+  const desktopSize = senderPage.viewportSize();
+  await senderPage.setViewportSize({ width: 320, height: 568 });
+  const confirmation = senderPage.getByTestId('transfer-confirm');
+  await confirmation.waitFor();
+  await fits(senderPage, '320px transfer review');
+  const confirmBounds = await confirmation.boundingBox();
+  assert.ok(confirmBounds && confirmBounds.y >= 0 && confirmBounds.y + confirmBounds.height <= 568,
+    'The transfer confirmation remains reachable on a short mobile screen.');
+  await senderPage.setViewportSize({ width: 390, height: 844 });
+  await fits(senderPage, 'Mobile transfer review');
+  await senderPage.screenshot({ path: new URL('transfer-review-390.png', artifacts).pathname });
+  await senderPage.setViewportSize(desktopSize);
   const normalResponse = senderPage.waitForResponse((response) => transferRequest(response.request()));
   await senderPage.getByTestId('transfer-confirm').click();
   const normal = await normalResponse;
@@ -195,6 +207,20 @@ try {
   await balance(receiverPage, funded.receiver + amounts.normal);
   pass('A UI transfer debits the sender and credits the other browser user in the database.');
 
+  await prepareTransfer(senderPage, receiver, amounts.interrupted);
+  await senderPage.route('**/api/transfers', (route) => route.abort('failed'), { times: 1 });
+  await senderPage.getByTestId('transfer-confirm').click();
+  const retryLabel = `${amounts.interrupted.toLocaleString('ko-KR')}원 송금 재시도`;
+  const retryButton = senderPage.getByRole('button', { name: retryLabel, exact: true });
+  await retryButton.waitFor();
+  assert.equal(await retryButton.getAttribute('data-testid'), 'transfer-retry');
+  const uncertainStatus = senderPage.getByTestId('transfer-status');
+  assert.ok((await uncertainStatus.innerText()).includes(`@${receiver.tag}`));
+  assert.match(await uncertainStatus.innerText(), /아직 처리되지 않은 송금은 지금 실행/);
+  assert.match(await uncertainStatus.innerText(), /이미 송금됐다면 추가 차감 없이/);
+  assert.equal((await account(senderContext)).balanceWon, funded.sender - amounts.normal);
+  assert.equal((await account(receiverContext)).balanceWon, funded.receiver + amounts.normal);
+
   await senderPage.route('**/api/transfers', async (route) => {
     try {
       const response = await route.fetch();
@@ -203,8 +229,9 @@ try {
       await route.abort('failed');
     }
   }, { times: 1 });
-  await prepareTransfer(senderPage, receiver, amounts.interrupted);
-  await senderPage.getByTestId('transfer-confirm').click();
+  const lostRetry = senderPage.waitForEvent('requestfailed', { predicate: transferRequest });
+  await retryButton.click();
+  await lostRetry;
   await senderPage.waitForFunction(() => document.querySelector('[data-testid="transfer-status"]')?.getAttribute('data-status') === 'unknown');
   assert.ok(droppedResponse && droppedResponse.status >= 200 && droppedResponse.status < 300, 'The real backend committed before its response was deliberately dropped.');
   assert.equal(droppedResponse.body.balanceWon, expected.sender);
@@ -215,22 +242,27 @@ try {
   await senderPage.reload({ waitUntil: 'networkidle' });
   await senderPage.waitForFunction(() => document.querySelector('[data-testid="transfer-status"]')?.getAttribute('data-status') === 'unknown');
   assert.equal(await senderPage.getByTestId('server-send').isDisabled(), true);
+  await senderPage.setViewportSize({ width: 390, height: 844 });
   await fits(senderPage, 'Recovered unknown transfer');
-  await senderPage.screenshot({ path: new URL('unknown-after-refresh.png', artifacts).pathname, fullPage: true });
+  await retryButton.waitFor();
+  await senderPage.screenshot({ path: new URL('unknown-after-refresh.png', artifacts).pathname });
+  await senderPage.setViewportSize(desktopSize);
   pass('A dropped reply after a real commit leaves an unknown request, blocks a second send, and survives page refresh.');
 
   const retryResponse = senderPage.waitForResponse((response) => transferRequest(response.request()));
-  await senderPage.getByTestId('transfer-retry').click();
+  await retryButton.click();
   assert.ok((await retryResponse).ok());
   await completed(senderPage, amounts.interrupted, expected.sender);
   const sentRequests = transferRequests.filter((entry) => entry.label === 'sender');
-  assert.equal(sentRequests.length, 3, 'One normal request and one interrupted request retried once.');
+  assert.equal(sentRequests.length, 4, 'One normal request and one interrupted request retried before and after commit.');
   assert.ok(sentRequests.every((entry) => entry.ownerId === firstSender.user.id), 'Every request binds the intent to its authenticated account, including the retry.');
   assert.ok(typeof sentRequests[0].key === 'string' && sentRequests[0].key.length > 0);
   assert.ok(typeof sentRequests[1].key === 'string' && sentRequests[1].key.length > 0);
   assert.notEqual(sentRequests[0].key, sentRequests[1].key);
-  assert.equal(sentRequests[1].key, sentRequests[2].key, 'The uncertain request keeps its original Idempotency-Key.');
-  assert.deepEqual(sentRequests[1].body, sentRequests[2].body, 'The retry keeps the original recipient and amount.');
+  for (const replay of sentRequests.slice(2)) {
+    assert.equal(replay.key, sentRequests[1].key, 'Every retry keeps the original Idempotency-Key.');
+    assert.deepEqual(replay.body, sentRequests[1].body, 'Every retry keeps the original recipient and amount.');
+  }
   await balance(senderPage, expected.sender);
   await balance(receiverPage, expected.receiver);
   assertHistories(await account(senderContext), await account(receiverContext));
@@ -243,6 +275,15 @@ try {
   assertHistories(await account(senderContext), await account(receiverContext));
   await fits(senderPage, 'Desktop account');
   await fits(receiverPage, 'Mobile account');
+  await receiverPage.getByTestId('dashboard-history').click();
+  const receivedRows = receiverPage.getByTestId('server-transactions').locator('[data-direction="received"]');
+  await receivedRows.nth(1).waitFor();
+  assert.equal(await receivedRows.count(), 2, 'The mobile history page displays both received transfers.');
+  await receiverPage.reload({ waitUntil: 'networkidle' });
+  await receivedRows.nth(1).waitFor();
+  assert.equal(new URL(receiverPage.url()).hash, '#history');
+  await fits(receiverPage, 'Mobile history');
+  await receiverPage.getByTestId('dashboard-home').click();
   await senderPage.screenshot({ path: new URL('sender-desktop.png', artifacts).pathname, fullPage: true });
   await receiverPage.screenshot({ path: new URL('receiver-mobile.png', artifacts).pathname, fullPage: true });
   pass('Desktop and mobile account views restore both balances and histories after refresh.');
@@ -336,11 +377,11 @@ try {
 
   await writeFile(new URL('results.json', artifacts), JSON.stringify({
     recordedAt: new Date().toISOString(), baseUrl: base.href, passed: checks.length, checks,
-    backendMocked: false, deliberateNetworkLoss: 'The transfer POST reached the real API; only its reply was dropped.',
+    backendMocked: false, deliberateNetworkLoss: 'The first interrupted POST was blocked before reaching the API. Its retry committed and lost its reply. The final retry recovered the receipt.',
     apiRestartVerified: false, persistenceVerified: 'Database balances and histories survive refresh, logout/login, and a fresh browser context.',
     slowReadsVerified: true, sharedCookieAccountChangesVerified: true,
     engine: 'Chromium', realDeviceTested: false, balances: expected, totalWon: expected.sender + expected.receiver,
-    screenshots: ['sender-desktop.png', 'receiver-mobile.png', 'unknown-after-refresh.png'],
+    screenshots: ['sender-desktop.png', 'receiver-mobile.png', 'unknown-after-refresh.png', 'transfer-review-390.png'],
   }, null, 2));
   console.log(`${checks.length} server browser checks passed. Both accounts use real HTTP, cookie sessions, and PostgreSQL.`);
 } catch (error) {

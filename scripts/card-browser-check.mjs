@@ -43,6 +43,7 @@ async function account(context, query = '') {
 
 async function balances(page, balanceWon, heldBalanceWon, totalBalanceWon) {
   currentPage = page;
+  await page.getByTestId('dashboard-home').click();
   // No refresh button or reload: wait for the app's real account poll to render.
   await page.waitForFunction((expected) => expected.every(([id, amount]) => {
     const value = document.querySelector(`[data-testid="${id}"]`)?.textContent ?? '';
@@ -58,6 +59,7 @@ async function balances(page, balanceWon, heldBalanceWon, totalBalanceWon) {
 
 async function payment(page, id, status, expected) {
   currentPage = page;
+  await page.getByTestId('dashboard-history').click();
   await page.waitForFunction(({ id, status }) => document.querySelector(`[data-testid="server-card-payment-${id}"]`)?.getAttribute('data-status') === status, { id, status });
   const row = page.getByTestId(`server-card-payment-${id}`);
   if (!await row.evaluate((node) => node.open)) await row.locator('summary').click();
@@ -145,15 +147,17 @@ try {
   assert.ok((await ownerPage.getByTestId(`server-card-payment-${paymentId}`).innerText()).includes(merchantName));
   pass('A real card authorization automatically reduces available funds, preserves total funds and displays the held amount.');
 
+  await ownerPage.getByTestId('dashboard-home').click();
   await ownerPage.getByTestId('server-send').click();
   await ownerPage.getByTestId('transfer-recipient').fill(other.tag);
   await ownerPage.getByTestId('transfer-lookup').click();
   await ownerPage.getByTestId('transfer-recipient-result').waitFor({ state: 'visible' });
   await ownerPage.getByTestId('transfer-next').click();
   await ownerPage.getByTestId('transfer-amount').fill('50000');
-  await ownerPage.getByTestId('transfer-review').click();
-  await ownerPage.getByTestId('transfer-error').waitFor({ state: 'visible' });
-  assert.match(await ownerPage.getByTestId('transfer-error').innerText(), /40,000/);
+  const amountError = ownerPage.getByRole('alert').filter({ hasText: /40,000/ });
+  await amountError.waitFor({ state: 'visible' });
+  assert.equal(await ownerPage.getByTestId('transfer-amount').getAttribute('aria-invalid'), 'true');
+  assert.equal(await ownerPage.getByTestId('transfer-review').isDisabled(), true);
   assert.equal(await ownerPage.getByTestId('transfer-confirm').count(), 0);
   await ownerPage.getByTestId('transfer-close').click();
   const overAvailable = await ownerContext.request.post(new URL('/api/transfers', base).href, {
@@ -201,6 +205,8 @@ try {
   const attemptedOwnerQuery = await account(otherContext, `?userId=${encodeURIComponent(ownerProfile.id)}`);
   assert.equal(attemptedOwnerQuery.user.id, otherProfile.id);
   assert.deepEqual(attemptedOwnerQuery.cardPayments, []);
+  await otherPage.getByTestId('dashboard-history').click();
+  await otherPage.getByTestId('server-card-payments').waitFor();
   assert.equal(await otherPage.getByTestId(`server-card-payment-${paymentId}`).count(), 0);
   assert.equal(await otherPage.getByTestId(`server-card-payment-${cancelledId}`).count(), 0);
   await fits(otherPage, 'Other account mobile view');

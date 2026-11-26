@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Copy, LogOut, RefreshCw, Send } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, ChevronRight, Copy, CreditCard, List, LogOut, RefreshCw, Send, UserRound } from 'lucide-react';
 import type { AccountSnapshot, MemberProfile } from '../../shared/api';
 import Logo from '../components/Logo';
 import AuthPanel from './AuthPanel';
@@ -18,9 +18,22 @@ import './Server.css';
 const money = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 const time = (value: number) => new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' }).format(value);
 
+const destinations = [
+  { id: 'home', name: '카드 홈', icon: CreditCard },
+  { id: 'history', name: '이용 내역', icon: List },
+  { id: 'account', name: '내 계정', icon: UserRound },
+] as const;
+type Screen = typeof destinations[number]['id'];
+
+function requestedScreen(): Screen {
+  return destinations.find(({ id }) => location.hash === `#${id}`)?.id ?? 'home';
+}
+
 export default function ServerApp() {
   const [user, setUser] = useState<MemberProfile | null>(null);
   const [account, setAccount] = useState<AccountSnapshot | null>(null);
+  const [screen, setScreen] = useState<Screen>(requestedScreen);
+  const pageHeading = useRef<HTMLHeadingElement>(null);
   const [booting, setBooting] = useState(true);
   const [bootError, setBootError] = useState('');
   const [authNotice, setAuthNotice] = useState('');
@@ -44,6 +57,17 @@ export default function ServerApp() {
   const preferenceIntentRef = useRef<RewardPreferenceIntent | null>(null);
   const preferenceFlight = useRef<{ ownerId: string; generation: number; key: string } | null>(null);
   const preferenceAwaiting = useRef<{ ownerId: string; generation: number; minSequence: number } | null>(null);
+
+  useEffect(() => {
+    const navigate = () => {
+      setScreen(requestedScreen());
+      setNotice('');
+      window.scrollTo(0, 0);
+      requestAnimationFrame(() => pageHeading.current?.focus({ preventScroll: true }));
+    };
+    window.addEventListener('hashchange', navigate);
+    return () => window.removeEventListener('hashchange', navigate);
+  }, []);
 
   const invalidateReads = useCallback(() => {
     requestVersion.current++;
@@ -214,22 +238,120 @@ export default function ServerApp() {
     catch { setNotice('복사하지 못했습니다. 태그를 직접 선택해 주세요.'); }
   }
 
-  return <div className="sa-shell" data-testid="server-app"><header className="sa-header"><div className="sa-header-inner"><Logo size={29} /><span className="sa-environment">테스트 계정 · 실제 자금이 아니에요</span><div className="sa-header-actions">{user && <><span className="sa-header-name">{user.name}님</span><button className="sa-icon-button" aria-label="로그아웃" data-testid="server-logout" disabled={loggingOut} onClick={() => void logout()}><LogOut size={19} /></button></>}</div></div></header><main className="sa-main">
-    {booting ? <div className="sa-loading" role="status">계정을 확인하고 있습니다.</div> : bootError ? <section className="sa-connection-error"><h1>연결을 확인해 주세요.</h1><p role="alert">{bootError}</p><button className="sa-primary" onClick={() => location.reload()}>다시 연결</button></section> : !user ? <AuthPanel onAuthenticated={authenticate} notice={authNotice} /> : <div className="sa-dashboard">
-      <CustomerAccessPanel access={account?.access ?? null} />
-      <EmailVerificationPanel key={`email:${user.id}`} ownerId={user.id} email={user.email}
-        onVerified={() => { if (userRef.current?.id === user.id) void loadAccount(); }}
-        onSessionExpired={() => { if (userRef.current?.id === user.id) expired(); }} />
-      <IssuerCardPanel key={user.id} ownerId={user.id} access={account?.access ?? null} onSessionExpired={() => { if (userRef.current?.id === user.id) expired(); }} />
-      <section className="sa-balance-panel"><div className="sa-balance-heading"><h1>사용 가능한 잔액</h1><button className="sa-icon-button" aria-label="잔액 새로고침" data-testid="server-refresh" disabled={refreshing} onClick={() => void loadAccount()}><RefreshCw size={18} /></button></div><strong className="sa-balance-number" data-testid="server-balance">{account ? money(account.balanceWon) : '불러오는 중'}</strong><p>결제대기와 카드 전용 리워드는 포함하지 않은 원금이에요.</p><dl className="sa-balance-breakdown" aria-label="잔액 구분"><div><dt>결제대기 <span>원금에서 확보한 금액</span></dt><dd data-testid="server-held-balance">{typeof account?.heldBalanceWon === 'number' ? money(account.heldBalanceWon) : '확인 중'}</dd></div><div><dt>원금 합계</dt><dd data-testid="server-total-balance">{typeof account?.totalBalanceWon === 'number' ? money(account.totalBalanceWon) : '확인 중'}</dd></div></dl><div className="sa-balance-actions"><button className="sa-primary" data-testid="server-send" disabled={!account?.access?.canTransact || Boolean(pending) || account.limits.available < 1000 || account.balanceWon < 1000} onClick={() => setTransferOpen(true)}><Send size={18} />보내기</button>{pending && <button className="sa-secondary" data-testid="server-resume-transfer" onClick={() => setTransferOpen(true)}>이전 송금 결과 확인</button>}</div>{pending && <p className="sa-balance-warning">결과를 확인 중인 송금이 있습니다. 확인 후 새 송금을 진행할 수 있습니다.</p>}</section>
-      <section className="sa-profile-panel"><h2>내 Aqua 태그</h2><div className="sa-profile-info"><span className="sa-person-avatar">{user.name.slice(0, 1)}</span><div><strong>{user.name}</strong><span>{user.email}</span></div></div><div className="sa-tag"><strong data-testid="server-tag">@{user.tag}</strong><button className="sa-icon-button" aria-label="Aqua 태그 복사" onClick={() => void copyTag()}><Copy size={18} /></button></div><p>{account?.access?.canTransact ? '상대방에게 태그를 알려주면 송금을 받을 수 있습니다.' : '현재는 이 태그로 송금을 받을 수 없습니다.'}</p></section>
-      {(error || notice) && <p className={error ? 'sa-error sa-dashboard-message' : 'sa-notice sa-dashboard-message'} role={error ? 'alert' : 'status'}>{error || notice}</p>}
-      <RewardsPanel rewards={account?.rewards ?? null} saving={preferenceSaving || preferenceConfirming} unresolved={preferenceIntent !== null} message={preferenceMessage} error={preferenceError} onUseFirstChange={changeRewardPriority} onRetry={retryRewardPreference} />
-      <section className="sa-transactions"><div className="sa-section-heading"><div><h2>거래 내역</h2><p>받은 송금은 자동으로 갱신됩니다.</p></div><span>{account?.transactions.length ?? 0}건</span></div>{!account ? <div className="sa-empty-state">내역을 불러오고 있습니다.</div> : !account.transactions.length ? <div className="sa-empty-state"><p>아직 거래 내역이 없습니다.</p></div> : <div className="sa-transaction-list" data-testid="server-transactions">{account.transactions.map((transaction) => {
-        const sent = transaction.direction === 'sent';
-        return <div className="sa-transaction-row" key={transaction.id} data-testid={`server-transaction-${transaction.id}`} data-direction={transaction.direction}><span className={`sa-transaction-icon${sent ? ' sent' : ''}`}>{sent ? <ArrowUpRight size={20} /> : <ArrowDownLeft size={20} />}</span><div className="sa-transaction-copy"><strong>{transaction.counterpartyName || (transaction.direction === 'funded' ? '테스트 잔액 반영' : 'Aqua 회원')}</strong><span>{time(transaction.createdAt)} · {sent ? '보냄' : transaction.direction === 'received' ? '받음' : '테스트 잔액'}{transaction.counterpartyTag ? ` · @${transaction.counterpartyTag}` : ''}</span></div><strong className={`sa-transaction-amount${sent ? '' : ' received'}`}>{sent ? '−' : '+'}{money(transaction.amountWon)}</strong></div>;
-      })}</div>}</section><CardPaymentsPanel payments={account?.cardPayments ?? null} /><p className="sa-service-note">입금·출금과 실제 카드 발급·결제망은 아직 연결되지 않았어요.</p>
-      <SessionSecurityPanel key={`security:${user.id}`} ownerId={user.id} onSessionExpired={() => { if (userRef.current?.id === user.id) expired(); }} />
-    </div>}
-  </main>{transferOpen && account && user && <TransferDialog key={user.id} account={account} pending={pending} onIntentChange={changeIntent} onRefresh={() => userRef.current?.id === account.user.id ? loadAccount() : Promise.resolve()} onUnauthorized={() => { if (userRef.current?.id === account.user.id) expired(); }} onClose={closeTransfer} />}</div>;
+  const ownerExpired = () => { if (user && userRef.current?.id === user.id) expired(); };
+  const activePage = destinations.find(({ id }) => id === screen)!;
+  const openCashback = () => {
+    const heading = document.getElementById('cashback-heading');
+    heading?.focus({ preventScroll: true });
+    heading?.scrollIntoView({ block: 'start' });
+  };
+  const verified = account?.user.emailVerifiedAt != null;
+  const signedIn = (profile: MemberProfile) => {
+    history.replaceState(history.state, '', location.pathname + location.search);
+    setScreen('home');
+    authenticate(profile);
+  };
+
+  return <div className={`sa-shell${user ? ' sa-signed-in' : ''}`} data-testid="server-app">
+    <header className="sa-header"><div className="sa-header-inner">
+      <Logo size={27} />
+      {user && <nav className="sa-navigation" aria-label="주 메뉴">
+        {destinations.map(({ id, name, icon: Icon }) => <a key={id} href={`#${id}`}
+          aria-current={screen === id ? 'page' : undefined} data-testid={`dashboard-${id}`}>
+          <Icon size={18} aria-hidden="true" />{name}
+        </a>)}
+      </nav>}
+      <div className="sa-header-actions">
+        <span className="sa-environment">테스트 계정</span>
+        {user && <button className="sa-icon-button" aria-label="로그아웃" data-testid="server-logout" disabled={loggingOut}
+          onClick={() => void logout()}><LogOut size={18} /></button>}
+      </div>
+    </div></header>
+    <main className="sa-main">
+      {booting ? <div className="sa-loading" role="status">계정을 확인하고 있습니다.</div>
+        : bootError ? <section className="sa-connection-error">
+          <h1>연결을 확인해 주세요.</h1><p role="alert">{bootError}</p>
+          <button className="sa-primary" onClick={() => location.reload()}>다시 연결</button>
+        </section>
+        : !user ? <AuthPanel onAuthenticated={signedIn} notice={authNotice} />
+        : <div className={`sa-dashboard sa-page-${screen}`}>
+          <h1 ref={pageHeading} tabIndex={-1} className="sa-page-heading">{activePage.name}
+            {screen === 'account' && <span className="sa-owner-line">{user.name} · @{user.tag}</span>}
+          </h1>
+          {error && <p className="sa-error sa-dashboard-message" role="alert">{error}</p>}
+          {/* Keep the card request and its confirmation alive when navigating between pages. */}
+          <div className="sa-card-slot" hidden={screen !== 'home'}>
+            <IssuerCardPanel key={user.id} ownerId={user.id} visible={screen === 'home'} access={account?.access ?? null} onSessionExpired={ownerExpired} />
+          </div>
+          {screen === 'home' && <section className="sa-balance-panel">
+              <div className="sa-balance-heading"><h2>사용 가능 잔액</h2>
+                <button className="sa-icon-button" aria-label="잔액 새로고침" data-testid="server-refresh" disabled={refreshing}
+                  onClick={() => void loadAccount()}><RefreshCw size={17} /></button>
+              </div>
+              <div className="sa-balance-glance">
+                <strong className="sa-balance-number" data-testid="server-balance">{account ? money(account.balanceWon) : '확인 중'}</strong>
+                {account?.rewards && <button type="button" className="sa-payback-shortcut" onClick={openCashback}
+                  aria-label={`이번 달 확정 페이백 ${money(account.rewards.cashback.confirmedWon)} 상세 보기`}>
+                  <span>이번 달 페이백<ChevronRight size={13} aria-hidden="true" /></span>
+                  <b>{money(account.rewards.cashback.confirmedWon)}</b>
+                </button>}
+              </div>
+              <dl className="sa-balance-breakdown">
+                <div><dt>결제 대기 원금</dt><dd data-testid="server-held-balance">{typeof account?.heldBalanceWon === 'number' ? money(account.heldBalanceWon) : '확인 중'}</dd></div>
+                <div><dt>원금 합계</dt><dd data-testid="server-total-balance">{typeof account?.totalBalanceWon === 'number' ? money(account.totalBalanceWon) : '확인 중'}</dd></div>
+              </dl>
+              <div className="sa-balance-actions">
+                <button className="sa-primary" data-testid="server-send" disabled={!account?.access?.canTransact || Boolean(pending) || account.limits.available < 1000 || account.balanceWon < 1000}
+                  onClick={() => setTransferOpen(true)}><Send size={16} aria-hidden="true" />송금하기</button>
+                {pending && <button className="sa-secondary" data-testid="server-resume-transfer" onClick={() => setTransferOpen(true)}>이전 송금 열기</button>}
+              </div>
+              <div className="sa-receive-tag"><div><span>송금받을 태그</span><strong data-testid="server-tag">@{user.tag}</strong></div>
+                <button className="sa-icon-button" aria-label="Aqua 태그 복사" onClick={() => void copyTag()}><Copy size={17} /></button>
+              </div>
+              {notice && <p role="status">{notice}</p>}
+            </section>}
+          {screen !== 'history' && <CustomerAccessPanel access={account?.access ?? null}
+            showEmailLink={screen === 'home' && !!account && !verified} />}
+          {screen === 'home' && <RewardsPanel rewards={account?.rewards ?? null} saving={preferenceSaving || preferenceConfirming}
+            unresolved={preferenceIntent !== null} message={preferenceMessage} error={preferenceError}
+            onUseFirstChange={changeRewardPriority} onRetry={retryRewardPreference} />}
+          {screen === 'history' && <>
+            <CardPaymentsPanel payments={account?.cardPayments ?? null} />
+            <section className="sa-transactions" aria-labelledby="transfer-history-heading">
+              <div className="sa-section-heading">
+                <h2 id="transfer-history-heading">송금과 충전</h2>
+                <span>{account ? `${account.transactions.length}건` : '확인 중'}</span>
+              </div>
+              {!account ? <div className="sa-empty-state">내역을 불러오고 있습니다.</div>
+                : !account.transactions.length ? <div className="sa-empty-state">송금이나 충전 내역이 생기면 여기에 표시됩니다.</div>
+                : <div className="sa-transaction-list" data-testid="server-transactions">
+                  {account.transactions.map((transaction) => {
+                    const sent = transaction.direction === 'sent';
+                    const funded = transaction.direction === 'funded';
+                    const name = transaction.counterpartyName || (funded ? '테스트 잔액 반영' : 'Aqua 회원');
+                    const direction = funded ? '테스트 잔액' : sent ? '보냄' : '받음';
+                    const Icon = sent ? ArrowUpRight : ArrowDownLeft;
+                    return <div className="sa-transaction-row" key={transaction.id}
+                      data-testid={`server-transaction-${transaction.id}`} data-direction={transaction.direction}>
+                      <span className={`sa-transaction-icon${sent ? ' sent' : ''}`}><Icon size={20} aria-hidden="true" /></span>
+                      <div className="sa-transaction-copy"><strong>{name}</strong>
+                        <span>{time(transaction.createdAt)} · {direction}{transaction.counterpartyTag && ` · @${transaction.counterpartyTag}`}</span>
+                      </div>
+                      <strong className={`sa-transaction-amount${sent ? '' : ' received'}`}>{sent ? '−' : '+'}{money(transaction.amountWon)}</strong>
+                    </div>;
+                  })}
+                </div>}
+            </section>
+          </>}
+          {screen === 'account' && <>
+            <EmailVerificationPanel key={`email:${user.id}`} ownerId={user.id} email={user.email}
+              onVerified={() => { if (userRef.current?.id === user.id) void loadAccount(); }} onSessionExpired={ownerExpired} />
+            <SessionSecurityPanel key={`security:${user.id}`} ownerId={user.id} onSessionExpired={ownerExpired} />
+          </>}
+        </div>}
+    </main>
+    {transferOpen && account && user && <TransferDialog key={user.id} account={account} pending={pending}
+      onIntentChange={changeIntent} onRefresh={() => userRef.current?.id === account.user.id ? loadAccount() : Promise.resolve()}
+      onUnauthorized={ownerExpired} onClose={closeTransfer} />}
+  </div>;
 }

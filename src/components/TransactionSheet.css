@@ -1,0 +1,35 @@
+.tx-sheet .itd-body { display: grid; gap: 18px; }
+.tx-sheet .tx-summary {
+  padding: 18px 19px 20px;
+  border-radius: 10px;
+  background: linear-gradient(112deg, #172d43, #223c50);
+  color: #fff;
+  overflow-wrap: anywhere;
+}
+.tx-sheet .tx-summary-meta { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
+.tx-sheet .tx-time { color: #c9d8e2; font-size: 13px; line-height: 1.6; }
+.tx-sheet .tx-state { color: white; font-size: 13px; font-weight: 650; }
+.tx-sheet .tx-summary h3 { margin: 16px 0 0; font-size: 20px; letter-spacing: -.035em; }
+.tx-sheet .tx-amount-line { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; margin-top: 13px; padding-top: 12px; border-top: 1px solid #ffffff40; }
+.tx-sheet .tx-amount-line > span { color: #cfdee8; font-size: 13px; }
+.tx-sheet .tx-amount-line strong { margin-inline-start: auto; font-size: clamp(25px, 5vw, 31px); line-height: 1.25; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+.tx-sheet .tx-amount-line .tx-credit { color: #a3e8e4; }
+.tx-refund-summary { display: grid; gap: 4px; margin-top: 10px; color: #cfdee8; font-size: 13px; line-height: 1.5; }
+.tx-refund-summary > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.tx-refund-summary dd { text-align: right; color: #fff; font-variant-numeric: tabular-nums; }
+.tx-sheet .tx-block { padding-top: 16px; border-top: 1px solid var(--line); }
+.tx-sheet .tx-block h3 { margin: 0 0 6px; color: var(--ink); font-size: 16px; }
+.tx-sheet .tx-lines > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.tx-sheet .tx-lines dt { color: var(--subtle); }
+.tx-sheet .tx-lines dd { min-width: 0; color: var(--ink); text-align: right; overflow-wrap: anywhere; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tx-sheet .tx-lines .tx-line-total { padding-top: 11px; margin-top: 5px; border-top: 1px solid var(--line); }
+.tx-sheet .tx-line-total dt { color: var(--ink); font-weight: 600; }
+.tx-sheet .tx-memo { color: var(--muted); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }

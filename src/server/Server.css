@@ -71,7 +71,7 @@
 .sa-balance-panel > .sa-balance-warning { color:#775b33; padding-top:15px; border-top:1px solid var(--sa-line); }
 .sa-profile-panel h2 { font-size:16px; font-weight:550; line-height:1.6; margin-bottom:23px; }
 .sa-profile-info { display:flex; align-items:center; gap:12px; }
-.sa-person-avatar { display:grid; place-items:center; width:41px; height:41px; border-radius:50%; background:#eff3f6; color:var(--sa-accent); font-size:15px; font-weight:550; flex-shrink:0; }
+.sa-person-avatar { display:grid; place-items:center; width:41px; height:41px; border-radius:8px; background:#eff3f6; color:var(--sa-accent); font-size:15px; font-weight:550; flex-shrink:0; }
 .sa-profile-info > div { min-width:0; }
 .sa-profile-info strong { display:block; font-size:14px; font-weight:550; line-height:1.5; }
 .sa-profile-info > div > span { display:block; color:var(--sa-muted); font-size:12px; line-height:1.7; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -169,7 +169,6 @@
 .sa-summary-row dt { color:var(--sa-muted); font-size:13px; line-height:1.7; }
 .sa-summary-row dd { min-width:0; margin:0; color:var(--sa-ink); font-size:13px; line-height:1.7; font-weight:500; text-align:right; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
 .sa-progress-state { padding:45px 0 35px; text-align:center; }
-.sa-progress-indicator { display:inline-block; width:22px; height:22px; border:2px solid #d7e0e7; border-top-color:var(--sa-accent); border-radius:50%; animation:sa-spin .8s linear infinite; margin-bottom:21px; }
 .sa-progress-state h3,.sa-unknown-state h3 { color:var(--sa-ink); font-size:18px; font-weight:550; line-height:1.6; }
 .sa-progress-state p,.sa-unknown-state > p { color:var(--sa-muted); font-size:13px; line-height:1.9; margin-top:10px; }
 .sa-unknown-state .sa-summary { margin-top:24px; }
@@ -178,7 +177,6 @@
 .sa-receipt-amount { display:block; margin-top:12px; color:var(--sa-ink); font-size:37px; font-weight:600; line-height:1.4; letter-spacing:-.8px; font-variant-numeric:tabular-nums; }
 .sa-receipt > p { color:var(--sa-muted); font-size:13px; line-height:1.7; margin-top:8px; overflow-wrap:anywhere; }
 .sa-receipt .sa-summary { margin-top:25px; }
-@keyframes sa-spin { to { transform:rotate(360deg); } }
 @media(max-width:900px) { .sa-auth-layout { gap:45px; grid-template-columns:minmax(0,1fr) minmax(0,400px); } .sa-auth-intro h1 { font-size:29px; } .sa-dashboard { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:18px; } .sa-balance-panel,.sa-profile-panel,.sa-transactions { padding:24px; } .sa-balance-number { font-size:36px; } }
 @media(max-width:700px) {
  .sa-header-inner { min-height:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; padding:16px 22px 13px; }
@@ -226,4 +224,123 @@
  .sa-receipt-amount { font-size:35px; }
 }
 @media(max-width:360px) { .sa-main { padding-left:15px; padding-right:15px; } .sa-header-inner { padding-left:18px; padding-right:18px; } .sa-auth-card { padding-left:19px; padding-right:19px; } .sa-balance-panel,.sa-profile-panel,.sa-transactions { padding-left:18px; padding-right:18px; } .sa-transaction-row { gap:8px; } .sa-transaction-icon { display:none; } }
-@media(prefers-reduced-motion:reduce) { .sa-progress-indicator { animation:none; } }
+
+/* Connected navigation and account pages */
+.sa-signed-in { font-family:inherit; --sa-ink:#162d40; --sa-muted:#526676; --sa-line:#dde4e8; --sa-accent:#194a69; background:#f5f7f8; }
+.sa-signed-in .sa-header-inner { min-height:70px; max-width:1192px; }
+.sa-navigation { display:flex; align-items:center; align-self:stretch; gap:10px; margin-left:20px; }
+.sa-navigation a { display:flex; align-items:center; justify-content:center; gap:8px; padding:0 15px; min-height:44px; border-radius:7px; color:var(--sa-muted); font-weight:550; text-decoration:none; }
+.sa-navigation a[aria-current=page] { background:#eaf1f4; color:#123b55; }
+.sa-navigation a:hover { color:#143d57; }
+.sa-signed-in a:focus-visible { outline:2px solid var(--sa-accent); outline-offset:3px; }
+.sa-signed-in .sa-main { max-width:1192px; padding-top:32px; }
+.sa-signed-in .sa-dashboard { max-width:none; gap:16px; align-items:stretch; }
+.sa-signed-in .sa-page-home { grid-template-columns:minmax(0,1.65fr) minmax(290px,1fr); }
+.sa-page-heading { grid-column:1/-1; font-size:clamp(23px,3vw,32px); line-height:1.35; letter-spacing:-.045em; font-weight:660; padding-bottom:5px; }
+.sa-page-heading:focus { outline:none; }
+.sa-page-home .sa-card-slot { min-width:0; }
+.sa-card-slot .sa-issuer-panel { height:100%; padding:19px 24px 23px; }
+.sa-card-slot .sa-issuer-heading .sa-icon-button { margin:-6px -8px -6px 0; }
+.sa-card-slot .sa-issuer-content { gap:22px; padding:14px 0 0; min-height:0; height:calc(100% - 36px); grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); align-items:center; }
+.sa-card-slot .sa-issuer-stage { padding:18px 2px 26px; }
+.sa-card-slot .sa-issuer-stage.is-empty .sa-issuer-card-face { opacity:.88; }
+.sa-card-slot .sa-issuer-state h3 { font-size:18px; line-height:1.45; }
+.sa-card-slot .sa-issuer-card-surface { padding:8%; }
+.sa-card-slot .sa-issuer-card-top .aqua-wordmark { width:35%; height:auto; }
+.sa-card-slot .sa-issuer-state p { line-height:1.65; }
+.sa-card-slot .sa-issuer-actions { margin-top:14px; }
+.sa-signed-in .sa-balance-panel { padding:22px 24px; }
+.sa-balance-heading h2 { font-size:16px; font-weight:600; }
+.sa-signed-in .sa-balance-number { font-size:clamp(30px,3.7vw,43px); letter-spacing:-.05em; }
+.sa-signed-in .sa-balance-heading { margin-bottom:6px; }
+.sa-signed-in .sa-balance-breakdown { border:0; margin:12px 0 0; padding:0; gap:4px; }
+.sa-signed-in .sa-balance-actions { margin-top:16px; }
+.sa-signed-in .sa-balance-actions button { flex:1 1 140px; min-height:44px; }
+.sa-receive-tag { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-top:16px; padding-top:12px; border-top:1px solid var(--sa-line); }
+.sa-receive-tag > div { min-width:0; }
+.sa-receive-tag span { display:block; font-size:12px; color:var(--sa-muted); }
+.sa-receive-tag strong { font-size:14px; font-weight:600; overflow-wrap:anywhere; }
+.sa-receive-tag .sa-icon-button { margin-right:-8px; }
+.sa-signed-in .sa-access-panel { flex-wrap:wrap; align-items:center; gap:8px 13px; padding:14px 20px; }
+.sa-access-panel > div { flex:1 1 175px; min-width:0; }
+.sa-signed-in .sa-access-panel h2 { font-size:14px; }
+.sa-signed-in .sa-access-panel p { font-size:12px; margin-top:2px; }
+.sa-access-link { display:inline-flex; align-items:center; gap:3px; color:#564323; font-weight:600; font-size:13px; padding:0 4px; min-height:44px; text-decoration:none; }
+.sa-signed-in .sa-page-history,.sa-signed-in .sa-page-account { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
+.sa-page-history > .sa-transactions,.sa-page-account > :is(.sa-email-panel,.sa-security-panel) { grid-column:auto; }
+.sa-page-account .sa-security-footer { flex-wrap:wrap; }
+.sa-page-account .sa-email-form { grid-template-columns:1fr; }
+.sa-page-account .sa-email-form > button { justify-self:start; margin-top:0; }
+@media (min-width:701px) and (max-width:1030px) {
+  .sa-signed-in .sa-page-home { grid-template-columns:minmax(0,1.28fr) minmax(240px,1fr); }
+  .sa-card-slot .sa-issuer-content { grid-template-columns:minmax(0,1fr); height:auto; gap:5px; }
+  .sa-card-slot .sa-issuer-stage { max-width:280px; }
+}
+@media (max-width:700px) {
+  .sa-signed-in .sa-header-inner { min-height:56px; padding-block:7px; flex-wrap:nowrap; }
+  .sa-signed-in .sa-header-actions { flex-direction:row; align-items:center; gap:5px; }
+  .sa-signed-in .sa-header-actions .sa-environment { width:auto; white-space:nowrap; }
+  .sa-signed-in .sa-main { padding-top:17px; padding-bottom:calc(88px + env(safe-area-inset-bottom)); }
+  .sa-signed-in .sa-dashboard { grid-template-columns:minmax(0,1fr); gap:12px; }
+  .sa-navigation { position:fixed; z-index:60; bottom:0; left:0; right:0; margin:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0; background:#fff; border-top:1px solid var(--sa-line); padding:3px 10px calc(3px + env(safe-area-inset-bottom)); }
+  .sa-navigation a { flex-direction:column; gap:2px; min-height:51px; padding:4px; font-size:12px; }
+  .sa-navigation a[aria-current=page] { background:transparent; color:#123d5b; font-weight:700; }
+  .sa-navigation a[aria-current=page] svg { stroke-width:2.4; }
+  .sa-page-heading { padding:0; }
+  .sa-card-slot .sa-issuer-panel { padding:15px 18px 18px; }
+  .sa-card-slot .sa-issuer-content { height:auto; grid-template-columns:minmax(0,1fr); gap:6px; padding-top:3px; }
+  .sa-card-slot .sa-issuer-stage { max-width:310px; padding:12px 2px 17px; }
+  .sa-card-slot .sa-issuer-confirmed { margin-top:10px; padding-top:10px; gap:4px; }
+  .sa-signed-in .sa-balance-panel { padding:18px; }
+  .sa-signed-in .sa-access-panel { padding:12px 15px; }
+  .sa-access-link { padding-left:0; }
+}
+.sa-owner-line { display:block; font-size:14px; line-height:1.6; margin-top:7px; color:var(--sa-muted); font-weight:500; letter-spacing:0; overflow-wrap:anywhere; }
+.sa-balance-glance { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px 16px; }
+.sa-balance-glance .sa-balance-number { min-width:0; }
+.sa-payback-shortcut { display:flex; flex-direction:column; align-items:flex-start; min-height:44px; padding:1px 0 1px 13px; border:0; border-left:1px solid var(--sa-line); background:transparent; color:var(--sa-accent); cursor:pointer; }
+.sa-payback-shortcut > span { display:flex; align-items:center; gap:3px; font-size:11px; }
+.sa-payback-shortcut b { font-size:15px; line-height:1.6; font-variant-numeric:tabular-nums; }
+#cashback-heading { scroll-margin-top:15px; }
+@media(max-width:700px) {
+  .sa-signed-in .sa-page-home > .sa-page-heading { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  .sa-issuer-panel[data-stage=active] .sa-issuer-state h3 { font-size:16px; }
+  .sa-card-slot .sa-issuer-confirmed { margin:8px 0; }
+}
+
+/* A brushed silver card tray and a dark statement distinguish the card from its funding. */
+.sa-signed-in { background:#f4f5f4; }
+.sa-card-slot .sa-issuer-panel {
+  background:linear-gradient(120deg,#f7f8f7 4%,#e2e9e9 49%,#e9eeee 82%,#f5f5f0);
+  border-color:#cfdbdc; border-radius:12px;
+}
+.sa-card-slot .sa-issuer-content { column-gap:28px; }
+.sa-card-slot .sa-issuer-state h3 { font-size:clamp(20px,2.3vw,28px); letter-spacing:-.05em; font-weight:660; }
+.sa-card-slot .sa-issuer-confirmed { border-color:#c4d1d3; }
+.sa-card-slot .sa-issuer-confirmed dd { font-weight:600; color:#273f49; }
+.sa-card-slot .sa-issuer-actions .sa-issuer-button { min-height:44px; padding:8px 18px; border-color:#b8c7ca; }
+.sa-signed-in .sa-balance-panel {
+  color:#f1f6f3; border:0; border-radius:12px;
+  background:linear-gradient(118deg,#193744,#102933 75%,#112b31);
+  --sa-ink:#f1f6f3; --sa-line:#476067; --sa-accent:#d2ebe7; --sa-muted:#c1d1d3;
+}
+.sa-balance-panel .sa-primary { background:#def0e9; color:#173e40; }
+.sa-balance-panel .sa-primary:hover { background:#eef9f5; }
+.sa-balance-panel .sa-secondary { background:transparent; color:#f1f6f3; border-color:#8caaab; }
+.sa-balance-panel .sa-icon-button:hover { background:#304b55; }
+.sa-balance-panel .sa-payback-shortcut { color:#c3e4db; }
+.sa-balance-panel .sa-payback-shortcut b { color:#f5faf7; }
+.sa-signed-in .sa-balance-number { font-size:clamp(33px,4vw,47px); letter-spacing:-.055em; }
+.sa-signed-in .sa-access-panel { border:0; border-left:3px solid #96714f; border-radius:0; background:transparent; }
+.sa-signed-in .sa-access-panel.is-active { border-color:#668782; }
+.sa-signed-in .sa-rewards-panel { background:transparent; border:0; border-top:1px solid #bdcbcd; border-radius:0; padding:24px 6px 12px; }
+@media(max-width:700px) {
+  .sa-card-slot .sa-issuer-details { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 12px; align-items:center; }
+  .sa-card-slot .sa-issuer-details > :not(.sa-issuer-state,.sa-issuer-actions) { grid-column:1/-1; }
+  .sa-card-slot .sa-issuer-state { grid-column:1; grid-row:1; }
+  .sa-card-slot .sa-issuer-state:only-child,.sa-card-slot .sa-issuer-details:not(:has(.sa-issuer-actions)) .sa-issuer-state { grid-column:1/-1; }
+  .sa-card-slot .sa-issuer-actions { grid-column:2; grid-row:1; margin:0; }
+  .sa-card-slot .sa-issuer-confirmed { display:flex; flex-wrap:wrap; gap:4px 16px; margin:2px 0 0; padding-top:9px; }
+  .sa-card-slot .sa-issuer-confirmed > div { gap:5px; }
+  .sa-card-slot .sa-issuer-confirmed time { font-variant-numeric:tabular-nums; }
+}

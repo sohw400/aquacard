@@ -488,7 +488,19 @@ try {
       await receipt.getByTestId('receipt-rewards-after').scrollIntoViewIfNeeded();
       await page.screenshot({ path: new URL('review-payment-receipt-375.png', artifacts).pathname });
     }
-    await receipt.getByTestId('receipt-close').tap();
+    const receiptClose = receipt.getByTestId('receipt-close');
+    const receiptConfirm = receipt.getByRole('button', { name: '확인', exact: true });
+    await receiptClose.focus();
+    await page.keyboard.press('Tab');
+    if (await receipt.locator('.receipt-body').evaluate((body) => body === document.activeElement)) {
+      await page.keyboard.press('Tab');
+    }
+    assert.ok(await receiptConfirm.evaluate((button) => button === document.activeElement), `${name}: receipt confirmation is reachable by Tab`);
+    await page.keyboard.press('Tab');
+    assert.ok(await receiptClose.evaluate((button) => button === document.activeElement), `${name}: focus wraps to receipt close`);
+    await page.keyboard.press('Shift+Tab');
+    assert.ok(await receiptConfirm.evaluate((button) => button === document.activeElement), `${name}: reverse Tab wraps to confirmation`);
+    await page.keyboard.press('Enter');
     await receipt.waitFor({ state: 'hidden' });
 
     await page.getByTestId('open-rewards').tap();

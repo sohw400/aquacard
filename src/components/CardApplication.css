@@ -103,14 +103,9 @@
 .card-flow .cf-shortfall > .cf-button { flex-shrink: 0; width: auto; min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 14px; }
 
 /* Status. */
-.card-flow .cf-status-head { display: flex; align-items: flex-start; gap: 14px; margin: 0 0 18px; }
+.card-flow .cf-status-head { margin: 0 0 18px; }
 .card-flow .cf-status-head h2 { font-size: 20px; }
 .card-flow .cf-status-head p { margin: 4px 0 0; color: var(--muted); font-size: 15px; line-height: 1.6; }
-.card-flow .cf-status-icon { display: grid; place-items: center; flex-shrink: 0; width: 48px; height: 48px; border-radius: 50%; background: var(--fill); color: var(--ink); }
-.card-flow .cf-status-icon > svg { width: 24px; height: 24px; }
-.card-flow [data-testid='card-preparing'] .cf-status-icon > svg { animation: cf-pulse 1.4s ease-in-out infinite; }
-.card-flow .cf-status-warning .cf-status-icon { background: var(--warning-weak); color: var(--warning); }
-.card-flow .cf-status-danger .cf-status-icon { background: var(--danger-weak); color: var(--danger); }
 .card-flow .cf-progress { height: 6px; margin: 0 0 16px; overflow: hidden; border-radius: 3px; background: var(--fill); }
 .card-flow .cf-progress > span { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width .5s var(--ease); }
 .card-flow .cf-reference { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 52px; padding: 12px 16px; border-radius: var(--radius-md); background: var(--sunken); }
@@ -206,7 +201,6 @@
 .card-flow .cf-demo-list > .cf-button { min-height: 48px; }
 .card-flow .cf-demo-list { display: grid; gap: 8px; }
 .card-flow .cf-demo-list > p { margin: 0; }
-@keyframes cf-pulse { 50% { opacity: .45; } }
 @media (max-width: 359px) {
     .card-flow .cf-option { padding: 14px; }
   .card-flow .cf-steps > li { font-size: 12px; }
@@ -220,3 +214,11 @@
   .card-flow .cf-option:hover { border-color: var(--control); }
   .card-flow .cf-quick-button:hover:not(:disabled) > span, .card-flow .cf-plan-action:hover { background: var(--fill-strong); }
 }
+
+.card-flow .cf-intro-stage {
+  display: grid; place-items: center; padding: 16px; margin-bottom: 20px;
+  border-radius: var(--radius-md); background: var(--sunken);
+}
+.card-flow .cf-intro-stage .cf-intro-art { margin: 0; }
+.card-flow .cf-compare-title { margin: 28px 0 3px; font-size: 16px; font-weight: 650; }
+.card-flow h2[tabindex="-1"]:focus { outline: none; }

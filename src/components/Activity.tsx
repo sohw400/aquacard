@@ -38,7 +38,9 @@ function ActivityRow({ item, payment, coin, onRefund, onFunding, onDetail, detai
   return <div className="activity-row">
     {coin ? <CoinIcon symbol={coin} /> : <span className={`activity-icon${item.kind === 'payment' ? ' merchant' : ''}`} aria-hidden="true">{item.kind === 'payment' ? item.title.trim().charAt(0) : <Icon />}</span>}
     <div className="activity-copy">
-      <strong>{item.title}</strong>
+      <strong>{!detailed && onDetail
+        ? <button type="button" className="recent-detail" onClick={() => onDetail(item)} aria-label={`${item.title} 상세`}>{item.title}</button>
+        : item.title}</strong>
       <span>{detailed ? timeLabel(item.timestamp) : shortDate(item.timestamp)}{status && <em className={`status-text ${status[1]}`}>{status[0]}</em>}</span>
       {detailed && (onDetail || (item.fundingId && onFunding) || refundable) && <div className="activity-actions">
         {onDetail && <button type="button" className="pill-button" data-testid={`tx-detail-${item.id}`} aria-label={`${item.title} 상세`} onClick={() => onDetail(item)}>상세</button>}

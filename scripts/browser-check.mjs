@@ -640,7 +640,11 @@ try {
   await submitAmount('refund', 50_000);
   state = await stateWhen((current) => current.payments[0].refunded === 50_000);
   assert.equal(state.payments[0].status, 'partially_refunded');
-  await page.getByRole('button', { name: '한강커피 환불', exact: true }).click();
+  await page.getByRole('button', { name: '한강커피 상세', exact: true }).click();
+  const refundedReceipt = page.getByTestId('transaction-sheet');
+  assert.equal(await displayedAmount(refundedReceipt.getByTestId('transaction-amount')), bigPayment - 50_000);
+  assert.match(await refundedReceipt.locator('.tx-refund-summary').innerText(), /누적 환불액\s+50,000원/);
+  await refundedReceipt.getByTestId('transaction-refund').click();
   await submitAmount('refund', bigPayment - 50_000);
   state = await stateWhen((current) => current.payments[0].status === 'refunded');
   assert.equal(state.payments[0].id, paymentId);
@@ -648,6 +652,10 @@ try {
   assert.equal(state.reserve, START.reserve - fromReserve);
   assert.equal(state.rewards, START.rewards);
   assert.equal(state.monthlyCashback, 0);
+  await page.getByRole('button', { name: '한강커피 상세', exact: true }).click();
+  assert.equal(await displayedAmount(refundedReceipt.getByTestId('transaction-amount')), 0);
+  assert.equal(await refundedReceipt.getByTestId('transaction-refund').count(), 0);
+  await page.keyboard.press('Escape');
   pass('부분·전액 환불과 원금·리워드 복원·페이백 조정');
 
   await nav('home');
@@ -1149,7 +1157,9 @@ try {
   await sendPage.getByTestId(`tx-detail-${sent.id}`).click();
   const sentSheet = sendPage.getByTestId('transaction-sheet');
   await sentSheet.waitFor({ state: 'visible' });
-  assert.match(await sentSheet.innerText(), /보내기 ·[\s\S]*완료[\s\S]*@minji\.k에게 수수료 없이 바로 보냈어요/);
+  assert.equal(await sentSheet.locator('.tx-state').innerText(), '완료');
+  assert.equal(await sentSheet.getByText('보내기 금액', { exact: true }).isVisible(), true);
+  assert.match(await sentSheet.locator('.tx-memo').innerText(), /@minji\.k에게 수수료 없이 바로 보냈어요/);
   assert.equal(await sentSheet.getByTestId('transaction-amount').innerText(), '−30,000원');
   await sendPage.keyboard.press('Escape');
   await sentSheet.waitFor({ state: 'hidden' });
@@ -1263,7 +1273,10 @@ try {
   assert.match(await sendPage.locator('.activity-page').innerText(), /김\*지님이 보냄[\s\S]*\+10,000원/);
   await sendPage.getByTestId(`tx-detail-${receivedEntry.id}`).click();
   await sentSheet.waitFor({ state: 'visible' });
-  assert.match(await sentSheet.innerText(), /받기 ·[\s\S]*@minji\.k님이 내 태그 @aqua\.tester로 보냈어요/);
+  assert.equal(await sentSheet.locator('.tx-state').innerText(), '완료');
+  assert.equal(await sentSheet.getByText('받기 금액', { exact: true }).isVisible(), true);
+  assert.equal(await sentSheet.getByTestId('transaction-amount').innerText(), '+10,000원');
+  assert.match(await sentSheet.locator('.tx-memo').innerText(), /@minji\.k님이 내 태그 @aqua\.tester로 보냈어요/);
   await sendPage.keyboard.press('Escape');
   await sentSheet.waitFor({ state: 'hidden' });
   pass('회원에게 받기 체험: 잔액에 바로 더하고 받은 돈 알림·거래 내역의 받기·상세에 반영');
