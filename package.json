@@ -29,6 +29,7 @@
     "server:issuer:dispatch": "node --env-file-if-exists=.env --import tsx server/issuer-dispatcher.ts",
     "server:rewards": "node --env-file-if-exists=.env --import tsx server/rewards-operator.ts",
     "server:reconcile:statement": "node --env-file-if-exists=.env --import tsx server/reconcile-issuer-statement.ts",
+    "server:reconcile:bank": "node --env-file-if-exists=.env --import tsx server/reconcile-bank-settlement.ts",
     "server:reconcile": "node --env-file-if-exists=.env --import tsx server/reconcile-rewards.ts",
     "server:monitor": "node --env-file-if-exists=.env --import tsx server/operations-monitor.ts",
     "build:server": "npm run typecheck:server && node scripts/build-server.mjs",
