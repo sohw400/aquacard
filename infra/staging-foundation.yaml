@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private PostgreSQL, image repository, Fargate cluster and alarm topic for the Aqua Card Seoul staging environment.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Private subnets in two distinct Availability Zones from the network stack.
+  SourceDatabaseSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: The source database group from the network stack.
+  EngineVersion:
+    Type: String
+    AllowedPattern: '18\.[0-9]+(\.[0-9]+)?(-R[0-9]+)?'
+    Description: Exact PostgreSQL 18 minor version currently orderable in Seoul with the chosen instance class and gp3.
+  DBInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    AllowedPattern: 'db\.[a-z0-9]+\.[a-z0-9]+'
+  DeletionProtection:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+    Description: Turn off only when intentionally retiring the source staging database.
+  AlarmTopicKmsKeyArn:
+    Type: String
+    Default: ''
+    Description: Optional customer-managed KMS key that permits the CloudWatch alarm service to use the topic.
+
+Rules:
+  SeoulRegion:
+    Assertions:
+      - Assert: !Equals [!Ref 'AWS::Region', ap-northeast-2]
+        AssertDescription: Deploy this staging environment in Seoul.
+  PrivateNetwork:
+    Assertions:
+      - Assert:
+          Fn::EachMemberIn:
+            - Fn::ValueOfAll: ['AWS::EC2::SecurityGroup::Id', VpcId]
+            - [!Ref VpcId]
+        AssertDescription: The database security group must belong to the staging VPC.
+
+Conditions:
+  ProtectDatabase: !Equals [!Ref DeletionProtection, 'true']
+  EncryptTopic: !Not [!Equals [!Ref AlarmTopicKmsKeyArn, '']]
+
+Resources:
+  PrivateDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for the staging database and recovery rehearsals
+      SubnetIds: !Ref PrivateSubnetIds
+
+  PostgresParameters:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: Require TLS for all Aqua Card staging database clients
+      Family: postgres18
+      Parameters:
+        rds.force_ssl: '1'
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: !Ref EngineVersion
+      DBName: aqua
+      DBInstanceClass: !Ref DBInstanceClass
+      DBParameterGroupName: !Ref PostgresParameters
+      DBSubnetGroupName: !Ref PrivateDBSubnetGroup
+      VPCSecurityGroups: [!Ref SourceDatabaseSecurityGroupId]
+      NetworkType: IPV4
+      PubliclyAccessible: false
+      Port: '5432'
+      MasterUsername: aqua_admin
+      ManageMasterUserPassword: true
+      StorageEncrypted: true
+      AllocatedStorage: '20'
+      StorageType: gp3
+      MultiAZ: false
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: '18:00-18:30'
+      PreferredMaintenanceWindow: 'sun:19:00-sun:19:30'
+      CopyTagsToSnapshot: true
+      AutoMinorVersionUpgrade: true
+      AllowMajorVersionUpgrade: false
+      DeleteAutomatedBackups: false
+      DeletionProtection: !If [ProtectDatabase, true, false]
+
+  MonitorDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Dedicated aggregate-only staging monitor login for the source DB
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"host":"${Database.Endpoint.Address}","port":5432,"dbname":"aqua","username":"aqua_monitor"}'
+        GenerateStringKey: password
+        PasswordLength: 48
+        ExcludePunctuation: true
+
+  ServerImages:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      EncryptionConfiguration: { EncryptionType: AES256 }
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration: { ScanOnPush: true }
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      CapacityProviders: [FARGATE]
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      KmsMasterKeyId: !If [EncryptTopic, !Ref AlarmTopicKmsKeyArn, !Ref 'AWS::NoValue']
+
+  AlarmTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref AlarmTopic]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: LocalCloudWatchAlarms
+            Effect: Allow
+            Principal: { Service: cloudwatch.amazonaws.com }
+            Action: sns:Publish
+            Resource: !Ref AlarmTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref 'AWS::AccountId'
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:*'
+          - Sid: RequireSecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 'sns:*'
+            Resource: !Ref AlarmTopic
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+                aws:PrincipalIsAWSService: 'false'
+
+Outputs:
+  DBInstanceIdentifier:
+    Value: !Ref Database
+  DBEndpoint:
+    Description: Private hostname used for TLS hostname verification.
+    Value: !GetAtt Database.Endpoint.Address
+  DBMasterSecretArn:
+    Description: ARN of the RDS-managed master secret for the single-use bootstrap task.
+    Value: !GetAtt Database.MasterUserSecret.SecretArn
+  DatabaseName:
+    Value: aqua
+  MonitorDatabaseSecretArn:
+    Value: !Ref MonitorDatabaseSecret
+  PrivateDBSubnetGroupName:
+    Value: !Ref PrivateDBSubnetGroup
+  EcrRepositoryName:
+    Value: !Ref ServerImages
+  EcrRepositoryUri:
+    Value: !GetAtt ServerImages.RepositoryUri
+  ClusterArn:
+    Value: !GetAtt Cluster.Arn
+  AlarmTopicArn:
+    Value: !Ref AlarmTopic

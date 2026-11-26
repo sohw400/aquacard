@@ -127,45 +127,71 @@ const cardServiceFunctions = {
   mail: ['claim_auth_mail(bigint)', 'finish_auth_mail(jsonb,bigint)', 'auth_mail_stats(bigint)'],
 } as const;
 
-async function grantCardServiceRole(database: Database, role: string, service: keyof typeof cardServiceFunctions): Promise<void> {
-  checkedSchema(role);
-  await database.transaction(async (client) => {
-    if (!(await client.query('SELECT 1 FROM pg_roles WHERE rolname = $1', [role])).rowCount) throw new Error(`Provision a separate card ${service} database login before granting access.`);
-    const quoted = '"' + role + '"';
+async function allowServicePrivileges(connection: Pick<Database, 'query'>, schema: string,
+  role: string, service: keyof typeof cardServiceFunctions): Promise<void> {
+  const quoted = '"' + checkedSchema(role) + '"';
+  await connection.query(`GRANT USAGE ON SCHEMA "${checkedSchema(schema)}" TO ${quoted}`);
+  await connection.query(`GRANT SELECT ON schema_migrations TO ${quoted}`);
+  await connection.query(`GRANT EXECUTE ON FUNCTION ${cardServiceFunctions[service].join(', ')} TO ${quoted}`);
+}
+
+function grantCardServiceRole(database: Database, role: string, service: keyof typeof cardServiceFunctions) {
+  return database.transaction(async client => {
+    const quoted = '"' + checkedSchema(role) + '"';
+    if (!(await client.query('SELECT 1 FROM pg_roles WHERE rolname = $1', [role])).rowCount) {
+      throw new Error(`Provision a separate card ${service} database login before granting access.`);
+    }
     await client.query(`REVOKE ALL ON ALL TABLES IN SCHEMA "${database.schema}" FROM ${quoted}`);
     await client.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA "${database.schema}" FROM ${quoted}`);
     await client.query(`REVOKE ALL ON ALL FUNCTIONS IN SCHEMA "${database.schema}" FROM ${quoted}`);
-    await client.query(`GRANT USAGE ON SCHEMA "${database.schema}" TO ${quoted}`);
-    await client.query(`GRANT SELECT ON schema_migrations TO ${quoted}`);
-    await client.query(`GRANT EXECUTE ON FUNCTION ${cardServiceFunctions[service].join(', ')} TO ${quoted}`);
+    await allowServicePrivileges(client, database.schema, role, service);
   });
 }
 
-async function verifyCardServiceRole(database: Database, service: keyof typeof cardServiceFunctions): Promise<void> {
-  const { rows } = await database.query<{ unsafe: boolean }>(`SELECT
+async function checkServicePrivileges(connection: Pick<Database, 'query'>, schema: string,
+  service: keyof typeof cardServiceFunctions, role?: string, pendingMigration = false): Promise<void> {
+  const { rows } = await connection.query<{ unsafe: boolean }>(`SELECT
     r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls
-    OR EXISTS (SELECT 1 FROM pg_roles delegated WHERE delegated.oid<>r.oid AND pg_has_role(current_user,delegated.oid,'SET'))
+    OR EXISTS (SELECT 1 FROM pg_roles delegated WHERE delegated.oid<>r.oid AND pg_has_role(r.oid,delegated.oid,'SET'))
     OR EXISTS (SELECT 1 FROM pg_auth_members membership WHERE membership.member=r.oid)
     OR EXISTS (SELECT 1 FROM pg_namespace owned WHERE owned.nspname=$1 AND owned.nspowner=r.oid)
     OR EXISTS (SELECT 1 FROM pg_class owned JOIN pg_namespace ns ON ns.oid=owned.relnamespace WHERE ns.nspname=$1 AND owned.relowner=r.oid)
     OR EXISTS (SELECT 1 FROM pg_proc owned JOIN pg_namespace ns ON ns.oid=owned.pronamespace WHERE ns.nspname=$1 AND owned.proowner=r.oid)
     OR EXISTS (SELECT 1 FROM pg_class sequence JOIN pg_namespace ns ON ns.oid=sequence.relnamespace
-      WHERE ns.nspname=$1 AND sequence.relkind='S' AND has_sequence_privilege(current_user,sequence.oid,'USAGE,SELECT,UPDATE'))
-    OR has_schema_privilege(current_user, $1, 'CREATE')
-    OR EXISTS (SELECT 1 FROM unnest($2::text[]) f(signature) WHERE NOT has_function_privilege(current_user,signature,'EXECUTE'))
+      WHERE ns.nspname=$1 AND CASE WHEN sequence.relkind='S' THEN has_sequence_privilege(r.oid,sequence.oid,'USAGE,SELECT,UPDATE') ELSE false END)
+    OR has_database_privilege(r.oid,current_database(),'CREATE')
+    OR COALESCE(has_schema_privilege(r.oid,to_regnamespace($1),'CREATE'),false)
+    OR EXISTS (SELECT 1 FROM unnest($2::text[]) f(signature)
+      WHERE CASE WHEN to_regprocedure(signature) IS NULL THEN NOT $4::boolean
+            ELSE NOT has_function_privilege(r.oid,to_regprocedure(signature),'EXECUTE') END)
     OR EXISTS (
       SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       WHERE n.nspname=$1 AND c.relkind IN ('r','v','m','p')
-        AND (has_table_privilege(current_user,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE')
-          OR has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE')
-          OR (c.relname<>'schema_migrations' AND (has_table_privilege(current_user,c.oid,'SELECT') OR has_any_column_privilege(current_user,c.oid,'SELECT'))))
+        AND (has_table_privilege(r.oid,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE')
+          OR has_any_column_privilege(r.oid,c.oid,'INSERT,UPDATE')
+          OR (c.relname<>'schema_migrations' AND (has_table_privilege(r.oid,c.oid,'SELECT') OR has_any_column_privilege(r.oid,c.oid,'SELECT'))))
     ) OR EXISTS (
       SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
       WHERE n.nspname=$1 AND p.prosecdef AND p.prorettype<>'trigger'::regtype
-        AND NOT p.oid=ANY(ARRAY(SELECT signature::regprocedure::oid FROM unnest($2::text[]) f(signature)))
-        AND has_function_privilege(current_user,p.oid,'EXECUTE')
-    ) AS unsafe FROM pg_roles r WHERE r.rolname=current_user`, [database.schema, cardServiceFunctions[service]]);
+        AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) f(signature) WHERE to_regprocedure(signature)=p.oid)
+        AND has_function_privilege(r.oid,p.oid,'EXECUTE')
+    ) AS unsafe FROM pg_roles r WHERE r.rolname=COALESCE($3::name,current_user)`, [schema, cardServiceFunctions[service], role ?? null, pendingMigration]);
   if (rows.length !== 1 || rows[0].unsafe) throw new Error(`The card ${service} requires a separate restricted ${service} database role.`);
+}
+
+function verifyCardServiceRole(database: Database, service: keyof typeof cardServiceFunctions) {
+  return checkServicePrivileges(database, database.schema, service);
+}
+
+/** A valid older release may not contain every newly required function yet. */
+export function verifyStagingMonitorCandidate(owner: Database, role: string) {
+  return checkServicePrivileges(owner, owner.schema, 'monitor', role, true);
+}
+
+/** Add the current grants and check effective rights before committing any DDL. */
+export async function allowStagingMonitorRole(client: Pick<Database, 'query'>, schema: string, role: string) {
+  await allowServicePrivileges(client, schema, role, 'monitor');
+  await checkServicePrivileges(client, schema, 'monitor', role);
 }
 
 export const grantCardIngressRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'ingress');

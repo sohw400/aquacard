@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import test from 'node:test';
 import { Database } from './database';
+import { monitorSecretConnectionString } from './monitor-database-secret';
 import { isMonitorEnvironment, monitorResult } from './operations-monitor-metrics';
 import { grantMonitorRole } from './permissions';
 import type { QueueHealth } from './queue-health';
@@ -32,6 +33,17 @@ test('only explicit deployment identifiers can become CloudWatch dimensions', ()
   assert.equal(event.MonitorHealthy, 0);
   assert.equal(Object.hasOwn(event, 'LedgerFindings'), false);
   assert.doesNotMatch(missing.stdout + missing.stderr, /private-/);
+});
+
+test('JSON monitor credentials preserve password bytes and keep authority and database separate', () => {
+  const value = { username: 'aqua_monitor', password: 'a%2Fb@c:/# d+한글', host: 'staging.example.test', port: 5432, dbname: 'aqua' };
+  const url = new URL(monitorSecretConnectionString(JSON.stringify(value)));
+  assert.equal(decodeURIComponent(url.password), value.password);
+  assert.equal(url.host, 'staging.example.test:5432');
+  assert.equal(url.pathname, '/aqua');
+  for (const change of [{ host: 'db@other' }, { dbname: 'aqua?sslmode=disable' }, { port: -1 }, { password: '' }]) {
+    assert.throws(() => monitorSecretConnectionString(JSON.stringify({ ...value, ...change })), /^Error: Invalid monitor database secret\.$/);
+  }
 });
 
 test('incomplete checks preserve independent incident metrics and report a separate execution failure', () => {
@@ -84,6 +96,15 @@ test('scheduled CLI reports the same internal discrepancies as the operator, wit
   const env = { MONITOR_DATABASE_URL: monitorUrl.toString(), DATABASE_SCHEMA: f.schema };
   const clean = runCli(env);
   assert.equal(clean.status, 0, clean.stdout + clean.stderr);
+  const jsonSecret = JSON.stringify({ host: monitorUrl.hostname, port: Number(monitorUrl.port || 5432),
+    dbname: decodeURIComponent(monitorUrl.pathname.slice(1)), username: role, password });
+  const jsonRun = runCli({ ...env, MONITOR_DATABASE_URL: '', MONITOR_DATABASE_SECRET: jsonSecret });
+  assert.equal(jsonRun.status, 0, jsonRun.stdout + jsonRun.stderr);
+  assert.equal(JSON.parse(jsonRun.stdout).MonitorHealthy, 1);
+  const ambiguous = runCli({ ...env, MONITOR_DATABASE_SECRET: jsonSecret });
+  assert.equal(ambiguous.status, 2);
+  assert.deepEqual(JSON.parse(ambiguous.stdout).failedChecks, ['connection']);
+  assert.ok(!(ambiguous.stdout + ambiguous.stderr).includes(password));
   const healthy = JSON.parse(clean.stdout);
   assert.equal(healthy.MonitorHealthy, 1);
   assert.equal(healthy.LedgerFindings, 0);

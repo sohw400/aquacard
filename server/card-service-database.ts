@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { Database } from './database';
+import { monitorSecretConnectionString } from './monitor-database-secret';
 
 const serviceUrls = {
   ingress: 'INGRESS_DATABASE_URL',
@@ -13,7 +14,11 @@ const serviceUrls = {
 export async function cardServiceDatabase(service: keyof typeof serviceUrls): Promise<Database> {
   if (!Object.hasOwn(serviceUrls, service)) throw new Error('Unknown card service database role.');
   const variable = serviceUrls[service];
-  const connectionString = process.env[variable];
+  let connectionString = process.env[variable];
+  if (service === 'monitor' && process.env.MONITOR_DATABASE_SECRET !== undefined) {
+    if (connectionString) throw new Error('Configure only one monitor database credential.');
+    connectionString = monitorSecretConnectionString(process.env.MONITOR_DATABASE_SECRET);
+  }
   if (!connectionString) throw new Error(`Set ${variable} to the separate restricted ${service} login.`);
   return new Database({
     connectionString,
