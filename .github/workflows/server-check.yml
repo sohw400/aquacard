@@ -105,8 +105,25 @@ jobs:
         run: npm run build:connected
       - name: Compile the server and migration runner
         run: npm run build:server
-      - name: Check the production container build
-        run: docker build --tag aqua-card-server:ci .
+      - name: Build the release container with a test trust anchor
+        shell: bash
+        run: |
+          aqua_test_ca="$RUNNER_TEMP/aqua-ci-ca.pem"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=Aqua-CI \
+            -addext basicConstraints=critical,CA:TRUE -keyout /dev/null -out "$aqua_test_ca" 2>/dev/null
+          read -r aqua_ca_hash _ < <(sha256sum "$aqua_test_ca")
+          docker buildx build --load --no-cache-filter rds-trust \
+            --secret "id=rds_ca,src=$aqua_test_ca" --build-arg "RDS_CA_SHA256=$aqua_ca_hash" \
+            --tag aqua-card-server:ci .
+          docker run --rm --read-only --entrypoint node aqua-card-server:ci --input-type=module -e '
+            import assert from "node:assert/strict";
+            import { createHash } from "node:crypto";
+            import { readFileSync, statSync } from "node:fs";
+            const path = "/etc/aqua/rds-ca.pem";
+            assert.notEqual(process.getuid(), 0);
+            assert.equal(statSync(path).mode & 0o777, 0o444);
+            assert.equal(createHash("sha256").update(readFileSync(path)).digest("hex"), process.argv[1]);
+          ' "$aqua_ca_hash"
       - name: Check the compiled container with a read-only filesystem
         shell: bash
         run: |
