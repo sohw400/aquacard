@@ -6,7 +6,7 @@ async function run() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === '--help') {
     console.log('Usage: node dist-server/reconcile-rewards.js');
-    console.log('Reads the internal monetary and reward ledgers. Exit 0: consistent; 1: discrepancies; 2: check could not complete.');
+    console.log('Checks internal monetary and reward ledgers, card events, and settlement postings. Exit 0: consistent; 1: discrepancies; 2: check could not complete.');
     return;
   }
   if (args.length) {
