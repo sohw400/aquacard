@@ -41,7 +41,8 @@ test('a non-superuser bootstraps a fresh database, retries safely and refuses a 
   const adminPassword = randomBytes(28).toString('hex');
   const monitorPassword = 'a?b%20@' + randomBytes(32).toString('hex');
   const identity = { databaseName, adminRole, monitorRole, monitorPassword };
-  const control = new Database({ connectionString: base.href, schema: 'public' });
+  const maintenance = new Database({ connectionString: base.href, schema: 'public', maxConnections: 1 });
+  const control = await maintenance.pool.connect();
   function dbUrl(user: string, password: string) {
     const url = new URL(base);
     url.pathname = '/' + databaseName;
@@ -57,8 +58,10 @@ test('a non-superuser bootstraps a fresh database, retries safely and refuses a 
     try {
       await control.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
       await control.query(`DROP ROLE IF EXISTS "${monitorRole}", "${adminRole}"`);
-    } finally { await control.close(); }
+    } finally { control.release(); await maintenance.close(); }
   });
+  // Database create/drop can wait for a cluster-wide checkpoint under parallel test load.
+  await control.query("SET statement_timeout = '90s'");
   await control.query(`CREATE ROLE "${adminRole}" LOGIN CREATEROLE PASSWORD '${adminPassword}'`);
   await control.query(`CREATE DATABASE "${databaseName}" OWNER "${adminRole}"`);
 
