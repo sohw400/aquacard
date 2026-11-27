@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { useModal } from './useModal';
-import { Check, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { money, shortDate } from '../lib/format';
 import type { Payment } from '../lib/types';
 import './PaymentReceipt.css';
@@ -24,7 +24,7 @@ export default function PaymentReceipt({ receipt, onClose }: { receipt: PaymentR
   const sources = [
     { label: '리워드', id: 'rewards', amount: payment.fromRewards },
     { label: '지갑 잔액', id: 'spend', amount: payment.fromSpend },
-    { label: '리저브', id: 'reserve', amount: payment.fromReserve },
+    { label: '리저브 잔액', id: 'reserve', amount: payment.fromReserve },
   ].filter((source) => source.amount > 0);
   const usedEqualsCredit = receipt.rewardsBefore === receipt.rewardsAfter && payment.fromRewards > 0
     && receipt.cashbackCredit === payment.fromRewards && receipt.otherRewardDelta === 0;
@@ -33,15 +33,18 @@ export default function PaymentReceipt({ receipt, onClose }: { receipt: PaymentR
     <section className="payment-receipt" role="dialog" aria-modal="true" aria-labelledby="receipt-title" data-testid="payment-receipt" ref={ref}>
       <span className="sheet-handle" aria-hidden="true" />
       <header className="receipt-header">
-        <h2 id="receipt-title" tabIndex={-1} ref={heading}><Check size={18} aria-hidden="true" />결제 완료</h2>
+        <h2 id="receipt-title" tabIndex={-1} ref={heading}>결제 완료</h2>
         <button type="button" className="receipt-close" aria-label="결제 내역 닫기" data-testid="receipt-close" onClick={onClose}><X size={21} /></button>
       </header>
       <div className="receipt-body">
         <div className="receipt-headline">
-          <strong className="receipt-amount" data-testid="receipt-payment-amount">{money(payment.amount)}</strong>
           <p className="receipt-merchant">{payment.merchant}</p>
+          <strong className="receipt-amount" data-testid="receipt-payment-amount">{money(payment.amount)}</strong>
           <time className="receipt-date" dateTime={new Date(payment.timestamp).toISOString()}>{shortDate(payment.timestamp)}</time>
         </div>
+        <section className="receipt-breakdown"><h3>결제 금액 구성</h3>
+          {sources.map((source) => <div className="receipt-row" key={source.id}><span>{source.label}</span><strong data-testid={`receipt-payment-${source.id}`}>{money(source.amount)}</strong></div>)}
+        </section>
         <section className="receipt-reward-reconciliation">
           <h3>리워드 변동</h3>
           <div className="receipt-row"><span>결제 전</span><strong data-testid="receipt-rewards-before">{money(receipt.rewardsBefore)}</strong></div>
@@ -60,9 +63,6 @@ export default function PaymentReceipt({ receipt, onClose }: { receipt: PaymentR
           </>}
           <div className="receipt-row total"><span>남은 리워드</span><strong data-testid="receipt-rewards-after">{money(receipt.rewardsAfter)}</strong></div>
           {usedEqualsCredit && <p className="receipt-explanation">쓴 리워드와 새 페이백이 같아서 리워드는 그대로예요.</p>}
-        </section>
-        <section className="receipt-breakdown"><h3>결제 금액 구성</h3>
-          {sources.map((source) => <div className="receipt-row" key={source.id}><span>{source.label}</span><strong data-testid={`receipt-payment-${source.id}`}>{money(source.amount)}</strong></div>)}
         </section>
       </div>
       <footer className="receipt-footer"><button type="button" className="receipt-confirm" onClick={onClose}>확인</button></footer>

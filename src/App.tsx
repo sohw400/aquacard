@@ -15,6 +15,7 @@ import InternalTransferDialog from './components/InternalTransferDialog';
 import SendSheet from './components/SendSheet';
 import ReceiveSheet from './components/ReceiveSheet';
 import PaymentReceipt, { type PaymentReceiptData } from './components/PaymentReceipt';
+import './components/MoneyFlow.css';
 import { statusOf } from './components/Activity';
 import Home from './pages/Home';
 import PaymentSources from './components/PaymentSources';
@@ -258,7 +259,7 @@ export default function App({ storageKey, initialState }: { storageKey?: string;
       {page === 'card' && <div className="page card-page"><CardApplication card={state.card} account={account} spend={state.spend} now={Date.now() + state.clockOffsetMs} controls={state.controls} onOpenLimits={() => navigate('limits')} onOpenSources={() => navigate('sources')} onOpenChannels={() => navigate('channels')} onPay={startPayment}
         onChange={(card) => { perform({ type: 'SET_CARD', card }); }} onAction={(action, message) => perform(action, message) !== null} onDeposit={() => setFunding({ mode: 'deposit' })} onNotify={(message) => notify(message)} /></div>}
       {page === 'benefits' && <Benefits state={state} onReserve={() => navigate('reserve')} onRewardsAuto={setRewardsAuto} />}
-      {page === 'reserve' && <Reserve state={state} onMove={setReserveMove} onAutoUse={setReserveAuto} />}
+      {page === 'reserve' && <Reserve state={state} onMove={setReserveMove} onAutoUse={setReserveAuto} onRewards={() => navigate('benefits')} />}
       {page === 'activity' && <ActivityPage state={state} filter={activityFilter} onFilter={setActivityFilter} onFunding={openFundingOperation} onDetail={setDetailItem} onRefund={openRefund} onStatement={() => navigate('statement')} />}
       {page === 'statement' && <Statement state={state} now={Date.now() + state.clockOffsetMs} />}
       {page === 'settings' && <Settings state={state} account={account} cardStatus={cardStatus} go={(target) => navigate(target as Page)} onRewardsAuto={setRewardsAuto} onReserveAuto={setReserveAuto}
@@ -327,14 +328,18 @@ function ActionDialog({ dialog, state, onClose, dispatch, notify, onPaid, onRese
 
   const buttonLabels: Record<Dialog['type'], string> = { payment: `${money(validNumber ? number : 0)} 결제`, refund: `${money(validNumber ? number : 0)} 환불`, reset: '되돌리기' };
 
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal" ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="dialog-title" data-testid={`dialog-${dialog.type}`}>
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className={dialog.type === 'reset' ? 'modal' : 'modal payment-dialog'} ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="dialog-title" data-testid={`dialog-${dialog.type}`}>
     <div className="modal-head"><h2 id="dialog-title" ref={dialogTitle} tabIndex={-1}>{titles[dialog.type]}</h2><button type="button" className="icon-button" onClick={onClose} aria-label="창 닫기"><X size={22} /></button></div>
     <div className="modal-body">
       {dialog.type === 'reset' ? <div><p className="reset-copy">잔액, 카드 신청, 거래 내역을 처음 상태로 돌려요.</p><p className="small-note">이 브라우저에 남은 체험 데이터가 지워져요.</p></div>
       : <form id={formId} onSubmit={submit}>
-        {dialog.type === 'payment' && <><div className="payment-card-tag"><TierCard plan={state.card.plan} className="payment-card-thumb" /><span>{PLANS[state.card.plan].name}</span><span>끝번호 {state.card.last4}</span></div><div className="form-field"><label htmlFor="merchant">결제할 곳</label><input id="merchant" value={merchant} onChange={(event) => setMerchant(event.target.value)} required maxLength={40} autoComplete="off" /></div></>}
+        {dialog.type === 'payment' && <div className="payment-card-tag">
+          <TierCard plan={state.card.plan} className="payment-card-thumb" />
+          <span>{PLANS[state.card.plan].name}</span><span>끝번호 {state.card.last4}</span>
+        </div>}
         {dialog.type === 'refund' && <div className="dialog-route"><strong>{dialog.payment.merchant}</strong><span>환불할 수 있는 금액 {money(dialog.payment.amount - dialog.payment.refunded)}</span></div>}
         <div className="form-field"><label htmlFor="action-amount">{dialog.type === 'refund' ? '환불할 금액' : '결제 금액'}</label><div className="input-affix"><AmountInput id="action-amount" unit="원" data-testid="action-amount" value={amount} onValueChange={(next) => { setAmount(next); setError(''); }} required aria-invalid={Boolean(error)} /></div></div>
+        {dialog.type === 'payment' && <div className="form-field"><label htmlFor="merchant">결제할 곳</label><input id="merchant" value={merchant} onChange={(event) => setMerchant(event.target.value)} required maxLength={40} autoComplete="off" /></div>}
         {dialog.type === 'payment' && <details className="payment-examples"><summary>예시 결제 선택</summary><div className="preset-amounts" aria-label="예시 결제">{PAYMENT_PRESETS.map(([name, value, kind]) => <button type="button" key={name} onClick={() => { setMerchant(name); setAmount(String(value)); setChannel(kind); setError(''); }}><span>{name}</span><b>{won(value)}원</b></button>)}</div></details>}
         {dialog.type === 'payment' && <fieldset className="channel-choice"><legend>결제 방식</legend><div className="segmented">{CHANNELS.map(([key, label]) => <button type="button" key={key} className={channel === key ? 'selected' : ''} aria-pressed={channel === key} data-testid={`pay-channel-${key}`} onClick={() => { setChannel(key); setError(''); }}>{label}</button>)}</div></fieldset>}
         {source && (source.issue ? <p className="form-error" role="alert">{source.issue}</p> : <div className="payment-sources">
@@ -343,7 +348,7 @@ function ActionDialog({ dialog, state, onClose, dispatch, notify, onPaid, onRese
           {source.spend > 0 && <div className="source-row"><span>지갑 잔액</span><strong>{money(source.spend)}</strong></div>}
           {source.reserve > 0 && <div className="source-row"><span>리저브 잔액</span><strong>{money(source.reserve)}</strong></div>}
           <div className="quote-total"><span>예상 페이백</span><strong data-testid="payment-cashback">{money(source.cashback)}</strong></div>
-          <p className="small-note">리워드로 낸 금액은 페이백에서 빠지고, 결제가 확정되면 쌓여요.</p>
+          <p className="small-note">지갑·리저브에서 낸 금액에만 페이백이 붙어요. 결제가 확정되면 리워드에 더해져요.</p>
         </div>)}
         {dialog.type === 'refund' && <details className="rule-details"><summary>환불 기준</summary><p>낸 돈은 잔액으로, 쓴 리워드는 리워드로 돌려드려요. 받은 페이백은 환불한 만큼 줄고, 모자라면 다음에 쌓일 리워드에서 빼요.</p></details>}
         {error && <div className="form-error" role="alert">{error}</div>}

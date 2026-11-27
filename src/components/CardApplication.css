@@ -115,14 +115,22 @@
 
 /* Issued card. */
 .card-flow .cf-active { display: grid; }
-.card-flow .cf-hero { display: flex; justify-content: center; padding: 4px 0 0; }
+.card-flow .cf-card-overview { min-width: 0; }
+.card-flow .cf-hero { display: flex; justify-content: center; margin-inline: -8px; padding: 14px 8px; border-radius: 16px; }
+.card-flow .cf-hero .aqua-card-visual { width: 100%; }
+.card-flow .cf-card-overview .cf-hero-caption { justify-content: space-between; margin: 14px 0 0; }
 .card-flow .cf-hero-caption { display: flex; align-items: baseline; justify-content: center; gap: 10px; margin-top: 14px; }
 .card-flow .cf-hero-caption > strong { color: var(--ink); font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
 .card-flow .cf-hero-caption > span { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); font-size: 14px; font-weight: 600; }
 .card-flow .cf-hero-caption > span.cf-locked { color: var(--warning); }
 .card-flow .cf-quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 20px 0 0; }
 .card-flow .cf-quick-button { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; padding: 4px 0; border: 0; background: none; color: var(--ink-soft); font-family: inherit; font-size: 13px; font-weight: 600; line-height: 1.4; cursor: pointer; }
-.card-flow .cf-quick-button > span { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--fill); color: var(--ink); transition: background-color .15s, transform .15s var(--ease); }
+.card-flow .cf-quick-button > span { display: inline-grid; flex-shrink: 0; place-items: center; color: var(--ink); }
+.card-flow .cf-card-overview .cf-quick { gap: 6px; margin-top: 12px; }
+.card-flow .cf-card-overview .cf-quick-button { display: flex; flex-direction: row; justify-content: center; gap: 5px; min-height: 44px; padding: 6px 4px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.card-flow .cf-card-overview .cf-quick-button[aria-pressed="true"] { background: var(--accent-weak); border-color: var(--accent); }
+.card-flow .cf-card-overview .cf-quick-button:disabled { opacity: .6; }
+.card-flow .cf-card-overview .cf-quick-button > span > svg { width: 16px; height: 16px; }
 .card-flow .cf-quick-button > span > svg { width: 22px; height: 22px; }
 .card-flow .cf-quick-button:active:not(:disabled) > span { transform: scale(.94); }
 .card-flow .cf-quick-button:disabled { color: var(--faint); cursor: not-allowed; }
@@ -141,7 +149,7 @@
 .card-flow .cf-warning-box p, .card-flow .cf-warning-box svg { color: var(--warning); }
 
 .card-flow .cf-section { display: grid; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
-.card-flow .cf-section > h3 { margin: 0; color: var(--subtle); font-size: 14px; font-weight: 600; line-height: 1.5; }
+.card-flow .cf-section > h3 { margin: 0 0 5px; color: var(--ink); font-size: 16px; font-weight: 600; line-height: 1.5; }
 .card-flow .cf-wallets { display: grid; margin: 0; padding: 0; list-style: none; }
 .card-flow .cf-wallets > li { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 0; }
 .card-flow .cf-wallets > li + li { border-top: 1px solid var(--line); }
@@ -222,3 +230,40 @@
 .card-flow .cf-intro-stage .cf-intro-art { margin: 0; }
 .card-flow .cf-compare-title { margin: 28px 0 3px; font-size: 16px; font-weight: 650; }
 .card-flow h2[tabindex="-1"]:focus { outline: none; }
+
+.card-flow .cf-intro-overview {
+  overflow: hidden; padding: 0; border: 1px solid var(--line);
+  border-radius: var(--radius-md); background: var(--surface);
+}
+.card-flow .cf-intro-stage {
+  margin: 0; padding: clamp(12px, 3vw, 24px); border-radius: 0;
+  background: radial-gradient(ellipse at 60% 100%, #557571 0%, #315260 46%, #1b3648 80%, #142d40 100%);
+}
+.card-flow .cf-intro-action { align-self: center; min-width: 0; padding: clamp(18px, 3vw, 26px); }
+.card-flow .cf-intro-action h2 { font-size: clamp(25px, 3.2vw, 32px); }
+.card-flow .cf-intro-action .cf-lead { margin: 8px 0 18px; word-break: keep-all; }
+.card-flow .cf-intro-action .cf-button { justify-content: space-between; padding-inline: 18px; }
+.card-flow .cf-compare-title { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.card-flow .cf-tiers > li { min-height: 76px; }
+.card-flow .cf-option-selected { background: var(--accent-weak); border-color: var(--accent-strong); }
+.card-flow .cf-profile { border-left: 3px solid var(--accent-strong); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.card-flow .cf-steps { margin-bottom: 20px; }
+.card-flow .cf-steps > li::before { height: 3px; }
+.card-flow .cf-steps .cf-step-current { color: var(--accent-strong); }
+.card-flow .cf-steps .cf-step-current::before { background: var(--accent-strong); }
+@media (min-width: 850px) {
+  .card-flow .cf-intro-overview { display: grid; grid-template-columns: minmax(0, 1.06fr) minmax(0, 1fr); }
+  .card-flow .cf-intro-stage { min-height: 235px; }
+}
+
+@media (min-width: 1280px) {
+  .page-card:has(.cf-active) > .main-content { max-width: 1040px; }
+  .card-flow .cf-active { grid-template-columns: minmax(0,1.12fr) minmax(0,1fr); grid-template-areas: 'overview settings' 'overview wallets' 'membership management'; gap: 18px; align-items: start; }
+  .card-flow .cf-card-overview { grid-area: overview; min-width: 0; }
+  .card-flow .cf-hero { margin: 0; padding: 18px 8px; }
+  .card-flow .cf-active > .cf-section { min-width: 0; margin: 0; padding: 14px 0 0; border: 0; border-top: 1px solid var(--line); }
+  .card-flow .cf-payment-settings { grid-area: settings; }
+  .card-flow .cf-section[aria-labelledby="cf-wallets-title"] { grid-area: wallets; }
+  .card-flow .cf-section[aria-labelledby="cf-plan-title"] { grid-area: membership; }
+  .card-flow .cf-section[aria-labelledby="cf-settings-title"] { grid-area: management; }
+}

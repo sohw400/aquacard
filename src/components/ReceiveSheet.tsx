@@ -93,13 +93,14 @@ export default function ReceiveSheet({ account, onClose, dispatch, notify }: {
         {!editing ? <>
           <div className="receive-card">
             <QrCode value={tagLink(account.tag)} size={196} label={`내 태그 @${account.tag} QR 코드`} />
-            <strong className="receive-tag" data-testid="receive-tag">@{account.tag}</strong>
-            <span className="receive-name">{maskName(account.name)}</span>
+            <div className="receive-identity"><div>
+              <strong className="receive-tag" data-testid="receive-tag">@{account.tag}</strong>
+              <span className="receive-name">{maskName(account.name)}</span>
+            </div><button type="button" className="receive-edit" data-testid="receive-edit" onClick={() => { setDraft(''); setError(''); setNote(null); setEditing(true); }}><PencilLine size={16} aria-hidden="true" />태그 바꾸기</button></div>
           </div>
-          <p className="receive-help">보내는 Aqua 회원에게 QR이나 태그를 보여 주세요. 수수료는 0원이에요.</p>
+          <p className="receive-help">Aqua 회원에게 QR을 보여 주거나 태그를 보내 주세요. 받는 수수료는 0원이에요.</p>
           <div className="receive-actions">
             <button type="button" className="itd-button itd-primary" data-testid="receive-copy" onClick={copyTag}>{copied ? <><Check size={17} aria-hidden="true" />복사했어요</> : <><Copy size={17} aria-hidden="true" />태그 복사</>}</button>
-            <button type="button" className="itd-button itd-secondary" data-testid="receive-edit" onClick={() => { setDraft(''); setError(''); setNote(null); setEditing(true); }}><PencilLine size={17} aria-hidden="true" />태그 바꾸기</button>
           </div>
           <span className="sr-only" role="status">{copied ? `${josa(`@${account.tag}`, '을', '를')} 복사했어요.` : ''}</span>
           {note && <p className={note.failed ? 'itd-error' : 'receive-note'} role="status" data-testid="receive-note">{note.text}</p>}

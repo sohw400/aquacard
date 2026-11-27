@@ -1,6 +1,6 @@
 import FundingPanel from './FundingPanel';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, ChevronRight, Copy, CreditCard, List, LogOut, RefreshCw, Send, UserRound } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, ArrowDownUp, ChevronDown, ChevronRight, Copy, CreditCard, List, LogOut, RefreshCw, Send, UserRound } from 'lucide-react';
 import type { AccountSnapshot, MemberProfile } from '../../shared/api';
 import Logo from '../components/Logo';
 import AuthPanel from './AuthPanel';
@@ -18,6 +18,7 @@ import { ApiError, api, errorMessage } from './api';
 import { readPending, type PendingTransfer } from './pending';
 import { clearRewardPreference, newRewardPreferenceKey, readRewardPreference, storeRewardPreference, type RewardPreferenceIntent } from './rewardPreference';
 import './Server.css';
+import './Dashboard.css';
 
 const money = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 const time = (value: number) => new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' }).format(value);
@@ -49,6 +50,10 @@ export default function ServerApp() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [pending, setPending] = useState<PendingTransfer | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [fundingOpen, setFundingOpen] = useState(false);
+  const [reserveOpen, setReserveOpen] = useState(false);
+  const fundingTrigger = useRef<HTMLButtonElement>(null);
+
   const [preferenceIntent, setPreferenceIntent] = useState<RewardPreferenceIntent | null>(null);
   const [preferenceSaving, setPreferenceSaving] = useState(false);
   const [preferenceConfirming, setPreferenceConfirming] = useState(false);
@@ -67,6 +72,7 @@ export default function ServerApp() {
   useEffect(() => {
     const navigate = () => {
       setScreen(requestedScreen());
+      setFundingOpen(false); setReserveOpen(false);
       setNotice('');
       window.scrollTo(0, 0);
       requestAnimationFrame(() => pageHeading.current?.focus({ preventScroll: true }));
@@ -76,6 +82,7 @@ export default function ServerApp() {
   }, []);
 
   const invalidateReads = useCallback(() => {
+    setFundingOpen(false); setReserveOpen(false);
     requestVersion.current++;
     refreshQueued.current = false;
     const previous = accountRead.current;
@@ -293,41 +300,45 @@ export default function ServerApp() {
           <div className="sa-card-slot" hidden={screen !== 'home'}>
             <IssuerCardPanel key={user.id} ownerId={user.id} visible={screen === 'home'} access={account?.access ?? null} onSessionExpired={ownerExpired} />
           </div>
-          {screen === 'home' && <section className="sa-balance-panel">
-              <div className="sa-balance-heading"><h2>지갑 잔액</h2>
-                <button className="sa-icon-button" aria-label="잔액 새로고침" data-testid="server-refresh" disabled={refreshing}
-                  onClick={() => void loadAccount()}><RefreshCw size={17} /></button>
-              </div>
-              <div className="sa-balance-glance">
-                <strong className="sa-balance-number" data-testid="server-balance">{account ? money(account.balanceWon) : '확인 중'}</strong>
-                {account?.rewards && <button type="button" className="sa-payback-shortcut" onClick={openCashback}
-                  aria-label={`이번 달 확정 페이백 ${money(account.rewards.cashback.confirmedWon)} 상세 보기`}>
-                  <span>이번 달 페이백<ChevronRight size={13} aria-hidden="true" /></span>
-                  <b>{money(account.rewards.cashback.confirmedWon)}</b>
-                </button>}
-              </div>
-              <dl className="sa-balance-breakdown">
-                <div><dt>결제 대기 원금</dt><dd data-testid="server-held-balance">{typeof account?.heldBalanceWon === 'number' ? money(account.heldBalanceWon) : '확인 중'}</dd></div>
-                <div><dt>지갑과 결제 대기 원금 합계</dt><dd data-testid="server-total-balance">{typeof account?.totalBalanceWon === 'number' ? money(account.totalBalanceWon) : '확인 중'}</dd></div>
-              </dl>
-              <div className="sa-balance-actions">
-                <button className="sa-primary" data-testid="server-send" disabled={!account?.access?.canTransact || Boolean(pending) || account.limits.available < 1000 || account.balanceWon < 1000}
-                  onClick={() => setTransferOpen(true)}><Send size={16} aria-hidden="true" />송금하기</button>
-                {pending && <button className="sa-secondary" data-testid="server-resume-transfer" onClick={() => setTransferOpen(true)}>이전 송금 열기</button>}
-              </div>
-              <div className="sa-receive-tag"><div><span>송금받을 태그</span><strong data-testid="server-tag">@{user.tag}</strong></div>
-                <button className="sa-icon-button" aria-label="Aqua 태그 복사" onClick={() => void copyTag()}><Copy size={17} /></button>
-              </div>
-              {notice && <p role="status">{notice}</p>}
-            </section>}
-          {screen === 'home' && <ReservePanel key={'reserve:' + user.id} owner={user.id} reserve={account?.reserve} walletWon={account?.balanceWon}
+          {screen === 'home' && <section className="sa-balance-panel" aria-labelledby="wallet-title">
+            <div className="sa-balance-heading"><h2 id="wallet-title">지갑 잔액</h2>
+              <button className="sa-icon-button" aria-label="잔액 새로고침" data-testid="server-refresh" disabled={refreshing}
+                onClick={() => void loadAccount()}><RefreshCw size={16} /></button>
+            </div>
+            <strong className="sa-balance-number" data-testid="server-balance">{account ? money(account.balanceWon) : '확인 중'}</strong>
+            <div className="sa-wallet-actions">
+              <button className="sa-primary" data-testid="server-send" disabled={!account?.access?.canTransact || Boolean(pending) || account.limits.available < 1000 || account.balanceWon < 1000}
+                onClick={() => setTransferOpen(true)}><Send size={17} aria-hidden="true" />송금하기</button>
+              <button ref={fundingTrigger} className="sa-secondary" type="button" aria-label="코인 입출금 보기" aria-expanded={fundingOpen} aria-controls="funding-content"
+                onClick={() => setFundingOpen(open => !open)}><ArrowDownUp size={17} aria-hidden="true" />코인 입출금</button>
+            </div>
+            {pending && <button className="sa-secondary" data-testid="server-resume-transfer" onClick={() => setTransferOpen(true)}>이전 송금 열기</button>}
+            <div className="sa-wallet-links">
+              <button type="button" aria-label="리저브 잔액과 관리" onClick={() => {
+                setReserveOpen(true);
+                requestAnimationFrame(() => { const target = document.getElementById('reserve-management-toggle'); target?.focus({ preventScroll:true }); target?.scrollIntoView({block:'start'}); });
+              }}><span>리저브<ChevronRight size={14} aria-hidden="true" /></span><strong>{account?.reserve ? money(account.reserve.availableWon) : '확인 중'}</strong></button>
+              <button type="button" className="sa-payback-shortcut" onClick={openCashback}
+                aria-label={`이번 달 확정 페이백 ${account?.rewards ? money(account.rewards.cashback.confirmedWon) : '확인 중'} 상세 보기`}>
+                <span>이번 달 확정 페이백<ChevronRight size={14} aria-hidden="true" /></span><strong>{account?.rewards ? money(account.rewards.cashback.confirmedWon) : '확인 중'}</strong>
+              </button>
+            </div>
+            <details className="sa-wallet-held"><summary><span>결제 대기 원금</span><b data-testid="server-held-balance">{account ? money(account.heldBalanceWon) : '확인 중'}</b><ChevronDown size={14} aria-hidden="true" /></summary>
+              <div><span>지갑과 결제 대기 원금 합계</span><b data-testid="server-total-balance">{account ? money(account.totalBalanceWon) : '확인 중'}</b></div>
+            </details>
+            <div className="sa-wallet-tag"><span>송금받을 태그</span><button aria-label="Aqua 태그 복사" onClick={() => void copyTag()}><strong data-testid="server-tag">@{user.tag}</strong><Copy size={15} aria-hidden="true" /></button></div>
+            {notice && <p role="status">{notice}</p>}
+          </section>}
+          {screen !== 'history' && <CustomerAccessPanel access={account?.access ?? null}
+            showEmailLink={screen === 'home' && !!account && !verified} />}
+          {screen === 'home' && <FundingPanel key={'funding:' + user.id} owner={user.id} open={fundingOpen} onClose={() => {
+            setFundingOpen(false); requestAnimationFrame(() => fundingTrigger.current?.focus());
+          }} enabled={Boolean(account?.access?.canTransact && verified)} onRefresh={() => void loadAccount()} />}
+          {screen === 'home' && <ReservePanel key={'reserve:' + user.id} owner={user.id} reserve={account?.reserve} walletWon={account?.balanceWon} manageOpen={reserveOpen} onManage={setReserveOpen}
             useFirst={account?.rewards.useFirst ?? false} rewardControls={<RewardControls rewards={account?.rewards ?? null} saving={preferenceSaving || preferenceConfirming}
             unresolved={preferenceIntent !== null} message={preferenceMessage} error={preferenceError}
             onUseFirstChange={changeRewardPriority} onRetry={retryRewardPreference} />}
             canTransact={account?.access.canTransact ?? false} refresh={() => void loadAccount()} />}
-          {screen !== 'history' && <CustomerAccessPanel access={account?.access ?? null}
-            showEmailLink={screen === 'home' && !!account && !verified} />}
-          {screen === 'home' && <FundingPanel key={'funding:' + user.id} owner={user.id} enabled={Boolean(account?.access?.canTransact && verified)} onRefresh={()=>void loadAccount()} />}
           {screen === 'home' && <RewardsPanel key={'rewards:' + user.id} owner={user.id} rewards={account?.rewards ?? null} />}
           {screen === 'history' && <>
             <ActivityPages key={user.id + ':cards:' + account?.historyCursors?.cards}

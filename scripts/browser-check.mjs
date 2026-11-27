@@ -691,7 +691,7 @@ try {
   await sendChoice.getByTestId('send-wallet').click();
   await sendChoice.waitFor({ state: 'hidden' });
   await fundingDialog.waitFor({ state: 'visible' });
-  assert.equal(await fundingDialog.getByRole('heading', { level: 2 }).innerText(), '어디로 보낼까요?');
+  assert.equal(await fundingDialog.getByRole('heading', { level: 2 }).innerText(), '코인 출금');
   assert.equal(await fundingDialog.getByTestId('funding-origin-domestic').count(), 0, '보내기에는 보내는 곳 선택이 없다');
   assert.deepEqual(await fundingDialog.locator('[data-testid^="funding-destination-"]').evaluateAll((items) => items.map((item) => [item.dataset.testid, item.getAttribute('aria-pressed')])),
     [['funding-destination-domestic', 'true'], ['funding-destination-global', 'false'], ['funding-destination-wallet', 'false']], '받는 곳은 국내 거래소, 해외 거래소, 내 지갑 셋이다');
@@ -1085,7 +1085,7 @@ try {
   await sendPage.getByTestId('open-send').click();
   const sendSheet = sendPage.getByTestId('send-sheet');
   await sendSheet.waitFor({ state: 'visible' });
-  assert.match(await sendSheet.innerText(), /Aqua 회원에게[\s\S]*수수료가 없어요[\s\S]*지갑 주소로[\s\S]*네트워크 비용이 들어요/);
+  assert.match(await sendSheet.innerText(), /Aqua 회원에게[\s\S]*수수료 0원[\s\S]*지갑 주소로[\s\S]*네트워크 비용 발생/);
   await sendSheet.getByTestId('send-member').click();
   const focusedIn = (check) => sendPage.waitForFunction(check, null, { timeout: 2_000 });
   await focusedIn(() => document.activeElement?.getAttribute('data-testid') === 'send-tag');
@@ -1121,7 +1121,7 @@ try {
   // Each later step moves focus to its heading inside the sheet, never back to the page behind it.
   await focusedIn(() => document.activeElement?.tagName === 'H2' && Boolean(document.activeElement.closest('[data-testid="send-sheet"]')));
   assert.equal(await displayedAmount(sendSheet.getByTestId('send-review-amount')), 30_000);
-  assert.match(await sendSheet.innerText(), new RegExp(`수수료\\s*0원[\\s\\S]*보낸 뒤 잔액\\s*${pattern(wonText(START.spend - 30_000))}`));
+  assert.match(await sendSheet.innerText(), new RegExp(`수수료\\s*0원[\\s\\S]*보낸 뒤 지갑 잔액\\s*${pattern(wonText(START.spend - 30_000))}`));
   assert.deepEqual(ledgerSnapshot(await read(sendPage)), beforeSend, '검토 단계에서는 보내지 않는다');
   await sendSheet.getByRole('button', { name: '이전', exact: true }).click();
   assert.equal(await sendAmount.inputValue(), '30,000', '금액 단계로 돌아가도 입력값을 유지한다');
@@ -1138,7 +1138,7 @@ try {
   await sendSheet.getByTestId('send-confirm').click();
   const sendDone = sendSheet.getByTestId('send-done');
   await sendDone.waitFor({ state: 'visible' });
-  await focusedIn(() => document.activeElement?.tagName === 'H2' && document.activeElement.textContent === '보냈어요');
+  await focusedIn(() => document.activeElement?.tagName === 'H2' && document.activeElement.textContent === '송금 완료');
   let sendState = await stateWhen((current) => current.spend === START.spend - 30_000, sendPage);
   assert.deepEqual([sendState.reserve, sendState.rewards, sendState.fundingOperations.length], [START.reserve, START.rewards, 0], '회원 보내기는 수수료·입출금 요청 없이 바로 끝난다');
   const sent = sendState.transactions[0];

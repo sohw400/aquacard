@@ -63,6 +63,8 @@ async function payment(page, id, status, expected) {
   await page.waitForFunction(({ id, status }) => document.querySelector(`[data-testid="server-card-payment-${id}"]`)?.getAttribute('data-status') === status, { id, status });
   const row = page.getByTestId(`server-card-payment-${id}`);
   if (!await row.evaluate((node) => node.open)) await row.locator('summary').click();
+  const amountDetails = row.getByRole('button', { name: '금액 상세' });
+  if (await amountDetails.getAttribute('aria-expanded') === 'false') await amountDetails.click();
   for (const [name, amount] of Object.entries(expected)) {
     const shown = await page.getByTestId(`server-card-${name}-${id}`).innerText();
     assert.equal(Number(shown.replace(/[^\d-]/g, '')), amount, `${id}: ${name}`);

@@ -188,10 +188,11 @@ export default function CardApplication({ card, account, spend, now, controls, o
       )}
 
       {card.stage === 'not_applied' && <div className="cf-intro">
-        <div className="cf-intro-stage"><CardHero className="cf-intro-art" /></div>
-        <h2 ref={stepHeading} tabIndex={-1}>Aqua 카드 신청</h2>
-        <p className="cf-lead">체험용 가상카드를 발급받고 결제할 수 있어요. 실물카드는 신청 단계에서 선택해요.</p>
-        <button type="button" className="cf-button cf-primary" data-testid="card-apply" onClick={() => nextStage('identity')}>카드 신청하기 <ArrowRight size={17} /></button>
+        <div className="cf-intro-overview">
+          <div className="cf-intro-stage"><CardHero className="cf-intro-art" /></div>
+          <div className="cf-intro-action"><h2 ref={stepHeading} tabIndex={-1}>Aqua 카드 신청</h2>
+        <p className="cf-lead">가상카드는 발급되면 바로 결제할 수 있어요. 실물카드가 필요하면 신청할 때 함께 선택하세요.</p>
+        <button type="button" className="cf-button cf-primary" data-testid="card-apply" onClick={() => nextStage('identity')}>카드 신청하기 <ArrowRight size={17} aria-hidden="true" /></button></div></div>
         <h3 className="cf-compare-title">멤버십별 혜택과 연회비</h3>
         <ul className="cf-tiers" aria-label="멤버십">{PLAN_ORDER.map((key) => <li key={key}><TierCard plan={key} /><span className="cf-tier-main"><strong>{PLANS[key].short}</strong><TierFacts plan={key} /></span><span className="cf-tier-fee">{feeText(key)}</span></li>)}</ul>
       </div>}
@@ -247,15 +248,24 @@ export default function CardApplication({ card, account, spend, now, controls, o
       </div>}
 
       {card.stage === 'active' && <div className="cf-active">
-        <div className="cf-hero"><CardVisual card={card} variant="hero" revealed={revealed} /></div>
-        <div className="cf-hero-caption"><strong>{plan.name}</strong><span className={card.locked ? 'cf-locked' : ''} data-testid="card-status">{card.locked ? <><LockKeyhole size={13} aria-hidden="true" />잠금</> : '사용 중'}</span></div>
-        <div className="cf-quick">
-          <button type="button" className="cf-quick-button" data-testid="card-details-toggle" aria-pressed={revealed} onClick={() => setRevealed(!revealed)}><span>{revealed ? <EyeOff /> : <Eye />}</span>{revealed ? '정보 숨기기' : '카드 정보'}</button>
-          <button type="button" className={`cf-quick-button${card.locked ? ' cf-quick-warning' : ''}`} data-testid="card-lock-toggle" aria-pressed={card.locked} onClick={() => { patch({ locked: !card.locked }); onNotify(card.locked ? '잠금을 풀었어요.' : '카드를 잠갔어요. 새 결제는 모두 거절돼요.'); }}><span>{card.locked ? <UnlockKeyhole /> : <LockKeyhole />}</span>{card.locked ? '잠금 풀기' : '잠그기'}</button>
-          <button type="button" className="cf-quick-button" data-testid="card-pay" disabled={card.locked} onClick={onPay}><span><CreditCard /></span>결제해 보기</button>
+        <div className="cf-card-overview">
+          <div className="cf-hero card-stage-art"><CardVisual card={card} variant="hero" revealed={revealed} /></div>
+          <div className="cf-hero-caption"><strong>{plan.name}</strong><span className={card.locked ? 'cf-locked' : ''} data-testid="card-status">{card.locked ? <><LockKeyhole size={13} aria-hidden="true" />잠금</> : '사용 중'}</span></div>
+          <div className="cf-quick">
+            <button type="button" className="cf-quick-button" data-testid="card-details-toggle" aria-pressed={revealed} onClick={() => setRevealed(!revealed)}><span>{revealed ? <EyeOff /> : <Eye />}</span>{revealed ? '정보 숨기기' : '카드 정보'}</button>
+            <button type="button" className={`cf-quick-button${card.locked ? ' cf-quick-warning' : ''}`} data-testid="card-lock-toggle" aria-pressed={card.locked} onClick={() => { patch({ locked: !card.locked }); onNotify(card.locked ? '잠금을 풀었어요.' : '카드를 잠갔어요. 새 결제는 모두 거절돼요.'); }}><span>{card.locked ? <UnlockKeyhole /> : <LockKeyhole />}</span>{card.locked ? '잠금 풀기' : '잠그기'}</button>
+            <button type="button" className="cf-quick-button" data-testid="card-pay" disabled={card.locked} onClick={onPay}><span><CreditCard /></span>결제해 보기</button>
+          </div>
+          {revealed && <div className="cf-demo-details"><span className="cf-simulation-label">체험용 카드 정보예요. 실제로 결제되지 않아요.</span><dl><div><dt>카드번호</dt><dd>4242 4242 4242 {card.last4}</dd></div><div><dt>유효기간</dt><dd>12/30</dd></div><div><dt>CVC</dt><dd>123</dd></div></dl></div>}
+          {card.locked && <div className="cf-info-box cf-warning-box"><LockKeyhole size={18} /><p>잠근 동안 새 결제는 거절돼요. 이미 한 결제의 취소와&nbsp;환불은 그대로 돼요.</p></div>}
+
         </div>
-        {revealed && <div className="cf-demo-details"><span className="cf-simulation-label">체험용 카드 정보예요. 실제로 결제되지 않아요.</span><dl><div><dt>카드번호</dt><dd>4242 4242 4242 {card.last4}</dd></div><div><dt>유효기간</dt><dd>12/30</dd></div><div><dt>CVC</dt><dd>123</dd></div></dl></div>}
-        {card.locked && <div className="cf-info-box cf-warning-box"><LockKeyhole size={18} /><p>잠근 동안 새 결제는 거절돼요. 이미 한 결제의 취소와&nbsp;환불은 그대로 돼요.</p></div>}
+        <section className="cf-section cf-payment-settings" aria-labelledby="cf-payment-settings-title">
+          <h3 id="cf-payment-settings-title">결제 설정</h3>
+          <NavRow label="결제에 쓸 잔액" testId="card-open-sources" onClick={onOpenSources} />
+          <NavRow label="결제 한도" value={`1회 ${manWon(controls.perPayment)}`} testId="card-open-limits" onClick={onOpenLimits} />
+          <NavRow label="온라인·해외 결제" value={controls.online && controls.overseas ? '모두 허용' : !controls.online && !controls.overseas ? '모두 막음' : controls.online ? '해외 막음' : '온라인 막음'} testId="card-open-channels" onClick={onOpenChannels} />
+        </section>
 
         <section className="cf-section" aria-labelledby="cf-wallets-title">
           <h3 id="cf-wallets-title">휴대폰 결제</h3>
@@ -283,10 +293,7 @@ export default function CardApplication({ card, account, spend, now, controls, o
         </section>
 
         <section className="cf-section" aria-labelledby="cf-settings-title">
-          <h3 id="cf-settings-title">카드 설정</h3>
-          <NavRow label="결제에 쓸 잔액" testId="card-open-sources" onClick={onOpenSources} />
-          <NavRow label="결제 한도" value={`1회 ${manWon(controls.perPayment)}`} testId="card-open-limits" onClick={onOpenLimits} />
-          <NavRow label="온라인·해외 결제" value={controls.online && controls.overseas ? '모두 허용' : !controls.online && !controls.overseas ? '모두 막음' : controls.online ? '해외 막음' : '온라인 막음'} testId="card-open-channels" onClick={onOpenChannels} />
+          <h3 id="cf-settings-title">발급과 관리</h3>
           {!card.physical && <NavRow label={`${physicalName(card.plan)} 받기`} value={plan.physicalFee ? won(plan.physicalFee) : '무료'} testId="card-physical-add" onClick={() => setAddressSheet('physical')} />}
           {card.physical && <div className="cf-delivery">
             <div className="cf-delivery-heading"><Package size={18} aria-hidden="true" /><strong data-testid="card-physical-name">{physicalName(card.physicalPlan ?? card.plan)}</strong><span>{card.physicalActive ? '쓰는 중' : card.delivery === 'none' ? '' : deliveryText[card.delivery]}</span></div>

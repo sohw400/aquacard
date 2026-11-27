@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Monitor, RefreshCw, X } from 'lucide-react';
+import { ChevronDown, Monitor, RefreshCw, Smartphone, Tablet, X } from 'lucide-react';
 import type { AuthSessionRecord, SessionSecuritySnapshot } from '../../shared/api';
 import { useModal } from '../components/useModal';
 import { ApiError, api, errorMessage } from './api';
@@ -8,9 +8,10 @@ import './SessionSecurityPanel.css';
 
 type Target = { kind: 'one'; session: AuthSessionRecord } | { kind: 'others' };
 
-const dateTime = (timestamp: number) => new Intl.DateTimeFormat('ko-KR', {
+const koreanClock = new Intl.DateTimeFormat('ko-KR', {
   year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul',
-}).format(timestamp);
+});
+const dateTime = (timestamp: number) => koreanClock.format(timestamp);
 
 function checkedSnapshot(value: SessionSecuritySnapshot): SessionSecuritySnapshot {
   const validTime = (time: unknown) => typeof time === 'number' && Number.isSafeInteger(time) && time >= 0 && time <= 8.64e15;
@@ -40,6 +41,8 @@ function RevokeConfirmation({ target, ownerId, reauthenticatedUntil, onClose, on
   const [error, setError] = useState('');
   const panel = useRef<HTMLDivElement>(null);
   const initialFocus = useRef<HTMLButtonElement>(null);
+  const passwordInput = useRef<HTMLInputElement>(null);
+  const returnToPassword = useRef(false);
   const flight = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   const headingId = useId();
@@ -48,6 +51,12 @@ function RevokeConfirmation({ target, ownerId, reauthenticatedUntil, onClose, on
   const errorId = useId();
   const close = useCallback(() => { if (!flight.current) onClose(); }, [onClose]);
   useModal(panel, close, initialFocus);
+  useEffect(() => {
+    if (!busy && needsPassword && returnToPassword.current && passwordInput.current) {
+      returnToPassword.current = false;
+      passwordInput.current.focus();
+    }
+  }, [busy, needsPassword]);
 
   useEffect(() => {
     mounted.current = true;
@@ -91,11 +100,11 @@ function RevokeConfirmation({ target, ownerId, reauthenticatedUntil, onClose, on
     } catch (issue) {
       if (!mounted.current || request.signal.aborted) return;
       if (issue instanceof ApiError && authenticating && issue.code === 'INVALID_PASSWORD') {
-        setNeedsPassword(true); setError(issue.message);
+        returnToPassword.current = true; setNeedsPassword(true); setError(issue.message);
       } else if (issue instanceof ApiError && (issue.code === 'SESSION_CHANGED' || issue.status === 401)) {
         onExpired();
       } else if (issue instanceof ApiError && issue.code === 'REAUTHENTICATION_REQUIRED') {
-        setNeedsPassword(true); setError('비밀번호를 확인한 뒤 다시 진행해 주세요.');
+        returnToPassword.current = true; setNeedsPassword(true); setError('비밀번호를 확인한 뒤 다시 진행해 주세요.');
       } else if (issue instanceof ApiError && issue.code === 'SESSION_NOT_FOUND') {
         onComplete('선택한 로그인은 이미 종료되었습니다.');
       } else {
@@ -118,7 +127,7 @@ function RevokeConfirmation({ target, ownerId, reauthenticatedUntil, onClose, on
         : `${target.session.deviceLabel}에서 다시 사용하려면 로그인이 필요합니다.`}</p>
       <form onSubmit={(event) => void submit(event)}>
         {needsPassword && <div className="sa-security-field"><label htmlFor={passwordId}>현재 비밀번호</label>
-          <input id={passwordId} data-testid="security-password" type="password" autoComplete="current-password" value={password}
+          <input ref={passwordInput} id={passwordId} data-testid="security-password" type="password" autoComplete="current-password" value={password}
             maxLength={128} disabled={busy} required aria-describedby={error ? errorId : undefined}
             onChange={(event) => { setPassword(event.target.value); setError(''); }} />
           <p>계정 보호를 위해 비밀번호를 한 번 더 확인합니다.</p>
@@ -181,22 +190,27 @@ export default function SessionSecurityPanel({ ownerId, onSessionExpired }: { ow
   const close = useCallback(() => setTarget(null), []);
   const others = snapshot?.sessions.filter((session) => !session.current) ?? [];
   return <section className="sa-security-panel" aria-labelledby={headingId} data-testid="security-sessions-panel" aria-busy={loading}>
-    <div className="sa-section-heading"><div><h2 id={headingId}>로그인된 기기</h2><p>사용하지 않는 기기의 로그인을 해제할 수 있습니다.</p></div>
+    <div className="sa-section-heading"><h2 id={headingId}>로그인된 기기</h2>
       <button className="sa-icon-button" type="button" aria-label="로그인 목록 새로고침" data-testid="security-refresh" disabled={loading || Boolean(target)} onClick={() => void refresh()}><RefreshCw size={18} /></button></div>
     {!snapshot ? <p className="sa-security-loading" role="status">{loading ? '로그인 정보를 확인하고 있습니다.' : '로그인 정보를 불러오지 못했습니다.'}</p>
-      : <ul className="sa-security-sessions">{snapshot.sessions.map((session) => <li key={session.id} data-testid="security-session" data-session-id={session.id} data-current={session.current}>
-        <span className="sa-security-device-icon" aria-hidden="true"><Monitor size={19} /></span>
+      : <ul className="sa-security-sessions">{snapshot.sessions.map((session) => {
+        const Device = session.deviceLabel.startsWith('iPad') ? Tablet : /^(iPhone|Android)/.test(session.deviceLabel) ? Smartphone : Monitor;
+        return <li key={session.id} data-testid="security-session" data-session-id={session.id} data-current={session.current}>
+        <span className="sa-security-device-icon" aria-hidden="true"><Device size={20} /></span>
         <div className="sa-security-device"><div className="sa-security-device-title"><strong>{session.deviceLabel}</strong>{session.current && <span>현재 기기</span>}</div>
-          <dl><div><dt>로그인</dt><dd><time dateTime={new Date(session.createdAt).toISOString()}>{dateTime(session.createdAt)}</time></dd></div>
-            <div><dt>최근 활동</dt><dd><time dateTime={new Date(session.lastSeenAt).toISOString()}>{dateTime(session.lastSeenAt)}</time></dd></div>
-            <div><dt>로그인 만료</dt><dd><time dateTime={new Date(session.expiresAt).toISOString()}>{dateTime(session.expiresAt)}</time></dd></div></dl>
+          <p className="sa-security-last-seen">최근 활동 <time dateTime={new Date(session.lastSeenAt).toISOString()}>{dateTime(session.lastSeenAt)}</time></p>
+          <details className="sa-security-timing">
+            <summary>로그인 정보<ChevronDown size={14} aria-hidden="true" /></summary>
+            <dl><div><dt>로그인</dt><dd><time dateTime={new Date(session.createdAt).toISOString()}>{dateTime(session.createdAt)}</time></dd></div>
+              <div><dt>만료 예정</dt><dd><time dateTime={new Date(session.expiresAt).toISOString()}>{dateTime(session.expiresAt)}</time></dd></div></dl>
+          </details>
         </div>
         <button className="sa-text-button" type="button" data-testid="security-revoke-session" disabled={loading || Boolean(error) || Boolean(target)}
           aria-label={`${session.deviceLabel}${session.current ? ' 현재 기기' : ''} 로그아웃`} onClick={() => { setNotice(''); setTarget({ kind: 'one', session }); }}>로그아웃</button>
-      </li>)}</ul>}
+      </li>; })}</ul>}
     {error && <p className="sa-error" role="alert" data-testid="security-error">{error}</p>}
     {notice && <p className="sa-notice" role="status" data-testid="security-notice">{notice}</p>}
-    <div className="sa-security-footer"><p>기기 정보는 브라우저에서 제공한 정보를 바탕으로 표시합니다.<br />시간은 한국 시간 기준입니다.</p>
+    <div className="sa-security-footer"><p>접속 시각은 한국 시간 기준이에요.</p>
       <button className="sa-secondary" type="button" data-testid="security-revoke-others" disabled={loading || Boolean(error) || Boolean(target) || others.length === 0}
         onClick={() => { setNotice(''); setTarget({ kind: 'others' }); }}>다른 기기 모두 로그아웃</button></div>
     {target && <RevokeConfirmation key={target.kind === 'one' ? target.session.id : 'others'} target={target} ownerId={ownerId}

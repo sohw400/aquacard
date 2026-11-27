@@ -77,7 +77,7 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
   const sendable = Math.min(state.spend, room.max);
   const amountIssue = value.trim() === '' ? '' : !Number.isSafeInteger(amount) || amount < POLICY.minimumTopup ? '1,000원 이상 원 단위로 넣어 주세요.'
     : amount > state.spend ? '잔액보다 많이 보낼 수 없어요.' : memberSendIssue(room, amount);
-  const titles: Record<Step, string> = { choose: '보내기', tag: '누구에게 보낼까요?', scan: 'QR 코드 찍기', amount: '얼마를 보낼까요?', review: '이대로 보낼까요?', done: '보냈어요' };
+  const titles: Record<Step, string> = { choose: '보내기', tag: '받는 사람 찾기', scan: 'QR 코드 찍기', amount: '보낼 금액', review: '보낼 내용 확인', done: '송금 완료' };
 
   function pick(next: Member, from: Origin) { setMember(next); setOrigin(from); setError(''); setStep('amount'); }
   function find(event: FormEvent) {
@@ -125,9 +125,9 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
       </header>
       <div className="itd-body">
         {step === 'choose' && <div className="send-options">
-          <button type="button" className="send-option" data-testid="send-member" onClick={() => setStep('tag')}><span className="send-option-icon" aria-hidden="true"><AtSign size={20} /></span><span><strong>Aqua 회원에게</strong><small>태그나 연락처로 바로 보내요. 수수료가 없어요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
-          <button type="button" className="send-option" data-testid="send-scan" onClick={() => setStep('scan')}><span className="send-option-icon" aria-hidden="true"><QrIcon size={20} /></span><span><strong>QR 코드 찍기</strong><small>Aqua 회원의 QR로 보내요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
-          <button type="button" className="send-option" data-testid="send-wallet" onClick={onWallet}><span className="send-option-icon" aria-hidden="true"><Wallet size={20} /></span><span><strong>지갑 주소로</strong><small>거래소·내 지갑으로 출금해요. 네트워크 비용이 들어요.</small></span><ChevronRight size={18} aria-hidden="true" /></button>
+          <button type="button" className="send-option" data-testid="send-member" onClick={() => setStep('tag')}><span className="send-option-icon" aria-hidden="true"><AtSign size={20} /></span><span><strong>Aqua 회원에게</strong><small>태그·연락처로 송금 · 수수료 0원</small></span><ChevronRight size={18} aria-hidden="true" /></button>
+          <button type="button" className="send-option" data-testid="send-scan" onClick={() => setStep('scan')}><span className="send-option-icon" aria-hidden="true"><QrIcon size={20} /></span><span><strong>QR 코드 찍기</strong><small>상대방의 Aqua QR로 송금 · 수수료 0원</small></span><ChevronRight size={18} aria-hidden="true" /></button>
+          <button type="button" className="send-option" data-testid="send-wallet" onClick={onWallet}><span className="send-option-icon" aria-hidden="true"><Wallet size={20} /></span><span><strong>지갑 주소로</strong><small>거래소·개인 지갑으로 출금 · 네트워크 비용 발생</small></span><ChevronRight size={18} aria-hidden="true" /></button>
           {state.account && <div className="send-own-tag" data-testid="send-own-tag"><span>내 태그 <strong>@{state.account.tag}</strong></span><button type="button" className="send-own-qr" data-testid="send-own-qr" onClick={onReceive}>내 QR 보기</button></div>}
         </div>}
 
@@ -152,7 +152,7 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
         </div>}
 
         {step === 'amount' && member && <form id={`${uid}-amount-form`} onSubmit={(event) => { event.preventDefault(); if (value && !amountIssue) setStep('review'); }} noValidate>
-          <div className="send-to"><span><strong>{maskName(member.name)}</strong><small>@{member.tag}{FOUND_BY[origin]}</small></span></div>
+          <div className="send-to"><span className="send-to-label">받는 사람</span><span><strong>{maskName(member.name)}</strong><small>@{member.tag}{FOUND_BY[origin]}</small></span></div>
           <div className="itd-amount"><label htmlFor={`${uid}-amount`}>보낼 금액</label><div className="itd-input"><AmountInput id={`${uid}-amount`} unit="원" data-testid="send-amount" value={value} onValueChange={(next) => { setValue(next); setError(''); }} autoComplete="off" ref={amountInput} aria-invalid={Boolean(amountIssue)} aria-describedby={`${uid}-available`} /></div>
             {amountIssue ? <p id={`${uid}-available`} className="itd-field-error itd-in-place" role="alert">{amountIssue}</p> : <div id={`${uid}-available`} className="itd-available"><span>보낼 수 있는 금액</span><strong data-testid="send-available">{money(sendable)}</strong></div>}</div>
           <div className="itd-presets">{[10_000, 30_000, 50_000].map((preset) => <button type="button" key={preset} disabled={preset > sendable} onClick={() => { setValue(String(preset)); setError(''); }}>{won(preset)}원</button>)}</div>
@@ -161,7 +161,7 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
 
         {step === 'review' && member && <div>
           <div className="itd-review-amount"><span>{maskName(member.name)}님에게</span><strong data-testid="send-review-amount">{money(amount)}</strong></div>
-          <dl className="itd-detail-list"><div><dt>받는 사람</dt><dd>{maskName(member.name)} · @{member.tag}</dd></div><div><dt>수수료</dt><dd>0원</dd></div><div><dt>보낸 뒤 잔액</dt><dd>{money(state.spend - amount)}</dd></div></dl>
+          <dl className="itd-detail-list"><div><dt>받는 사람</dt><dd>{maskName(member.name)} · @{member.tag}</dd></div><div><dt>수수료</dt><dd>0원</dd></div><div><dt>보낸 뒤 지갑 잔액</dt><dd>{money(state.spend - amount)}</dd></div></dl>
           <p className="itd-demo-note">체험판이라 실제로 보내지 않아요.</p>
           {error && <p className="itd-error" role="alert">{error}</p>}
         </div>}
@@ -170,7 +170,7 @@ export default function SendSheet({ state, onClose, onWallet, onReceive, dispatc
 
           <p>{maskName(member.name)}님에게 보냈어요</p>
           <strong className="itd-result-amount">{money(amount)}</strong>
-          <dl className="itd-detail-list itd-receipt-meta"><div><dt>받는 사람</dt><dd>@{member.tag}</dd></div><div><dt>보낸 시각</dt><dd>{shortDate(sentAt)}</dd></div><div><dt>남은 잔액</dt><dd>{money(state.spend)}</dd></div></dl>
+          <dl className="itd-detail-list itd-receipt-meta"><div><dt>받는 사람</dt><dd>@{member.tag}</dd></div><div><dt>보낸 시각</dt><dd>{shortDate(sentAt)}</dd></div><div><dt>남은 지갑 잔액</dt><dd>{money(state.spend)}</dd></div></dl>
         </div>}
       </div>
       {(step === 'amount' || step === 'review' || step === 'done') && <footer className="itd-footer">

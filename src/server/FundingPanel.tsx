@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import type { FundingAsset, FundingDirection, FundingInput, FundingStatus, MemberFunding } from '../../shared/funding';
 import { getFundingNetworks } from '../lib/movements';
 import { api, ApiError, errorMessage } from './api';
@@ -21,9 +22,13 @@ function isFundingCommand(value: unknown): value is FundingInput {
   }
   return ['accept_deposit', 'accept_withdrawal', 'cancel'].includes(String(value.action)) && 'id' in value && typeof value.id === 'string';
 }
-export default function FundingPanel({owner,enabled,onRefresh}:{owner:string;enabled:boolean;onRefresh:()=>void}) {
+export default function FundingPanel({owner,enabled,open,onClose,onRefresh}:{owner:string;enabled:boolean;open:boolean;onClose:()=>void;onRefresh:()=>void}) {
   const storageKey='aqua.server.funding.'+owner;
-  const [open,setOpen]=useState(false);
+  const title = useRef<HTMLHeadingElement>(null);
+  const [loaded,setLoaded]=useState(false);
+  useEffect(() => {
+    if (open) { title.current?.focus({ preventScroll: true }); title.current?.scrollIntoView({ block: 'start' }); }
+  }, [open]);
   const [items,setItems]=useState<MemberFunding[]>([]);
   const [direction,setDirection]=useState<FundingDirection>('deposit');
   const [asset,setAsset]=useState<FundingAsset>('USDC');
@@ -55,7 +60,7 @@ export default function FundingPanel({owner,enabled,onRefresh}:{owner:string;ena
       loading=true;
       try {
         const list=await api.funding(owner,controller.signal);
-        if (!controller.signal.aborted) { setItems(list); setNotice(''); }
+        if (!controller.signal.aborted) { setItems(list); setLoaded(true); setNotice(''); }
       } catch(error){if(!controller.signal.aborted) setNotice(errorMessage(error));}
       finally {loading=false;}
     };
@@ -78,11 +83,11 @@ export default function FundingPanel({owner,enabled,onRefresh}:{owner:string;ena
     if(direction==='withdrawal') input.destination=destination.trim();
     void intent.submit(input);
   }
-  return <section className="sa-transactions sa-funding" aria-labelledby="funding-title">
-    <div className="sa-section-heading"><h2 id="funding-title">코인 입출금</h2><button className="sa-secondary" type="button"
-      aria-expanded={open} aria-controls="funding-content" onClick={()=>setOpen(!open)}>{open?'접기':'입출금 보기'}</button></div>
-    {open&&<div id="funding-content">
-      <p>테스트 코인과 원화 잔액의 전환을 체험할 수 있어요. 실제 코인은 보내지 마세요.</p>
+  return <section className="sa-transactions sa-funding" id="funding-content" hidden={!open} aria-labelledby="funding-title">
+    <div className="sa-section-heading"><h2 id="funding-title" ref={title} tabIndex={-1}>코인 입출금</h2>
+      <button className="sa-icon-button" type="button" aria-label="코인 입출금 닫기" onClick={() => { setPassword(''); onClose(); }}><X size={19} /></button></div>
+    {open&&<div>
+      <p className="sa-funding-notice">테스트 전용 지갑이에요. 실제 코인은 보내지 마세요.</p>
       <form onSubmit={e=>{e.preventDefault();quote();}}>
         <label>거래<select value={direction} onChange={e=>{setDirection(e.target.value as FundingDirection);setQuantity('');}}>
           <option value="deposit">코인 입금</option><option value="withdrawal">코인 출금</option></select></label>
@@ -101,9 +106,13 @@ export default function FundingPanel({owner,enabled,onRefresh}:{owner:string;ena
       {pending&&<button type="button" className="sa-secondary" disabled={busy} onClick={()=>void intent.submit(pending.command)}>같은 요청으로 결과 확인</button>}
       {(notice || intent.message)&&<p role="status">{notice || intent.message}</p>}
       <h3>최근 입출금</h3>
-      {!items.length&&<p>아직 요청이 없어요.</p>}
+      {!loaded && !notice && <p role="status">입출금 내역을 확인하고 있어요.</p>}
+      {loaded && !items.length && <p className="sa-funding-empty">아직 입출금 내역이 없어요.</p>}
       {items.map(o=><article key={o.id} className="sa-funding-record"><div><strong>{o.asset} {o.direction==='deposit'?'입금':'출금'}</strong><span>{labels[o.status]}</span></div>
-        <p>{o.network} · {o.units} {o.asset}</p><p>적용 단가 {money(o.priceWon)} · {o.direction==='deposit'?'받을 금액':'출금 총액'} {money(o.grossWon)}</p>
+        <p className="sa-funding-amount"><span>{o.direction === 'deposit' ? '받을 금액' : '출금 총액'}</span><strong>{money(o.grossWon)}</strong></p><dl>
+          <div><dt>{o.direction==='deposit'?'입금 수량':'전송 수량'}</dt><dd>{o.units} {o.asset}</dd></div>
+          <div><dt>네트워크</dt><dd>{getFundingNetworks(o.asset).find(n => n.id === o.network)?.label ?? o.network}</dd></div>
+          <div><dt>적용 단가</dt><dd>{money(o.priceWon)}</dd></div></dl>
         {o.direction==='withdrawal'&&<p>전환 수수료 {money(o.feeWon)} · 네트워크 비용 {money(o.networkFeeWon)} · 전송분 {money(o.netWon)}</p>}
         {(o.direction==='withdrawal'||o.status!=='quoted')&&<p>체험용 지갑 <code>{o.destination}</code></p>}
         {o.status==='quoted'&&<p>견적 만료 {new Date(o.expiresAt).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul'})} (한국 시간)</p>}

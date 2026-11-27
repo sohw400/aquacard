@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { Check, Mail, RefreshCw } from 'lucide-react';
 import { ApiError, api, errorMessage, type EmailVerificationSnapshot } from './api';
 import './EmailVerificationPanel.css';
 
@@ -32,8 +32,17 @@ export default function EmailVerificationPanel({ ownerId, email, onVerified, onS
   callbacks.current = { onVerified, onSessionExpired };
   const titleId = useId();
   const tokenId = useId();
+  const tokenInput = useRef<HTMLInputElement>(null);
+  const focusCode = useRef(false);
   const helpId = useId();
   const errorId = useId();
+
+  useEffect(() => {
+    if (focusCode.current && !busy && !loading && tokenInput.current) {
+      focusCode.current = false;
+      tokenInput.current.focus();
+    }
+  }, [busy, loading]);
 
   const handleError = useCallback((issue: unknown) => {
     if (issue instanceof ApiError && (issue.status === 401 || issue.code === 'SESSION_CHANGED')) callbacks.current.onSessionExpired();
@@ -66,7 +75,7 @@ export default function EmailVerificationPanel({ ownerId, email, onVerified, onS
 
   useEffect(() => {
     mounted.current = true;
-    lastVerified.current = null;
+    lastVerified.current = null; focusCode.current = false;
     setSnapshot(null); setToken(''); setNotice(''); setError('');
     void refresh();
     const foreground = () => { if (document.visibilityState === 'visible') void refresh(); };
@@ -84,6 +93,7 @@ export default function EmailVerificationPanel({ ownerId, email, onVerified, onS
     if (flight.current || !snapshot || snapshot.verifiedAt !== null) return;
     const submittedToken = token.trim();
     if (action === 'confirm' && !/^[a-f0-9]{64}$/.test(submittedToken)) {
+      tokenInput.current?.focus();
       setError('이메일에 있는 인증 코드를 그대로 붙여 넣어 주세요.'); return;
     }
     if (action === 'request' && !snapshot.canRequest) return;
@@ -100,8 +110,8 @@ export default function EmailVerificationPanel({ ownerId, email, onVerified, onS
       if (response.ok !== true) throw new Error('Invalid email verification acknowledgement.');
       if (!mounted.current || version !== generation.current) return;
       if (action === 'request') {
-        setToken('');
-        setNotice('인증 안내를 요청했습니다. 이메일이 도착하면 가장 최근에 요청한 인증 코드를 입력해 주세요.');
+        setToken(''); focusCode.current = true;
+        setNotice('인증 이메일을 요청했어요. 메일에서 코드를 복사해 아래에 붙여 넣어 주세요.');
       } else {
         setNotice('이메일을 확인했습니다. 계정의 거래 상태를 다시 확인하고 있습니다.');
         lastVerified.current = true;
@@ -128,19 +138,24 @@ export default function EmailVerificationPanel({ ownerId, email, onVerified, onS
   const submit = (event: FormEvent) => { event.preventDefault(); void mutate('confirm'); };
   return <section className="sa-email-panel" aria-labelledby={titleId} aria-busy={loading || busy !== null} data-testid="email-verification-panel"
     data-verified={snapshot ? String(verified) : 'loading'}>
-    <div className="sa-section-heading"><div><h2 id={titleId}>이메일 확인</h2><p className="sa-email-address" data-testid="email-address">{email}</p></div>
-      <button type="button" className="sa-icon-button" aria-label="이메일 확인 상태 새로고침" data-testid="email-refresh" disabled={loading || busy !== null} onClick={() => void refresh()}><RefreshCw size={18} /></button></div>
-    {!snapshot ? <p className="sa-muted" role="status">{loading ? '이메일 확인 상태를 불러오고 있습니다.' : '상태를 불러오지 못했습니다. 다시 확인해 주세요.'}</p>
-      : verified ? <div className="sa-email-confirmed" data-testid="email-verified"><strong>확인된 이메일입니다.</strong><p>이메일 확인과 거래 자격 심사는 별도로 진행됩니다.</p></div>
-      : <><p className="sa-muted">가입한 이메일을 확인해 주세요. 이메일 확인 후에도 계정의 거래 제한이 해제되어야 새 거래를 할 수 있습니다.</p>
+    <div className="sa-section-heading"><h2 id={titleId}>이메일 확인</h2>
+      <button type="button" className="sa-icon-button" aria-label="이메일 확인 상태 새로고침" data-testid="email-refresh" disabled={loading || busy !== null} onClick={() => void refresh()}><RefreshCw size={17} aria-hidden="true" /></button></div>
+    <div className="sa-email-identity">
+      <Mail size={18} aria-hidden="true" />
+      <p className="sa-email-address" data-testid="email-address">{email}</p>
+      {verified && <span className="sa-email-proof" data-testid="email-verified"><Check size={15} aria-hidden="true" />확인 완료</span>}
+    </div>
+    {!snapshot ? <p className="sa-muted" role="status">{loading ? '이메일 확인 상태를 불러오고 있어요.' : '상태를 불러오지 못했어요. 새로고침해 주세요.'}</p>
+      : !verified && <>
+        <p className="sa-email-instruction">가입한 이메일로 인증 코드를 받아 주세요.</p>
         <button type="button" className="sa-secondary sa-email-request" data-testid="email-request" disabled={busy !== null || loading || !snapshot.canRequest} onClick={() => void mutate('request')}>{busy === 'request' ? '요청 중' : '인증 이메일 요청'}</button>
-        {!snapshot.canRequest && <p className="sa-field-help" role="status">지금은 인증 이메일을 요청할 수 없습니다. 이미 받은 코드는 아래에 입력할 수 있습니다.</p>}
+        {!snapshot.canRequest && <p className="sa-field-help" role="status">지금은 새 코드를 요청할 수 없어요. 마지막으로 받은 코드를 입력해 주세요.</p>}
         <form onSubmit={submit} className="sa-email-form">
-          <div className="sa-field"><label htmlFor={tokenId}>인증 코드</label><input id={tokenId} type="text" data-testid="email-token" value={token}
+          <div className="sa-field"><label htmlFor={tokenId}>인증 코드</label><input ref={tokenInput} id={tokenId} type="text" data-testid="email-token" value={token}
             onChange={(event) => { setToken(event.target.value); setError(''); }} autoComplete="off" autoCapitalize="none" spellCheck={false}
             maxLength={128} required disabled={busy !== null || loading} aria-describedby={`${helpId}${error ? ` ${errorId}` : ''}`} />
-            <p id={helpId} className="sa-field-help">가장 최근에 요청한 인증 코드로 확인해 주세요. 비밀번호 복구 코드는 사용할 수 없습니다.</p></div>
-          <button className="sa-primary" type="submit" data-testid="email-confirm" disabled={busy !== null || loading || !token.trim()}>{busy === 'confirm' ? '확인 중' : '이메일 확인'}</button>
+            <p id={helpId} className="sa-field-help">가장 최근에 받은 이메일 확인용 코드를 사용해 주세요.</p></div>
+          <button className="sa-primary" type="submit" data-testid="email-confirm" disabled={busy !== null || loading || !token.trim()}>{busy === 'confirm' ? '확인 중' : '코드 확인'}</button>
         </form></>}
     {error && <p id={errorId} className="sa-error" role="alert" data-testid="email-error">{error}</p>}
     {notice && <p className="sa-notice" role="status" data-testid="email-notice">{notice}</p>}

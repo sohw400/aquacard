@@ -1,4 +1,5 @@
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, CreditCard, Percent, RefreshCw, RotateCcw, Waves, type LucideIcon } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronRight, CreditCard, Percent, RefreshCw, RotateCcw, Waves, type LucideIcon } from 'lucide-react';
 import CoinIcon from './CoinIcon';
 import { dateLabel, dayLabel, money, monthDay, shortDate, timeLabel } from '../lib/format';
 import type { AppState, FundingOperation, FundingSymbol, Payment, Transaction } from '../lib/types';
@@ -29,45 +30,62 @@ export function statusOf(item: Transaction): [string, Tone] | null {
 export const signed = (amount: number, positive: boolean, plain = false) => amount === 0 ? money(0) : `${plain ? '' : amount < 0 ? '−' : positive ? '+' : ''}${money(Math.abs(amount))}`;
 
 function ActivityRow({ item, payment, coin, onRefund, onFunding, onDetail, detailed }: { item: Transaction; payment?: Payment; coin?: FundingSymbol; onRefund: (payment: Payment) => void; onFunding?: (id: string) => void; onDetail?: (item: Transaction) => void; detailed: boolean }) {
-  const refundable = detailed && payment && ['completed', 'partially_refunded'].includes(payment.status);
+  const refundable = detailed && payment && payment.refunded < payment.amount && ['completed', 'partially_refunded'].includes(payment.status);
   const unsettled = Boolean(item.fundingId) && item.status !== 'completed';
   const received = item.kind === 'transfer' && Boolean(item.member) && item.amount > 0;
   const positive = !unsettled && (['deposit', 'refund', 'reward', 'payback', 'card'].includes(item.kind) || received) && item.amount > 0;
   const Icon = item.kind === 'transfer' && item.amount < 0 ? ArrowUpRight : received ? ArrowDownLeft : ICONS[item.kind];
   const status = statusOf(item);
-  return <div className="activity-row">
+  return <div className={`activity-row${detailed ? ' ledger-row' : ''}`}>
     {coin ? <CoinIcon symbol={coin} /> : <span className={`activity-icon${item.kind === 'payment' ? ' merchant' : ''}`} aria-hidden="true">{item.kind === 'payment' ? item.title.trim().charAt(0) : <Icon />}</span>}
     <div className="activity-copy">
-      <strong>{!detailed && onDetail
-        ? <button type="button" className="recent-detail" onClick={() => onDetail(item)} aria-label={`${item.title} 상세`}>{item.title}</button>
+      <strong>{onDetail
+        ? <button type="button" className={detailed ? 'ledger-detail' : 'recent-detail'} data-testid={detailed ? `tx-detail-${item.id}` : undefined}
+          onClick={() => onDetail(item)} aria-label={`${item.title} 상세`}>{item.title}</button>
         : item.title}</strong>
       <span>{detailed ? timeLabel(item.timestamp) : shortDate(item.timestamp)}{status && <em className={`status-text ${status[1]}`}>{status[0]}</em>}</span>
-      {detailed && (onDetail || (item.fundingId && onFunding) || refundable) && <div className="activity-actions">
-        {onDetail && <button type="button" className="pill-button" data-testid={`tx-detail-${item.id}`} aria-label={`${item.title} 상세`} onClick={() => onDetail(item)}>상세</button>}
+      {detailed && ((item.fundingId && onFunding) || refundable) && <div className="activity-actions">
         {item.fundingId && onFunding && <button type="button" className="pill-button" data-testid={`funding-open-${item.fundingId}`} onClick={() => onFunding(item.fundingId!)} aria-label={`${item.title} 처리 내역`}>처리 내역</button>}
         {refundable && <button type="button" className="pill-button" onClick={() => onRefund(payment)} aria-label={`${payment.merchant} 환불`}>환불</button>}
       </div>}
     </div>
     <div className={`activity-amount${positive ? ' positive' : ''}${item.kind === 'payment' && item.status === 'refunded' ? ' refunded' : ''}${unsettled ? ' unsettled' : ''}`}>
       {item.amount !== 0 || item.kind === 'payment' || item.fundingId ? <strong>{signed(item.amount, positive, unsettled)}</strong> : null}
+      {detailed && item.kind === 'payback' && <small>리워드 적립</small>}
     </div>
+    {detailed && onDetail && <ChevronRight size={15} className="ledger-chevron" aria-hidden="true" />}
   </div>;
 }
 
 export function ActivityList({ items, onRefund, payments, operations, onFunding, onDetail, detailed = false, empty = '아직 거래가 없어요.' }: { items: Transaction[]; onRefund: (payment: Payment) => void; payments: Payment[]; operations: FundingOperation[]; onFunding?: (id: string) => void; onDetail?: (item: Transaction) => void; detailed?: boolean; empty?: string }) {
   if (!items.length) return <p className="empty-text">{empty}</p>;
-  const row = (item: Transaction) => <ActivityRow key={item.id} item={item} payment={item.kind === 'payment' ? payments.find((p) => p.id === item.paymentId) : undefined} coin={item.fundingId ? operations.find((operation) => operation.id === item.fundingId)?.symbol : undefined} onRefund={onRefund} onFunding={onFunding} onDetail={onDetail} detailed={detailed} />;
+  const paymentById = new Map(payments.map(payment => [payment.id, payment]));
+  const coinByOperation = new Map(operations.map(operation => [operation.id, operation.symbol]));
+  const row = (item: Transaction) => <ActivityRow key={item.id} item={item}
+    payment={item.kind === 'payment' && item.paymentId ? paymentById.get(item.paymentId) : undefined}
+    coin={item.fundingId ? coinByOperation.get(item.fundingId) : undefined}
+    onRefund={onRefund} onFunding={onFunding} onDetail={onDetail} detailed={detailed} />;
   if (!detailed) return <div className="activity-list">{items.map(row)}</div>;
   const days = new Map<string, Transaction[]>();
-  items.forEach((item) => { const day = dayLabel(item.timestamp); days.set(day, [...(days.get(day) ?? []), item]); });
-  return <div className="activity-list detailed">{[...days].map(([day, list]) => <div className="activity-day" key={day}><h2>{day}</h2>{list.map(row)}</div>)}</div>;
+  for (const item of items) {
+    const day = dateLabel(item.timestamp);
+    const list = days.get(day);
+    if (list) list.push(item);
+    else days.set(day, [item]);
+  }
+  const yearOf = (at: number) => new Date(at + 9 * 3_600_000).getUTCFullYear();
+  const newest = yearOf(items[0].timestamp);
+  return <div className="activity-list detailed">{[...days].map(([day, list]) => <div className="activity-day" key={day}>
+    <h2>{yearOf(list[0].timestamp) === newest ? dayLabel(list[0].timestamp) : day}</h2>{list.map(row)}</div>)}</div>;
 }
 
 /** Credits from paybacks and Reserve, and what card payments took out of rewards. */
 export function RewardHistory({ state }: { state: AppState }) {
+  const [visible, setVisible] = useState(8);
   const today = dateLabel(Date.now() + state.clockOffsetMs);
+  const paymentById = new Map(state.payments.map(payment => [payment.id, payment]));
   const credits = state.transactions.filter((item) => (item.kind === 'payback' || item.kind === 'reward') && item.amount > 0).map((item) => {
-    const payment = item.paymentId ? state.payments.find((value) => value.id === item.paymentId) : undefined;
+    const payment = item.paymentId ? paymentById.get(item.paymentId) : undefined;
     // A Reserve line is the day's running total, not a payout at one moment, so it shows the date only.
     if (item.kind === 'reward') return { id: item.id, title: item.title, when: monthDay(item.timestamp), detail: dateLabel(item.timestamp) === today ? '오늘 쌓이는 중' : '하루 동안 쌓인 보상', amount: item.amount, timestamp: item.timestamp, use: false };
     return { id: item.id, title: item.title, when: shortDate(item.timestamp), detail: payment?.refunded ? '환불 조정 반영' : '', amount: payment ? payment.cashback - payment.cashbackReversed : item.amount, timestamp: item.timestamp, use: false };
@@ -77,7 +95,9 @@ export function RewardHistory({ state }: { state: AppState }) {
     detail: payment.refunded ? '환불로 돌려받음' : payment.status === 'pending' ? '승인 중' : '',
     amount: -(payment.fromRewards - payment.rewardsRestored), timestamp: payment.timestamp, use: true,
   }));
-  const items = [...credits, ...uses].sort((a, b) => b.timestamp - a.timestamp).slice(0, 8);
-  if (!items.length) return <p className="empty-text">결제하면 페이백이 여기에 쌓여요.</p>;
-  return <div className="plain-list">{items.map((item) => <div className="plain-row" key={item.id}><span className="row-main"><strong>{item.title}</strong><span>{item.when}{item.detail && ` · ${item.detail}`}</span></span><strong className={`row-value${item.use ? '' : ' positive'}`}>{signed(item.amount, true)}</strong></div>)}</div>;
+  const items = [...credits, ...uses].sort((a, b) => b.timestamp - a.timestamp);
+  if (!items.length) return <p className="empty-text">아직 리워드 적립·사용 내역이 없어요.</p>;
+  return <div className="plain-list">{items.slice(0, visible).map((item) => <div className="plain-row" key={item.id}><span className="row-main"><strong>{item.title}</strong><span>{item.when}{item.detail && ` · ${item.detail}`}</span></span><strong className={`row-value${item.use ? '' : ' positive'}`}>{signed(item.amount, true)}</strong></div>)}
+    {visible < items.length && <button className="reward-history-more btn neutral" type="button" onClick={() => setVisible(count => count + 8)}>이전 내역 더 보기</button>}
+  </div>;
 }

@@ -31,3 +31,8 @@
   .sa-transfer-sheet .sa-modal-body { flex: 0 1 auto; padding: 20px; }
   .sa-transfer-sheet .sa-modal-footer { padding: 14px 20px max(16px, env(safe-area-inset-bottom)); }
 }
+.sa-transfer-sheet .sa-modal-header { gap:12px; }
+.sa-transfer-sheet .sa-summary-row { align-items:baseline; gap:12px; }
+.sa-transfer-sheet .sa-summary-row dd { text-align:right; overflow-wrap:anywhere; }
+.sa-transfer-sheet .sa-transfer-review-heading > strong,
+.sa-transfer-sheet .sa-receipt-amount, .sa-transfer-sheet .sa-amount-input { font-variant-numeric:tabular-nums; }

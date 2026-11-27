@@ -4,6 +4,7 @@ import { money } from '../lib/format';
 import { statementText, statementYears, summarizeYear } from '../lib/statement';
 import type { AppState } from '../lib/types';
 import './AccountPages.css';
+import './WalletActivity.css';
 
 const counted = (bucket: { count: number; won: number }) => bucket.count ? `${bucket.count}건 · ${money(bucket.won)}` : '없음';
 
@@ -15,7 +16,7 @@ export default function Statement({ state, now }: { state: AppState; now: number
   const summary = summarizeYear(state, year);
   const { text, rows } = statementText(state, year);
 
-  return <div className="page statement-page" data-testid="page-statement">
+  return <div className="page statement-page wallet-ledger" data-testid="page-statement">
     <div className="statement-overview">
       <div className="statement-period">
         <label htmlFor={years.length > 1 ? 'statement-year' : undefined}>조회 연도</label>
@@ -32,7 +33,7 @@ export default function Statement({ state, now }: { state: AppState; now: number
         <div className="section-title"><h2 id="statement-in">{year}년에 들어온 돈</h2></div>
         <dl className="breakdown plain">
           <div><dt>충전</dt><dd data-testid="statement-deposits">{counted(summary.deposits)}</dd></div>
-          <div><dt>그중 코인을 바꾼 충전</dt><dd data-testid="statement-coin-sales">{counted(summary.coinSales)}</dd></div>
+          <div className="statement-included"><dt>그중 코인을 바꾼 충전</dt><dd data-testid="statement-coin-sales">{counted(summary.coinSales)}</dd></div>
           <div><dt>회원에게 받은 돈</dt><dd data-testid="statement-received">{counted(summary.receivedFromMembers)}</dd></div>
         </dl>
       </section>
@@ -43,13 +44,13 @@ export default function Statement({ state, now }: { state: AppState; now: number
           <div><dt>카드 결제 (환불 뺀 금액)</dt><dd data-testid="statement-card">{counted(summary.cardSpent)}</dd></div>
           <div><dt>회원에게 보낸 돈</dt><dd data-testid="statement-sent">{counted(summary.sentToMembers)}</dd></div>
           <div><dt>지갑 주소로 보낸 돈</dt><dd data-testid="statement-withdrawals">{counted(summary.withdrawals)}</dd></div>
-          {summary.withdrawals.fees > 0 && <div><dt>그중 수수료와 네트워크 비용</dt><dd>{money(summary.withdrawals.fees)}</dd></div>}
+          {summary.withdrawals.fees > 0 && <div className="statement-included"><dt>그중 수수료와 네트워크 비용</dt><dd>{money(summary.withdrawals.fees)}</dd></div>}
           <div><dt>카드 연회비</dt><dd data-testid="statement-fees">{summary.cardFees ? money(summary.cardFees) : '없음'}</dd></div>
         </dl>
       </section>
 
       <section className="plain-section" aria-labelledby="statement-benefits">
-        <div className="section-title"><h2 id="statement-benefits">받은 혜택</h2></div>
+        <div className="section-title"><h2 id="statement-benefits">적립된 리워드</h2></div>
         <dl className="breakdown plain">
           <div><dt>페이백</dt><dd data-testid="statement-payback">{money(summary.payback)}</dd></div>
           <div><dt>리저브 보상</dt><dd data-testid="statement-rewards">{money(summary.reserveRewards)}</dd></div>

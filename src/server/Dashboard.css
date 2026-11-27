@@ -1,0 +1,135 @@
+.sa-signed-in {
+  --sa-ink: #172b31;
+  --sa-muted: #54686d;
+  --sa-line: #dce4e3;
+  --sa-accent: #185c5b;
+  background: #f3f5f4;
+}
+.sa-signed-in .sa-header { border-color:#dce4e1; }
+.sa-signed-in .sa-header-inner, .sa-signed-in .sa-main { max-width:1156px; }
+.sa-signed-in .sa-navigation a[aria-current=page] { color:#174846; background:#ebf2ef; }
+.sa-signed-in .sa-page-heading { padding:2px 0 8px; font-weight:700; letter-spacing:-.05em; }
+.sa-signed-in .sa-page-home { grid-template-columns:minmax(0,1.05fr) minmax(0,1fr); gap:18px; }
+.sa-page-home .sa-card-slot .sa-issuer-panel,
+.sa-signed-in .sa-balance-panel,
+.sa-page-home > .sa-transactions {
+  border:1px solid var(--sa-line);
+  border-radius:16px;
+  min-width:0;
+}
+.sa-page-home .sa-card-slot .sa-issuer-panel {
+  background:linear-gradient(112deg,#e7efec 0%,#eff2ec 58%,#dfeae6 100%);
+  border-color:#d4e0d9;
+  padding:18px 26px 20px;
+}
+.sa-page-home .sa-issuer-heading h2, .sa-page-home .sa-balance-heading h2,
+.sa-signed-in .sa-section-heading h2 { font-size:18px; line-height:1.4; letter-spacing:-.035em; }
+.sa-card-slot .sa-issuer-content { display:flex; flex-direction:column; justify-content:center; gap:0; padding-top:6px; }
+.sa-card-slot .sa-issuer-stage { width:100%; max-width:350px; padding:12px 3px 18px; }
+.sa-card-slot .sa-issuer-card-face { box-shadow:0 9px 13px -8px rgb(12 32 36 / 50%); }
+.sa-card-slot .sa-issuer-details { width:100%; }
+.sa-card-slot .sa-issuer-details.is-compact { border-top:1px solid #c6d6cf; padding-top:10px; }
+.sa-card-slot .sa-issuer-state h3,
+.sa-card-slot .sa-issuer-details.is-compact .sa-issuer-state h3 { font-size:16px; line-height:1.45; letter-spacing:-.03em; }
+.sa-card-slot .sa-issuer-actions { margin-top:10px; }
+.sa-card-slot .sa-issuer-details.is-compact .sa-issuer-actions { margin:0; }
+.sa-card-slot .sa-issuer-actions .sa-issuer-button { min-height:44px; background:#fff; border-color:#a9beb5; color:#23453c; padding:8px 18px; }
+.sa-card-slot .sa-issuer-refresh { min-height:44px; }
+.sa-card-slot .sa-issuer-confirmed { font-size:13px; margin:6px 0 0; }
+.sa-card-slot .sa-issuer-confirmed dt { font-size:12px; }
+.sa-card-slot .sa-issuer-state h3:focus, #funding-title:focus { outline:none; }
+
+.sa-signed-in .sa-balance-panel { background:#fff; color:var(--sa-ink); padding:20px 26px; }
+.sa-balance-panel .sa-balance-heading { min-height:30px; }
+.sa-balance-panel .sa-balance-heading .sa-icon-button { margin:-5px -7px -5px 0; }
+.sa-signed-in .sa-balance-number { display:block; margin:2px 0 16px; color:#102a2d; font-weight:650; font-size:clamp(34px,3.8vw,51px); line-height:1.2; letter-spacing:-.055em; overflow-wrap:anywhere; }
+.sa-wallet-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.sa-wallet-actions button { min-height:46px; border-radius:9px; font-size:14px; padding:8px; }
+.sa-wallet-actions .sa-primary { background:#194f4e; }
+.sa-wallet-actions .sa-secondary { color:#214c4b; border-color:#ccddda; background:#f5f9f7; }
+.sa-wallet-links { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); padding:14px 0 12px; margin-top:8px; }
+.sa-wallet-links > button { display:grid; align-content:center; gap:3px; min-width:0; width:100%; min-height:50px; padding:0; border:0; border-radius:0; text-align:left; background:none; color:var(--sa-ink); cursor:pointer; }
+.sa-wallet-links > button + button { border-left:1px solid var(--sa-line); padding-left:18px; }
+.sa-wallet-links > button > span { color:var(--sa-muted); display:flex; gap:4px; align-items:center; font-size:13px; }
+.sa-wallet-links > button > strong { font-size:20px; line-height:1.3; font-weight:650; letter-spacing:-.035em; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.sa-wallet-links > button:hover strong { text-decoration:underline; text-underline-offset:3px; }
+.sa-wallet-held, .sa-wallet-tag { border-top:1px solid var(--sa-line); font-size:13px; }
+.sa-wallet-held summary, .sa-wallet-held > div, .sa-wallet-tag { min-height:42px; display:flex; align-items:center; gap:6px; justify-content:space-between; }
+.sa-wallet-held summary { cursor:pointer; list-style:none; }
+.sa-wallet-held summary::-webkit-details-marker { display:none; }
+.sa-wallet-held summary > span { margin-right:auto; color:var(--sa-muted); }
+.sa-wallet-held[open] summary > svg { transform:rotate(180deg); }
+.sa-wallet-held > div { padding:0 0 8px; min-height:29px; color:var(--sa-muted); }
+.sa-wallet-held b { font-weight:550; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.sa-wallet-tag { color:var(--sa-muted); }
+.sa-wallet-tag > span { flex-shrink:0; }
+.sa-wallet-tag button { display:flex; align-items:center; justify-content:flex-end; gap:8px; min-height:44px; min-width:0; padding:2px 0 2px 8px; border:0; background:transparent; color:#264d4e; cursor:pointer; }
+.sa-wallet-tag strong { overflow-wrap:anywhere; font-size:13px; font-weight:550; }
+.sa-wallet-tag svg { flex-shrink:0; }
+.sa-balance-panel > [role=status] { color:var(--sa-accent); font-size:12px; }
+
+.sa-page-home > .sa-reserve, .sa-page-home > .sa-rewards-panel {
+  grid-column:auto;
+  align-self:start;
+  background:transparent;
+  border:0;
+  border-top:1px solid #beccc7;
+  border-radius:0;
+  padding:22px 6px 8px;
+}
+.sa-page-home > .sa-rewards-panel { grid-column:2; }
+.sa-page-home > .sa-access-panel { grid-column:1/-1; order:1; }
+.sa-page-home > .sa-access-panel:not(.is-active) { order:0; }
+.sa-page-home > .sa-funding { grid-column:1/-1; background:#fff; padding:24px; }
+.sa-page-home > .sa-funding[hidden] { display:none; }
+.sa-reserve .sa-section-heading { margin:0 0 13px; }
+.sa-reserve .sa-section-heading > strong { font-size:24px; letter-spacing:-.04em; }
+.sa-reserve > details > summary { display:flex; align-items:center; justify-content:space-between; min-height:44px; font-weight:550; color:var(--sa-accent); list-style:none; scroll-margin-top:20px; }
+.sa-reserve > details > summary::-webkit-details-marker { display:none; }
+.sa-reserve > details > summary::after { content:''; width:7px; height:7px; margin:0 5px 4px 15px; border-right:1.6px solid currentColor; border-bottom:1.6px solid currentColor; transform:rotate(45deg); }
+.sa-reserve > details[open] > summary::after { transform:rotate(225deg); }
+.sa-reserve > h3 { margin-top:18px; }
+.sa-reserve-order { padding:8px 12px; border-radius:7px; background:#f0f5f2; }
+.sa-reserve .sa-rewards-preference { gap:15px; padding:11px 0; }
+.sa-reserve .sa-rewards-switch { flex-shrink:0; }
+.sa-page-home .sa-benefits-grid { display:block; }
+.sa-page-home .sa-benefits-grid .sa-rewards-wallet { margin-top:16px; padding:15px 0 0; border:0; border-top:1px solid var(--sa-line); }
+.sa-page-history .sa-transactions { border-color:var(--sa-line); border-radius:14px; background:#fff; }
+.sa-page-history .sa-card-status { font-size:12px; }
+.sa-page-history .sa-card-amounts { gap:7px; }
+.sa-page-history .sa-card-summary, .sa-page-history .sa-transaction-row { padding-block:15px; }
+.sa-signed-in .sa-empty-state { color:var(--sa-muted); border:0; border-top:1px solid var(--sa-line); border-radius:0; padding:20px 0; background:transparent; }
+
+@media(max-width:700px) {
+  .sa-signed-in .sa-main { padding:12px 14px calc(83px + env(safe-area-inset-bottom)); }
+  .sa-signed-in .sa-header-inner { min-height:52px; padding:4px 17px; }
+  .sa-signed-in .sa-page-home { grid-template-columns:minmax(0,1fr); gap:10px; }
+  .sa-page-home .sa-card-slot .sa-issuer-panel { padding:12px 17px 14px; }
+  .sa-card-slot .sa-issuer-content { padding-top:2px; }
+  .sa-card-slot .sa-issuer-stage { max-width:clamp(240px,80vw,335px); padding:8px 2px 13px; }
+  .sa-card-slot .sa-issuer-details.is-compact { padding-top:4px; }
+  .sa-signed-in .sa-balance-panel, .sa-page-home > .sa-transactions { padding:16px 18px; }
+  .sa-signed-in .sa-balance-number { font-size:35px; margin:1px 0 11px; }
+  .sa-wallet-links { margin-top:0; padding:9px 0; }
+  .sa-wallet-links > button > strong { font-size:18px; }
+  .sa-page-home > .sa-reserve, .sa-page-home > .sa-rewards-panel { margin-top:7px; padding:17px 4px 8px; }
+  .sa-page-home > .sa-rewards-panel { grid-column:1; }
+  .sa-signed-in .sa-navigation a[aria-current=page] { color:#124e4c; background:none; }
+  .sa-signed-in .sa-navigation { padding-block-start:4px; background:#fff; }
+}
+.sa-page-history .sa-card-detail { padding:14px 14px 0; background:#f3f6f3; }
+.sa-receipt-summary { display:grid; gap:9px; margin:0; }
+.sa-receipt-summary > div { display:flex; align-items:baseline; justify-content:space-between; gap:14px; }
+.sa-receipt-summary dt { color:var(--sa-muted); font-size:13px; }
+.sa-receipt-summary dd { display:grid; gap:2px; min-width:0; margin:0; text-align:right; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.sa-receipt-net { padding-bottom:10px; border-bottom:1px solid var(--sa-line); }
+.sa-receipt-net dt { color:var(--sa-ink); font-weight:550; }
+.sa-receipt-net dd { color:var(--sa-ink); font-size:21px; font-weight:650; letter-spacing:-.035em; }
+.sa-receipt-toggle { width:100%; display:flex; justify-content:space-between; gap:10px; align-items:center; min-height:45px; margin-top:8px; padding:6px 0; border:0; border-top:1px solid var(--sa-line); background:transparent; color:var(--sa-accent); font-weight:550; cursor:pointer; }
+.sa-receipt-toggle[aria-expanded=true] svg { transform:rotate(180deg); }
+.sa-receipt-toggle + div:not([hidden]) { padding:0 0 17px; }
+
+@media(max-width:360px) {
+  .sa-wallet-links > button + .sa-payback-shortcut { padding-left:8px; }
+  .sa-wallet-links { grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); }
+}

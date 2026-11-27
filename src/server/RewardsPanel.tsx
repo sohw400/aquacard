@@ -67,7 +67,7 @@ export default function RewardsPanel({ rewards, owner }: { rewards: RewardsSnaps
             <div><dt>남은 한도</dt><dd data-testid="cashback-remaining">{money(rewards.cashback.remainingWon)}</dd></div>
             <div><dt>환수 금액</dt><dd data-testid="cashback-reversed">{money(rewards.cashback.reversedWon)}</dd></div>
           </dl>
-          {rewards.programActive && <p className="sa-rewards-policy">승인 때 적립 재원이 확보된 결제에 페이백을 지급해요.</p>}
+          {rewards.programActive && <p className="sa-rewards-policy">회사 예산이 부족하면 새 결제의 페이백은 0원이에요.</p>}
           {!rewards.programActive && <p className="sa-rewards-program" data-testid="rewards-program-status">새 페이백 적립 중지</p>}
         </div>
         <div className="sa-rewards-wallet">

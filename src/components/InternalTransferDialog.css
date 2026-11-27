@@ -9,9 +9,6 @@
 /* 44px target, centred on the 30.8px title line, without making the header taller than the title. */
 .internal-transfer-dialog .itd-close { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; margin: -6.6px 0; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-soft); cursor: pointer; }
 .internal-transfer-dialog .itd-body { min-height: 0; padding: 10px 20px 22px; overflow-y: auto; overscroll-behavior: contain; }
-.internal-transfer-dialog .itd-route { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--sunken); }
-.internal-transfer-dialog .itd-route > strong { color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.5; }
-.internal-transfer-dialog .itd-route > svg { flex-shrink: 0; color: var(--accent); }
 .internal-transfer-dialog .itd-amount { padding-top: 22px; }
 .internal-transfer-dialog .itd-amount > label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 14px; font-weight: 500; line-height: 1.5; }
 .internal-transfer-dialog .itd-input { display: flex; align-items: baseline; gap: 6px; padding-bottom: 8px; border-bottom: 2px solid var(--line); transition: border-color .15s; }
@@ -44,7 +41,7 @@
 .internal-transfer-dialog .itd-review-amount + .itd-detail-list { padding: 6px 16px; border-radius: var(--radius-md); background: var(--sunken); }
 .internal-transfer-dialog .itd-quote { margin-top: 18px; padding: 4px 16px 10px; border-radius: var(--radius-md); background: var(--sunken); }
 .internal-transfer-dialog .itd-section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
-.internal-transfer-dialog .itd-section-title > h3, .internal-transfer-dialog .itd-balances > h3 { margin: 0; color: var(--ink-soft); font-size: 14px; font-weight: 600; line-height: 1.5; }
+.internal-transfer-dialog .itd-section-title > h3 { margin: 0; color: var(--ink-soft); font-size: 14px; font-weight: 600; line-height: 1.5; }
 .internal-transfer-dialog .itd-clock { display: flex; align-items: center; gap: 6px; }
 .internal-transfer-dialog .itd-clock > span { color: var(--subtle); font-size: 13px; line-height: 1.5; white-space: nowrap; }
 .internal-transfer-dialog .itd-clock > .expired { color: var(--danger); font-weight: 600; }
@@ -53,20 +50,13 @@
 .internal-transfer-dialog .itd-net-row dt { color: var(--ink); font-weight: 600; }
 .internal-transfer-dialog .itd-net-row dd { color: var(--accent); font-size: 20px; font-weight: 700; letter-spacing: -.4px; }
 .internal-transfer-dialog .itd-expired { margin: 8px 0 4px; color: var(--danger); font-size: 13px; line-height: 1.6; }
-.internal-transfer-dialog .itd-balances { margin-top: 12px; padding: 14px 16px 6px; border-radius: var(--radius-md); background: var(--sunken); }
-.internal-transfer-dialog .itd-balance { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
-.internal-transfer-dialog .itd-balance > span { color: var(--muted); font-size: 14px; line-height: 1.5; }
-.internal-transfer-dialog .itd-balance > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 8px; font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums; }
-.internal-transfer-dialog .itd-balance > div > span { color: var(--subtle); }
-.internal-transfer-dialog .itd-balance > div > svg { flex-shrink: 0; color: var(--faint); }
-.internal-transfer-dialog .itd-balance > div > strong { color: var(--ink); font-weight: 700; overflow-wrap: anywhere; }
 .internal-transfer-dialog .itd-reserve-note { margin: 12px 0 0; padding: 12px 16px; border-radius: var(--radius-sm); background: var(--accent-weak); color: var(--accent-strong); font-size: 13px; line-height: 1.6; }
 .internal-transfer-dialog .itd-error { margin: 14px 0 0; padding: 12px 16px; border-radius: var(--radius-sm); background: var(--danger-weak); color: var(--danger); font-size: 14px; line-height: 1.6; }
 .internal-transfer-dialog .itd-demo-note { margin: 16px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
 .internal-transfer-dialog .itd-completed { text-align: center; }
 .internal-transfer-dialog .itd-completed > p:first-of-type { margin: 0; color: var(--muted); font-size: 16px; font-weight: 600; line-height: 1.5; }
 .internal-transfer-dialog .itd-result-amount { display: block; margin: 4px 0 18px; color: var(--ink); font-size: 32px; font-weight: 700; line-height: 1.3; letter-spacing: -.8px; font-variant-numeric: tabular-nums; }
-.internal-transfer-dialog .itd-completed .itd-route, .internal-transfer-dialog .itd-completed .itd-quote, .internal-transfer-dialog .itd-completed .itd-balances, .internal-transfer-dialog .itd-completed .itd-detail-list { text-align: left; }
+.internal-transfer-dialog .itd-completed .itd-quote, .internal-transfer-dialog .itd-completed .itd-detail-list { text-align: left; }
 .internal-transfer-dialog .itd-completed > .itd-detail-list:not(.itd-receipt-meta) { margin-top: 12px; padding: 6px 16px; border-radius: var(--radius-md); background: var(--sunken); }
 .internal-transfer-dialog .itd-receipt-meta { margin-top: 12px; padding: 6px 16px; border-radius: var(--radius-md); background: var(--sunken); }
 .internal-transfer-dialog .itd-receipt-meta > div { font-size: 13px; }
@@ -93,7 +83,6 @@
   .internal-transfer-dialog .itd-presets { gap: 6px; }
   .internal-transfer-dialog .itd-presets > button { padding: 8px 6px; font-size: 13px; }
   .internal-transfer-dialog .itd-input .amount-sizer { font-size: 30px; }
-  .internal-transfer-dialog .itd-balance > div { font-size: 13px; }
 }
 @media (hover: hover) {
   .internal-transfer-dialog .itd-close:hover { background: var(--fill); }
@@ -101,3 +90,22 @@
   .internal-transfer-dialog .itd-primary:hover:not(:disabled) { background: var(--primary-hover); }
   .internal-transfer-dialog .itd-secondary:hover:not(:disabled) { background: var(--fill-strong); }
 }
+
+
+.reserve-heading { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.reserve-heading .itd-close { margin-left: -12px; }
+.reserve-route { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--radius-sm); background: var(--sunken); text-align: left; }
+.reserve-route > div { display: grid; gap: 3px; }
+.reserve-route > div:last-child { padding-inline-start: 12px; }
+.reserve-route span, .reserve-balances thead th { color: var(--subtle); font-size: 13px; font-weight: 500; }
+.reserve-route strong { color: var(--ink); font-size: 16px; font-weight: 650; }
+.reserve-route > svg { color: var(--muted); }
+.reserve-balances { width: 100%; margin-top: 18px; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; text-align: right; }
+.reserve-balances caption { padding-bottom: 8px; color: var(--ink); font-size: 15px; font-weight: 650; text-align: left; }
+.reserve-balances th, .reserve-balances td { padding: 8px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.reserve-balances th:first-child { text-align: left; }
+.reserve-balances tbody th, .reserve-balances td { color: var(--muted); font-weight: 500; }
+.reserve-balances td:last-child { color: var(--ink); font-weight: 650; }
+.reserve-transfer .itd-review-amount, .send-sheet .itd-review-amount { text-align: left; }
+.reserve-transfer .itd-completed, .send-sheet .itd-completed { text-align: left; }
+.reserve-transfer .itd-amount-details, .reserve-transfer .itd-review-amount + .itd-detail-list { padding: 8px 0; border-radius: 0; border-block: 1px solid var(--line); background: transparent; }
