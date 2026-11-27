@@ -27,6 +27,7 @@ const runtimeErrors = [];
 const preferenceRequests = [];
 const rewardHistoryPath = '/api/account/activity/rewards';
 const historyRequests = [];
+const reserveHistoryRequests = [];
 let browser;
 let page;
 let originalProgramActive;
@@ -145,6 +146,7 @@ try {
   page.on('pageerror', (error) => runtimeErrors.push(error.message));
   page.on('request', (request) => {
     if (preferenceRequest(request)) preferenceRequests.push({ key: request.headers()['idempotency-key'], ownerId: request.headers()['x-aqua-account'], body: request.postDataJSON() });
+    if (new URL(request.url()).pathname === '/api/account/activity/reserve') reserveHistoryRequests.push(request.headers()['x-aqua-account']);
     if (new URL(request.url()).pathname === rewardHistoryPath) historyRequests.push(request.headers()['x-aqua-account']);
   });
   const health = await context.request.get(new URL('/api/health', base).href);
@@ -176,6 +178,7 @@ try {
   programChanged = !originalProgramActive;
   command('server:rewards', ['grant', owner.email, '3000', `${runId}-grant`]);
   await snapshot({ cash: 100_000, cashHeld: 0, cashTotal: 100_000, reward: 3_000, rewardHeld: 0, debt: 0, confirmed: 0, pending: 0, reversed: 0, remaining: 10_000 });
+  assert.deepEqual(reserveHistoryRequests, [], 'Folded Reserve management must not fetch the movement journal.');
   const reserve = page.getByTestId('server-reserve');
   await reserve.locator('summary').click();
   await reserve.getByLabel('옮길 금액 (원)').fill('100001');
@@ -224,6 +227,7 @@ try {
   await movements.getByText('−1,000원', { exact: true }).waitFor();
   assert.deepEqual(await movements.locator('li > span').allTextContents(), ['−1,000원', '+1,000원']);
   assert.deepEqual(await movements.locator('li strong').allTextContents(), ['지갑으로 빼기', '지갑에서 넣기']);
+  assert.ok(reserveHistoryRequests.length > 0 && reserveHistoryRequests.every(id => id === userId));
   pass('Reserve movements recover a lost response after reload, preserve one booking and the fallback setting, then restore wallet funds.');
 
   await setPreference(true);

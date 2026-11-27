@@ -60,3 +60,14 @@ test('remote PostgreSQL connections cannot disable certificate verification or i
   assert.throws(() => new Database({ connectionString: 'postgresql://aqua:unused@localhost/aqua?options=-c+search_path%3Dpublic' }), /session options/);
   assert.throws(() => new Database({ connectionString: 'postgresql://aqua:unused@localhost/aqua', schema: 'pg_catalog' }), /system namespaces/);
 });
+
+test('private staging requires certificate-verified database TLS for every runtime role', async t => {
+  const original = process.env.NODE_ENV;
+  t.after(() => { if (original === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = original; });
+  process.env.NODE_ENV = 'staging';
+  const local = 'postgresql://local-test@127.0.0.1/aqua';
+  assert.throws(() => new Database({ connectionString: local + '?sslmode=disable' }), /TLS cannot be disabled/);
+  const db = new Database({ connectionString: local, ca: 'example-private-ca' });
+  try { assert.deepEqual(db.pool.options.ssl, { rejectUnauthorized: true, ca: 'example-private-ca' }); }
+  finally { await db.close(); }
+});

@@ -81,7 +81,7 @@ python3 -m venv /tmp/aqua-runtime-cfn
   infra/staging-runtime-edge.yaml infra/staging-runtime-service.yaml infra/staging-network.yaml
 /tmp/aqua-runtime-cfn/bin/python -B -m unittest discover -s scripts -p test_staging_runtime_template.py
 node --env-file-if-exists=.env --import tsx --test --test-name-pattern='private staging' \
-  server/staging-issuer.test.ts server/http.test.ts
+  server/staging-issuer.test.ts server/http.test.ts server/database.test.ts
 ```
 
 로컬 검증은 템플릿 스키마와 접근 범위, 실제 발급사 어댑터와 loopback sidecar 간 서명·거절·재조회, 위조된 전달 IP에 대한 API 요청 제한을 확인한다. 실계정에서는 태스크 기동, 보안 그룹·DNS·인증서·비밀 회전, 경보 수신, 장애 복구 시간을 별도로 기록한다.
