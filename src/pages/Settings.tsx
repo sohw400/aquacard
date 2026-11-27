@@ -1,3 +1,4 @@
+import { BadgeCheck, BookOpen, CreditCard, Fingerprint, History, QrCode, ReceiptText, SlidersHorizontal } from 'lucide-react';
 import { NavRow } from '../components/ui';
 import PaymentSources from '../components/PaymentSources';
 import { maskEmail, maskPhone } from '../lib/auth';
@@ -34,51 +35,51 @@ export default function Settings({ state, account, cardStatus, go, onRewardsAuto
   return <div className="page settings-page">
     <section className="settings-identity" aria-label="내 정보">
       <div className="profile">
-        <span className="avatar" aria-hidden="true">{account.name.charAt(0)}</span>
+        <span className="settings-profile-icon" aria-hidden="true"><Fingerprint size={30} strokeWidth={1.6} /></span>
         <div><strong>{account.name}</strong><span data-testid="own-tag">@{account.tag} · {maskEmail(account.email)}</span></div>
       </div>
-      <NavRow label="내 태그와 QR" detail={`태그·QR${account.findByPhone ? '·휴대폰 번호' : ''}${account.findByEmail ? '·이메일' : ''}로 받아요`} value={`@${account.tag}`} testId="open-receive" onClick={onReceive} />
+      <div className="settings-qr"><QrCode size={22} strokeWidth={1.6} aria-hidden="true" /><NavRow label="내 태그와 QR" detail={`태그·QR${account.findByPhone ? '·휴대폰 번호' : ''}${account.findByEmail ? '·이메일' : ''}로 받아요`} value={`@${account.tag}`} testId="open-receive" onClick={onReceive} /></div>
     </section>
 
     <section className="settings-group" aria-labelledby="settings-card">
-      <h2 id="settings-card">카드</h2>
+      <h2 id="settings-card"><CreditCard size={17} strokeWidth={1.8} aria-hidden="true" />카드</h2>
       <NavRow label="카드와 멤버십" value={state.card.stage === 'not_applied' ? '카드 없음' : `${plan.short} · ${cardStatus}`} onClick={() => go('card')} />
       <NavRow label="결제 한도" value={`1회 ${state.controls.perPayment / 10_000}만원`} testId="open-limits" onClick={() => go('limits')} />
       <NavRow label="온라인·해외 결제" value={channelText(state.controls.online, state.controls.overseas)} testId="open-channels" onClick={() => go('channels')} />
     </section>
 
     <section className="settings-group" aria-labelledby="settings-pay">
-      <h2 id="settings-pay">결제에 쓸 잔액</h2>
+      <h2 id="settings-pay"><SlidersHorizontal size={17} strokeWidth={1.8} aria-hidden="true" />결제에 쓸 잔액</h2>
       <PaymentSources state={state} onRewardsAuto={onRewardsAuto} onReserveAuto={onReserveAuto} />
     </section>
 
     <section className="settings-group" aria-labelledby="settings-history">
-      <h2 id="settings-history">이용 내역</h2>
+      <h2 id="settings-history"><History size={17} strokeWidth={1.8} aria-hidden="true" />이용 내역</h2>
       <NavRow label="거래 내역" onClick={() => go('activity')} />
       <NavRow label="연간 거래 내역" detail="연도별 조회·복사" testId="settings-statement" onClick={() => go('statement')} />
     </section>
 
     <section className="settings-group" aria-labelledby="settings-account">
-      <h2 id="settings-account">계정</h2>
+      <h2 id="settings-account"><BadgeCheck size={17} strokeWidth={1.8} aria-hidden="true" />계정</h2>
       <dl className="breakdown plain"><div><dt>이메일</dt><dd>{maskEmail(account.email)}</dd></div><div><dt>휴대폰</dt><dd>{maskPhone(account.phone)}</dd></div><div><dt>본인확인</dt><dd>{dateLabel(account.verifiedAt)}</dd></div><div><dt>다음 고객확인</dt><dd data-testid="kyc-due">{dateLabel(account.kycDueAt)}</dd></div></dl>
       <NavRow label="비밀번호 변경" testId="open-password" onClick={onPassword} />
       <NavRow label="알림" value={alertStatus} testId="open-notifications" onClick={() => go('notifications')} />
     </section>
 
     <section className="settings-group" aria-labelledby="settings-fees">
-      <h2 id="settings-fees">요금</h2>
+      <h2 id="settings-fees"><ReceiptText size={17} strokeWidth={1.8} aria-hidden="true" />요금</h2>
       <dl className="breakdown plain">
         <div><dt>{plan.short} 멤버십</dt><dd>{plan.annualFee ? `연 ${money(plan.annualFee)}` : '무료'}</dd></div>
         {state.card.billingAt !== null && <div><dt>{state.card.nextPlan ? `${ro(PLANS[state.card.nextPlan].short)} 바뀌는 날` : '다음 갱신일'}</dt><dd>{dateLabel(state.card.billingAt)}</dd></div>}
         <div><dt>충전</dt><dd>무료</dd></div>
         <div><dt>Aqua 회원에게 보내기</dt><dd>무료</dd></div>
         <div><dt>회원에게 보내기 한도</dt><dd data-testid="settings-send-limit">하루 {manWon(sendLimits.daily)}</dd></div>
-        <div><dt>지갑 주소로 보내기</dt><dd>네트워크 비용, 다른 코인은 +0.5%</dd></div>
+        <div><dt>지갑 주소로 보내기</dt><dd>네트워크 비용 + 코인 전환 시 0.5%</dd></div>
       </dl>
     </section>
 
     <section className="settings-group" aria-labelledby="settings-help">
-      <h2 id="settings-help">도움말</h2>
+      <h2 id="settings-help"><BookOpen size={17} strokeWidth={1.8} aria-hidden="true" />도움말</h2>
       <NavRow label="자주 묻는 질문" testId="open-faq" onClick={() => go('faq')} />
       <NavRow label="약관 및 정책" testId="open-terms" onClick={() => go('terms')} />
     </section>

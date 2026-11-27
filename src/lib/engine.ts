@@ -92,7 +92,7 @@ function cardPaymentTerms(state: AppState, amount: number, channel: PaymentChann
     else if (amount > dailyLeft) issue = `일 결제 한도 ${manWon(state.controls.daily)}을 넘어요.`;
     else if (amount > monthlyLeft) issue = `월 결제 한도 ${manWon(state.controls.monthly)}을 넘어요.`;
     else if (shortfall > 0) {
-      issue = `잔액이 부족해요. 결제에 쓸 수 있는 금액이 ${wonText(shortfall)} 모자라요.`;
+      issue = `결제할 잔액이 ${wonText(shortfall)} 모자라요.`;
       if (!state.reserveAuto && state.reserve >= shortfall) issue += ' 지갑 부족분을 리저브에서 쓰도록 설정하면 결제할 수 있어요.';
     }
   }

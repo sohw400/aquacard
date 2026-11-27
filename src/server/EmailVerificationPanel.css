@@ -1,16 +1,19 @@
-.sa-email-panel { grid-column:1/-1; min-width:0; padding:26px 28px; border:1px solid var(--sa-line); border-radius:14px; background:#fff; }
-.sa-email-panel .sa-section-heading { align-items:flex-start; }
-.sa-email-panel .sa-section-heading .sa-icon-button { margin:-8px -8px -5px 0; }
-.sa-email-address { overflow-wrap:anywhere; }
-.sa-email-request { margin-top:17px; }
-.sa-email-form { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:16px; margin-top:24px; padding-top:23px; border-top:1px solid var(--sa-line); }
-.sa-email-form .sa-field { margin:0; }
-.sa-email-form > button { margin-top:29px; }
-.sa-email-confirmed strong { font-size:14px; font-weight:550; color:var(--sa-accent); }
-.sa-email-confirmed p { margin-top:5px; color:var(--sa-muted); font-size:12px; line-height:1.8; }
-.sa-email-panel > .sa-notice { margin-top:18px !important; margin-bottom:0 !important; }
+.sa-email-panel { grid-column:1/-1; min-width:0; padding:clamp(20px,2.5vw,30px); border:1px solid #d9e1dc; border-radius:16px; background:#fff; }
+.sa-email-panel .sa-section-heading { align-items:center; gap:12px; margin-bottom:14px; }
+.sa-email-panel .sa-section-heading h2 { font-size:20px; letter-spacing:-.04em; }
+.sa-email-panel .sa-icon-button { margin:-8px -8px -8px 0; color:#516462; }
+.sa-email-identity { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:13px 15px; border-radius:8px; background:#f1f5f1; color:#345851; }
+.sa-email-identity > svg { flex-shrink:0; }
+.sa-email-panel .sa-email-address { flex:1 1 140px; min-width:0; color:#213d37; font-weight:610; font-size:14px; overflow-wrap:anywhere; }
+.sa-email-proof { display:inline-flex; align-items:center; gap:4px; color:#0d625f; font-size:12px; font-weight:650; white-space:nowrap; }
+.sa-email-panel .sa-email-instruction,.sa-email-panel > .sa-muted { margin:14px 0 0; color:#50645f; font-size:13px; line-height:1.65; }
+.sa-email-panel .sa-email-request { margin:9px 0 0; border-color:#becdc7; color:#164e45; }
+.sa-email-form { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:12px; margin-top:20px; padding-top:18px; border-top:1px solid #dce4de; }
+.sa-email-form .sa-field { min-width:0; margin:0; }
+.sa-email-form .sa-field input { width:100%; font-size:16px; }
+.sa-email-form > button { margin-top:29px; white-space:nowrap; }
+.sa-email-panel > .sa-notice { margin:15px 0 0 !important; }
 @media(max-width:600px) {
-  .sa-email-panel { padding:22px 20px; }
-  .sa-email-form { grid-template-columns:minmax(0,1fr); gap:15px; }
-  .sa-email-form > button { justify-self:start; margin-top:0; }
+  .sa-email-form { grid-template-columns:minmax(0,1fr); gap:10px; }
+  .sa-email-form > button { justify-self:stretch; margin:0; }
 }

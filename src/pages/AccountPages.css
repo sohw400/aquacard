@@ -92,3 +92,63 @@
 }
 .settings-session button { min-height: 44px; }
 .settings-session .text-danger-button { width: auto; }
+
+.settings-page { --settings-space: clamp(16px, 3vw, 24px); gap: 14px; }
+.settings-page .settings-identity {
+  padding: 0 var(--settings-space); border: 1px solid #203f4c;
+  border-radius: var(--radius-md); background: #142d40; color: #fff;
+}
+.settings-identity .profile { gap: 14px; padding: 20px 0; }
+.settings-identity .profile strong { color: #fff; font-size: 24px; line-height: 1.3; font-weight: 650; letter-spacing: -.045em; }
+.settings-identity .profile [data-testid='own-tag'] { color: #ccdedf; font-size: 13px; }
+.settings-profile-icon { display: grid; place-items: center; width: 48px; height: 48px; flex: 0 0 auto; border: 1px solid #47616f; border-radius: 13px; color: #d5e7df; }
+.settings-qr { position: relative; display: flex; align-items: center; border-top: 1px solid #405563; }
+.settings-qr > svg { position: absolute; left: 0; color: #d5e7df; pointer-events:none; }
+.settings-identity .settings-qr .nav-row { flex: 1; min-width: 0; min-height: 68px; padding-inline-start: 34px; border: 0; }
+.settings-identity .nav-row-main strong, .settings-identity .nav-row-chevron { color: #fff; }
+.settings-identity .nav-row-main > span, .settings-identity .nav-row-value { color: #ccdedf; }
+.settings-page .settings-group:not(.demo-tools) {
+  align-content: start; min-width: 0; padding: 18px var(--settings-space) 7px;
+  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface);
+}
+.settings-page .settings-group > h2 { display: flex; gap: 9px; align-items: center; margin: 0 0 5px; font-size: 16px; font-weight: 700; }
+.settings-page .settings-group > h2 svg { flex: 0 0 auto; color: var(--accent-strong); }
+.settings-page .settings-group > .nav-row { min-height: 52px; }
+.settings-page .settings-group > .nav-row:last-child { border-bottom: 0; }
+.settings-page .settings-group:has(#settings-pay) { padding-bottom: 15px; }
+.settings-page .demo-tools { margin-top: 2px; }
+.faq-search { display: flex; gap: 10px; align-items: center; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--sunken); color: var(--muted); }
+.faq-search:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.faq-search > svg { flex: 0 0 auto; }
+.faq-search input { flex: 1; min-width: 0; min-height: 48px; border: 0; background: transparent; color: var(--ink); font: inherit; }
+.faq-search input:focus-visible { outline: 0; }
+.faq-search input::-webkit-search-cancel-button { display: none; }
+.faq-search > button { display: grid; place-items: center; min-width: 44px; min-height: 44px; margin-right: -10px; }
+.faq-no-results { padding: 18px 0; color: var(--muted); }
+.settings-detail .faq-item[open] > summary { color: var(--accent-strong); }
+.settings-detail .faq-item[open] > p { padding-inline-start: 13px; border-inline-start: 2px solid var(--line); }
+@media (min-width: 1000px) {
+  .settings-page { grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; }
+  .settings-page .settings-identity, .settings-page .settings-session, .settings-page .demo-tools { grid-column: 1 / -1; }
+  .settings-page .settings-identity { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: center; }
+  .settings-qr { border-top: 0; border-left: 1px solid #405563; margin-left: 12px; padding-left: 18px; }
+  .settings-qr > svg { left: 18px; }
+  .settings-page .settings-group:has(#settings-card), .settings-page .settings-group:has(#settings-account) { grid-column: 1; }
+  .settings-page .settings-group:has(#settings-pay) { grid-column: 2; grid-row: 2 / span 2; }
+  .settings-page .settings-group:has(#settings-fees) { grid-column: 2; grid-row: 4; }
+}
+
+.settings-page .settings-group { grid-template-columns: minmax(0, 1fr); }
+.settings-page .funding-preferences { min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.settings-page .funding-options h2 { font-size: 15px; }
+@media (min-width: 960px) {
+  .app-shell.page-settings > .main-content { max-width: 1000px; }
+}
+
+.settings-detail { grid-template-columns: minmax(0, 1fr); }
+.settings-detail :is(.faq-search, .faq-group, .faq-item, .faq-no-results) { min-width: 0; }
+
+.settings-identity .profile .settings-profile-icon { margin: 0; color: #d5e7df; }
+@media (max-width: 480px) {
+  .settings-identity .settings-qr .nav-row-value { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}

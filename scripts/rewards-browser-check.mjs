@@ -91,6 +91,8 @@ async function card(id, status, funding, cashback) {
   await page.waitForFunction(({ id, status }) => document.querySelector(`[data-testid="server-card-payment-${id}"]`)?.getAttribute('data-status') === status, { id, status });
   const row = page.getByTestId(`server-card-payment-${id}`);
   if (!await row.evaluate((node) => node.open)) await row.locator('summary').click();
+  const amountDetails = row.getByRole('button', { name: '금액 상세' });
+  if (await amountDetails.getAttribute('aria-expanded') === 'false') await amountDetails.click();
   const record = (await account()).cardPayments.find((entry) => entry.id === id);
   assert.ok(record?.funding && record.cashback, 'New card receipts must disclose funding and cashback records.');
   assert.equal(record.status, status);

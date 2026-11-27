@@ -1,42 +1,30 @@
-# Aqua Card 화면과 디자인 검토
+# Aqua Card 화면
 
-카드 홈, 혜택, 결제와 환불, 송금 흐름을 검토했습니다. 모바일 이미지는 390px, 데스크톱 이미지는 1280px에서 캡처했습니다. 금액과 거래는 테스트 데이터입니다.
+발급된 체험 계정으로 찍은 화면이다. 홈의 지갑 잔액은 60,200원이고 리워드는 4,963원이다. 리워드 사용이 켜져 있어 한 번에 65,163원을 결제할 수 있다. 리저브에 따로 보관한 1,250,000원은 지갑 부족분을 리저브에서 쓰도록 설정할 때만 결제에 쓸 수 있다.
 
-| 카드 홈 | 혜택 |
+| 개편 전 | 개편 후 |
 | --- | --- |
-| ![결제 가능 금액 65,163원과 지갑·리워드 구성](card-home.webp) | ![카드에 쓸 수 있는 리워드와 이번 달 확정 페이백](rewards.webp) |
+| ![이전 모바일 홈](review-home-phone-before.webp) | ![3D 카드 아래 결제 가능 금액과 사용 순서, 지갑과 리저브, 이번 달 페이백이 이어지는 홈](review-home-phone-after.webp) |
 
-| 결제 직후 영수증 | 부분 환불 후 전표 |
-| --- | --- |
-| ![27,500원 결제에서 쓴 리워드와 새로 적립된 페이백](payment-receipt.webp) | ![3,000원 환불 후 남은 결제액 24,500원](refund.webp) |
+[데스크톱 홈 개편 전](review-home-desktop-before.webp) · [개편 후](review-home-desktop-after.webp) · [내 카드](review-card-phone.webp)
 
-| 결제 한도 변경 | 서버 연결 카드 홈 |
-| --- | --- |
-| ![저장할 한도와 현재 적용 중인 한도](limits.webp) | ![결제 승인 가능 상태와 잠그기 버튼 아래에 잔액과 페이백이 보이는 카드 홈](connected-home.webp) |
+## 금액 읽기
 
-| 서버 연결 송금 확인 | 응답이 끊긴 송금 |
-| --- | --- |
-| ![수취인, 송금액과 송금 후 예상 잔액](transfer.webp) | ![이전 수취인과 금액, 미처리 시 송금이 실행된다는 안내와 7,000원 송금 재시도 버튼](transfer-retry.webp) |
+| 리저브 | 혜택 | 결제 영수증 |
+| --- | --- | --- |
+| ![맡긴 원금, 지갑으로 넣고 빼는 버튼, 오늘 쌓인 보상](reserve.webp) | ![카드에 쓸 리워드와 이번 달 적립 완료·예정 페이백](rewards.webp) | ![결제에 쓴 리워드와 새 페이백을 따로 표시한 영수증](payment-receipt.webp) |
 
-![데스크톱의 카드, 지갑, 혜택과 최근 거래](desktop.webp)
+홈에서 보이는 ‘이번 달 확정 페이백’은 그달의 적립 내역이다. ‘사용 가능 리워드’는 지난 적립, 이미 쓴 금액, 리저브 보상까지 반영한 현재 잔액이다. 리워드를 먼저 쓰도록 설정하면 결제 영수증에서 이번에 얼마를 썼는지 확인할 수 있다.
 
-## 리뷰에서 바뀐 점
+## 가입과 카드 관리
 
-| 관찰한 문제 | 반영한 내용 |
-| --- | --- |
-| 카드로 쓸 수 있는 금액과 지갑 잔액이 달라도 이유를 바로 알기 어려웠습니다. | 총액 아래에 현재 설정으로 쓸 수 있는 지갑·리워드·리저브 금액을 표시합니다. 혜택의 대표 금액도 결제할 수 있는 원 단위로 맞췄습니다. |
-| 서버 연결 홈에서 카드 상태와 잠금 상태를 연달아 읽어야 했습니다. | 정상 카드는 결제 승인 여부 옆에서 바로 잠글 수 있습니다. 확인 시각은 상세에서 보고, 처리 중이거나 제한된 카드는 이유를 바로 읽을 수 있습니다. |
-| 작은 화면의 부분 환불 전표에서는 원결제액만 먼저 보였습니다. | 전표 상단에 남은 결제액, 원결제액, 누적 환불액을 모았습니다. 320px에서 세 값이 스크롤 없이 보입니다. |
-| 영수증에서 Tab 키를 누르면 닫기와 본문 사이를 반복했습니다. | 본문에서 확인·환불하기까지 이동하고 Shift+Tab으로 돌아갈 수 있습니다. |
-| ‘결과 확인’이라는 버튼이 미처리된 송금을 실행할 수 있었습니다. | 원래 받는 사람과 금액, 재시도의 결과를 함께 표시하고 버튼에 송금액을 적었습니다. 이미 처리된 송금은 같은 요청으로 영수증을 돌려줍니다. |
+[가입 중 현재 단계](review-signup-desktop.webp) · [모바일 카드 신청](review-application-phone.webp) · [전체 설정](review-settings-desktop.webp) · [서버에 연결한 카드 홈](connected-home.webp)
 
-두 리뷰 에이전트가 화면 캡처와 거래 흐름을 각각 검토했습니다. 수정한 전표와 영수증은 Chromium 320×568에서 키보드로 다시 확인했습니다. 실제 고객 사용성 조사와 실기기 화면 낭독기 검증은 별도로 남아 있습니다.
+## 참고한 디자인 자료
 
-## 휴대폰에서 열기
+- 홈의 첫 시선은 실제 카드에 두었다. 지갑과 혜택은 같은 모양의 상자를 반복하는 대신 제목, 금액, 간격으로 구분했다. [Anthropic frontend-design](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md)
+- 송금 확인 단계에서는 받는 사람, 금액과 수수료를 같은 위치에서 읽고 입력 단계로 돌아갈 수 있다. [GOV.UK Check answers](https://design-system.service.gov.uk/patterns/check-answers/) · [Summary list](https://design-system.service.gov.uk/components/summary-list/)
+- 거래 목록에서는 거래명과 금액을 먼저 읽고 날짜, 승인 상태를 뒤에 둔다. 행 전체를 눌러 전표를 연다. [Material Web Lists](https://github.com/material-components/material-web/blob/main/docs/components/list.md)
+- 설정은 글자나 스위치 어디를 눌러도 바뀐다. 키보드 초점, 고정된 하단 탭, 좁은 화면에서 금액과 버튼이 서로 가리는지 검사한다. [Vercel Web Interface Guidelines](https://github.com/vercel-labs/web-interface-guidelines/blob/main/command.md)
 
-- [신규 가입과 카드 신청](https://sohw400.github.io/aquacard/preview/pr-26/?scenario=signup)에서 가입부터 시작합니다. 주소와 고객확인은 화면의 체험용 정보를 사용하세요.
-- [발급된 카드로 결제하기](https://sohw400.github.io/aquacard/preview/pr-26/?scenario=issued)에서 바로 카드 홈을 엽니다. 처음에는 지갑 60,200원과 리워드 4,963원을 쓸 수 있습니다. 리저브 보상은 시간이 지나면 더해집니다.
-
-발급된 카드로 **결제해 보기**를 눌러 27,500원을 결제한 뒤 영수증에서 쓴 리워드와 새 페이백을 확인하세요. 홈의 최근 거래에서 같은 결제를 열어 3,000원을 환불하면 남은 결제액은 24,500원입니다.
-
-두 링크는 같은 브라우저에서도 진행 상태를 따로 보관합니다. 발급된 체험 계정에서 로그아웃했다면 `mobile.preview@example.test`와 `AquaPreview2026`으로 다시 로그인할 수 있습니다.
+현재 소스로 체험하려면 저장소에서 `npm ci` 후 `npm run dev -- --mode mobile-preview`를 실행한다. `/?scenario=issued`는 카드 홈, `/?scenario=signup`은 가입에서 시작하며 진행 상태는 따로 보관한다. [이전에 공개한 PR 26 체험판](https://sohw400.github.io/aquacard/preview/pr-26/?scenario=issued)

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Minus, Plus } from 'lucide-react';
+import { Minus, Plus, Search, X } from 'lucide-react';
+import { Toggle } from './ui';
 import './PaymentSettings.css';
 import { LIMIT_STEP } from '../lib/engine';
 import { dateLabel, money } from '../lib/format';
@@ -8,9 +9,7 @@ import type { AppState, PaymentControls } from '../lib/types';
 
 const manWon = (value: number) => `${(value / 10_000).toLocaleString('ko-KR')}만원`;
 
-function Switch({ checked, label, detail, testId, onChange }: { checked: boolean; label: string; detail: string; testId: string; onChange: (value: boolean) => void }) {
-  return <div className="toggle-row"><div><strong>{label}</strong><p>{detail}</p></div><button type="button" className={`switch${checked ? ' on' : ''}`} role="switch" aria-checked={checked} aria-label={label} data-testid={testId} onClick={() => onChange(!checked)}><span /></button></div>;
-}
+
 
 /** Holder-set limits within the issuer's maximums; each limit can't sit below the shorter one. */
 export function LimitsPage({ state, onSave }: { state: AppState; onSave: (limits: Pick<PaymentControls, 'perPayment' | 'daily' | 'monthly'>) => boolean }) {
@@ -83,12 +82,12 @@ export function NotificationsPage({ state, onChange }: { state: AppState; onChan
   return <div className="page-stack settings-detail" data-testid="page-notifications">
     <section className="panel">
       <h2 className="panel-title">서비스 알림</h2>
-      <Switch checked={notifications.payments} label="결제 알림" detail="카드 결제와 환불을 바로 알려 드려요." testId="notify-payments" onChange={(value) => onChange('payments', value)} />
-      <Switch checked={notifications.funding} label="입출금 알림" detail="충전과 보내기 진행 상황, 회원에게 받은 돈을 알려 드려요." testId="notify-funding" onChange={(value) => onChange('funding', value)} />
+      <Toggle checked={notifications.payments} label="결제 알림" detail="카드 결제와 환불을 바로 알려 드려요." testId="notify-payments" onChange={(value) => onChange('payments', value)} />
+      <Toggle checked={notifications.funding} label="입출금 알림" detail="충전과 보내기 진행 상황, 회원에게 받은 돈을 알려 드려요." testId="notify-funding" onChange={(value) => onChange('funding', value)} />
     </section>
     <section className="panel">
       <h2 className="panel-title">광고성 정보 수신</h2>
-      <Switch checked={notifications.marketing} label="혜택·이벤트 소식" detail="새 혜택과 이벤트 소식을 앱 알림으로 받아요." testId="notify-marketing" onChange={(value) => onChange('marketing', value)} />
+      <Toggle checked={notifications.marketing} label="혜택·이벤트 소식" detail="새 혜택과 이벤트 소식을 앱 알림으로 받아요." testId="notify-marketing" onChange={(value) => onChange('marketing', value)} />
       <p className="panel-caption" data-testid="marketing-status">{notifications.marketingChangedAt ? `${dateLabel(notifications.marketingChangedAt)}에 ${notifications.marketing ? '동의' : '철회'}했어요.` : '아직 동의하지 않았어요.'} 언제든 바꿀&nbsp;수&nbsp;있어요.</p>
     </section>
     <p className="panel-footnote">체험판에서는 실제 알림을 보내지 않아요.</p>
@@ -124,8 +123,20 @@ const FAQ: [string, [string, string][]][] = [
 ];
 
 export function FaqPage() {
+  const [query, setQuery] = useState('');
+  const search = query.trim().toLocaleLowerCase('ko-KR').replace(/\s+/g, '');
+  const groups = FAQ.map(([group, items]) => ({
+    group,
+    items: items.filter(([question, answer]) => (group + question + answer).toLocaleLowerCase('ko-KR').replace(/\s+/g, '').includes(search)),
+  })).filter(({ items }) => items.length);
   return <div className="page-stack settings-detail" data-testid="page-faq">
-    {FAQ.map(([group, items]) => <section className="panel flush faq-group" key={group}><h2 className="panel-title">{group}</h2>{items.map(([question, answer]) => <details className="faq-item" key={question}><summary>{question}</summary><p>{answer}</p></details>)}</section>)}
+    <div role="search" className="faq-search">
+      <Search size={19} aria-hidden="true" />
+      <input type="search" aria-label="자주 묻는 질문 검색" placeholder="질문 검색" value={query} onChange={event => setQuery(event.target.value)} />
+      {query && <button type="button" aria-label="검색어 지우기" onClick={() => setQuery('')}><X size={16} aria-hidden="true" /></button>}
+    </div>
+    {!groups.length && <p className="faq-no-results" role="status">일치하는 질문이 없어요. 다른 검색어를 입력해 주세요.</p>}
+    {groups.map(({ group, items }) => <section className="panel flush faq-group" key={group}><h2 className="panel-title">{group}</h2>{items.map(([question, answer]) => <details className="faq-item" key={question}><summary>{question}</summary><p>{answer}</p></details>)}</section>)}
     <section className="panel"><h2 className="panel-title">고객센터</h2><p className="panel-caption">출시하면 앱 상담과 전화 상담을 열어요. 체험판에서는 상담을 받지 않아요.</p></section>
   </div>;
 }

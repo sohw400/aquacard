@@ -51,7 +51,7 @@ export default function TransactionSheet({ item, payment, status, onRefund, onFu
         <div className="tx-summary">
           <div className="tx-summary-meta">
             <time className="tx-time" dateTime={new Date(timestamp).toISOString()}>{dateLabel(timestamp)} {timeLabel(timestamp)}</time>
-            <span className="tx-state">{stateLabel}</span>
+            <span className="tx-state" data-kind={payment?.status ?? item.status}>{stateLabel}</span>
           </div>
           <h3>{payment?.merchant ?? item.title}</h3>
           {hasRefund ? <>
@@ -83,16 +83,18 @@ export default function TransactionSheet({ item, payment, status, onRefund, onFu
               <div><dt>리워드에서</dt><dd>{money(payment.fromRewards)}</dd></div>
               <div><dt>잔액에서</dt><dd>{money(payment.fromSpend)}</dd></div>
               {payment.fromReserve > 0 && <div><dt>리저브에서</dt><dd>{money(payment.fromReserve)}</dd></div>}
-              <div className="tx-line-total"><dt>{payment.status === 'pending' ? '확정 전 페이백' : '확정 페이백'}</dt><dd>{money(payment.cashback - payment.cashbackReversed)}</dd></div>
             </dl>
           </section>
+          <dl className="tx-lines tx-cashback">
+            <div><dt>{payment.status === 'pending' ? '확정 전 페이백' : '확정 페이백'}</dt><dd>{money(payment.cashback - payment.cashbackReversed)}</dd></div>
+          </dl>
         </>}
         {!payment && item.note && <p className="tx-memo">{item.note}</p>}
       </div>
       <footer className="itd-footer">
-        {refundable ? <button type="button" className="itd-button itd-primary" data-testid="transaction-refund" onClick={() => { onClose(); onRefund(payment); }}>환불하기</button>
-          : fundingId && onFunding ? <button type="button" className="itd-button itd-primary" onClick={() => { onClose(); onFunding(fundingId); }}>{kind} 처리 내역 보기</button>
-            : <button type="button" className="itd-button itd-primary" onClick={onClose}>확인</button>}
+        {refundable && <button type="button" className="itd-button itd-secondary" data-testid="transaction-refund" onClick={() => { onClose(); onRefund(payment); }}>환불하기</button>}
+        {fundingId && onFunding ? <button type="button" className="itd-button itd-primary" onClick={() => { onClose(); onFunding(fundingId); }}>{kind} 처리 내역 보기</button>
+          : <button type="button" className="itd-button itd-primary" onClick={onClose}>확인</button>}
       </footer>
     </section>
   </div>;

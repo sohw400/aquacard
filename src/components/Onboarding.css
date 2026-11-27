@@ -147,3 +147,31 @@
 @media (prefers-color-scheme: dark) {
   .onboarding-card-stage { background: radial-gradient(ellipse at 30% 10%, #40505b, transparent 70%), linear-gradient(145deg, #293741, #17232a); }
 }
+
+.onboarding-side-steps { display: none; }
+.onboarding-card-stage {
+  background: radial-gradient(ellipse at 65% 95%, #507476 0%, #254d59 48%, #183747 76%, #112b3a 100%);
+  padding: clamp(12px, 3vw, 32px); border: 1px solid #264651; isolation: isolate;
+}
+.onboarding[data-signup=true] .onboarding-progress { margin-top: 18px; }
+.onboarding .onboarding-form .terms-all { background: var(--accent-weak); color: var(--ink); border-color: var(--accent); }
+.onboarding-form .terms-list { padding: 0 4px; }
+.onboarding .onboarding-simulation > summary { min-height: 40px; display: flex; align-items: center; }
+.onboarding .onboarding-note { text-wrap: pretty; }
+@media (min-width: 850px) {
+  .onboarding[data-signup=true] { padding-top: max(32px, env(safe-area-inset-top)); }
+  .onboarding[data-signup=true] .onboarding-inner {
+    max-width: 860px; display: grid; grid-template-columns: 210px minmax(0, 1fr);
+    gap: 0 52px; grid-auto-rows: min-content; align-content: start;
+  }
+  .onboarding[data-signup=true] .onboarding-brand { grid-column: 1/-1; padding-bottom: 22px; margin-bottom: 30px; border-bottom: 1px solid var(--line); }
+  .onboarding[data-signup=true] .onboarding-progress { grid-column: 1; grid-row: 2; margin-top: 0; }
+  .onboarding[data-signup=true] .onboarding-progress .onboarding-bars { display: none; }
+  .onboarding[data-signup=true] .onboarding-progress > p { margin: 17px 0 0; color: var(--muted); font-size: 13px; }
+  .onboarding-side-steps { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+  .onboarding-side-steps li { display: flex; gap: 14px; align-items: center; min-height: 44px; padding: 6px 12px; border-left: 2px solid var(--line); color: var(--muted); font-size: 14px; }
+  .onboarding-side-steps [aria-current=step] { border-left-color: var(--accent-strong); background: var(--accent-weak); color: var(--accent-strong); font-weight: 700; }
+  .onboarding-side-steps li > span { display: grid; place-items: center; width: 19px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .onboarding[data-signup=true] .onboarding-form { grid-column: 2; grid-row: 2; margin-top: 0; }
+  .onboarding[data-signup=true] .onboarding-note { grid-column: 2; }
+}

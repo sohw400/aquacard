@@ -243,7 +243,11 @@ export default function Onboarding({ state, dispatch, farewell = null, onFarewel
   }
 
   const stepIndex = SIGNUP_STEPS.findIndex(([key]) => key === (screen === 'evidence' ? 'questions' : screen));
-  const progress = stepIndex >= 0 && <div className="onboarding-progress"><div className="onboarding-bars" aria-hidden="true">{SIGNUP_STEPS.map(([key], index) => <span key={key} className={index <= stepIndex ? 'filled' : ''} />)}</div><p>가입 {stepIndex + 1}/{SIGNUP_STEPS.length} · {SIGNUP_STEPS[stepIndex][1]}</p></div>;
+  const progress = stepIndex >= 0 && <div className="onboarding-progress">
+    <ol className="onboarding-side-steps" aria-label="가입 절차">{SIGNUP_STEPS.map(([key, title], index) =>
+      <li key={key} aria-current={index === stepIndex ? 'step' : undefined} data-complete={index < stepIndex}>
+        <span aria-hidden="true">{index < stepIndex ? <Check size={15} /> : String(index + 1).padStart(2, '0')}</span>{title}
+      </li>)}</ol><div className="onboarding-bars" aria-hidden="true">{SIGNUP_STEPS.map(([key], index) => <span key={key} className={index <= stepIndex ? 'filled' : ''} />)}</div><p>가입 {stepIndex + 1}/{SIGNUP_STEPS.length} · {SIGNUP_STEPS[stepIndex][1]}</p></div>;
   const errorBox = error && <p className="form-error" role="alert">{error}</p>;
   const field = (key: string, label: string, input: ReactNode, aside?: ReactNode) => <div className="form-field"><div className="onboarding-label-row"><label htmlFor={id(key)}>{label}</label>{aside}</div>{input}</div>;
   const select = (key: string, label: string, value: string, options: readonly string[], set: (value: string) => void, disabled = false) => field(key, label,
@@ -458,7 +462,7 @@ export default function Onboarding({ state, dispatch, farewell = null, onFarewel
     </form>;
   }
 
-  return <main className="onboarding" data-screen={screen} data-testid="onboarding">
+  return <main className="onboarding" data-signup={stepIndex >= 0} data-screen={screen} data-testid="onboarding">
     <div className="onboarding-inner">
       <div className="onboarding-brand"><Logo size={30} /><span className="demo-tag">체험판</span></div>
       {progress}

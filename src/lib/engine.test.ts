@@ -716,7 +716,7 @@ test('입출금 기한은 데모 1일 진행과 무관하게 실제 시간만 �
   state = applyAction(state, { type: 'ADVANCE_DAY' }, NOW);
   assert.equal(state.fundingOperations[0].status, 'reviewing');
   assert.equal(state.spend, 8_500);
-  assert.throws(() => applyAction(state, { type: 'PAY', merchant: '카페', amount: 20_000 }, NOW), /잔액이 부족/);
+  assert.throws(() => applyAction(state, { type: 'PAY', merchant: '카페', amount: 20_000 }, NOW), /결제할 잔액이 7,049원 모자라요/);
   state = applyAction(state, { type: 'TICK' }, NOW + 3_000);
   assert.equal(state.fundingOperations[0].status, 'broadcasting');
   assert.equal(state.clockOffsetMs, DAY);

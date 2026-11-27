@@ -101,7 +101,7 @@ export default function CardApplicationPanel({ ownerId, visible, onSessionExpire
     {snapshot?.canApply && <fieldset disabled={disabled} className="sa-application-options">
       <legend>카드 종류</legend>
       {(['virtual', 'physical'] as const).map(type => <label key={type}><input type="radio" name="application-form" value={type}
-        checked={form === type} onChange={() => setForm(type)} />{type === 'virtual' ? '가상카드' : '실물카드'}</label>)}
+        checked={form === type} onChange={() => setForm(type)} /><span><strong>{type === 'virtual' ? '가상카드' : '실물카드'}</strong><small>{type === 'virtual' ? '앱에서 사용' : '배송 후 사용'}</small></span></label>)}
     </fieldset>}
     {!snapshot && !loadError && <p role="status">신청 상태를 확인하고 있어요.</p>}
     {loadError && <p role="alert">{loadError}</p>}

@@ -32,7 +32,12 @@ async function checkDesktop(browser, base) {
     await page.getByTestId('open-payment').click();
     const dialog = page.getByTestId('dialog-payment');
     await checkWidthOnExpand(dialog.locator('.payment-examples summary'), dialog.getByLabel('결제할 곳'));
-    assert.ok(await dialog.locator('.modal-body').evaluate(body => body.scrollHeight > body.clientHeight), 'expanded payment examples must extend the dialog body');
+    const body = dialog.locator('.modal-body');
+    assert.ok(await body.evaluate(element => element.scrollHeight > element.clientHeight), 'expanded payment examples must extend the dialog body');
+    assert.equal(await body.evaluate(element => element.offsetWidth - element.clientWidth), 0, 'expanded payment form must not add a native track');
+    await page.emulateMedia({ forcedColors: 'active' });
+    assert.equal(await body.evaluate(element => getComputedStyle(element).scrollbarWidth), 'auto', 'forced colors must keep the native scrollbar');
+    assert.ok(await body.evaluate(element => element.offsetWidth > element.clientWidth), 'the native desktop track must be available in forced colors');
   } finally { await page.close(); }
 }
 
@@ -69,10 +74,19 @@ async function checkFundingChoices(browser, base) {
     await page.clock.setFixedTime(new Date('2026-11-26T03:00:00Z'));
     await openIssuedHome(page, base);
     const reserve = page.getByTestId('open-reserve-card');
-    assert.ok(await reserve.evaluate(button => {
-      const rect = button.getBoundingClientRect();
-      return scrollY === 0 && button.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
-    }), 'the Reserve entry must be tappable above the bottom navigation before any scrolling');
+    const benefits = page.getByTestId('open-rewards');
+    for (const entry of [reserve, benefits]) {
+      assert.ok(await entry.evaluate(button => {
+        const rect = button.getBoundingClientRect();
+        return scrollY === 0 && rect.height >= 44 &&
+          button.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+      }), 'the home Reserve and cashback entries must both be tappable without scrolling');
+    }
+    assert.doesNotMatch(await page.getByTestId('open-payment-sources').innerText(), /[\d,]+원/,
+      'when the card can use every connected won, show the amount once and keep the funding settings link');
+    await benefits.tap();
+    await page.getByTestId('page-benefits').waitFor();
+    await page.getByTestId('nav-home').tap();
     await reserve.tap();
     await page.getByTestId('reserve-principal').waitFor();
     await page.getByTestId('go-back').tap();

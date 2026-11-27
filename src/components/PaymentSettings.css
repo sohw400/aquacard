@@ -21,10 +21,29 @@
 .channel-value { font-size: 13px; color: var(--muted); }
 .channel-control[aria-checked="true"] .channel-value { color: var(--accent-strong); }
 .channel-lock-note { margin: 0 0 10px; padding: 12px; border-radius: 10px; background: var(--warning-weak); color: var(--warning); font-size: 14px; }
-.funding-order { margin-top: 16px; padding: 16px; border-radius: var(--radius-sm); background: var(--sunken); }
-.funding-order h3 { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
-.funding-order ol { margin: 0; padding-left: 1.35em; list-style: decimal; }
-.funding-order li { padding: 4px 0; color: var(--ink); font-size: 15px; line-height: 1.5; }
-.funding-order li::marker { color: var(--muted); font-variant-numeric: tabular-nums; }
-.funding-order li > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 8px; }
-.funding-order strong { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.funding-preferences { display: grid; gap: 28px; align-items: start; }
+.funding-order {
+  color: var(--ink);
+  padding: 22px 22px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.funding-order header { padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.funding-order h2, .funding-order h3 { margin: 0; color: var(--muted); font-size: 14px; font-weight: 550; }
+.funding-order .won { margin-top: 7px; font-size: clamp(28px, 4vw, 38px); font-variant-numeric: tabular-nums; }
+.funding-order h3 { margin: 16px 0 5px; font-size: 13px; }
+.funding-order ol { list-style: none; margin: 0; padding: 0; counter-reset: source; }
+.funding-order li { display: grid; grid-template-columns: 20px minmax(0,1fr) auto; gap: 8px; align-items: baseline; padding: 7px 0; counter-increment: source; }
+.funding-order li::before { content: counter(source); color: var(--accent-strong); font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.funding-order li strong { font-weight: 600; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.funding-options h2 { margin-bottom: 6px; font-size: 19px; line-height: 1.4; }
+.funding-options .switch-control { padding: 16px 0; }
+@media (min-width: 1200px) {
+  .page-sources .page.payment-settings { max-width: 960px; }
+  .funding-preferences { grid-template-columns: minmax(260px,.9fr) minmax(320px,1.1fr); gap: 40px; }
+}
+@media (max-width: 360px) {
+  .funding-order { padding-inline: 16px; }
+  .funding-order li { grid-template-columns: 14px minmax(0,1fr) minmax(0,auto); }
+}

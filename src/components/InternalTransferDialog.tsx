@@ -4,6 +4,7 @@ import { money, shortDate } from '../lib/format';
 import { POLICY } from '../lib/policy';
 import type { Action, AppState } from '../lib/types';
 import { AmountInput } from './ui';
+import { useModal } from './useModal';
 import './InternalTransferDialog.css';
 
 export interface InternalTransferDialogProps {
@@ -25,12 +26,10 @@ interface TransferReceipt {
   timestamp: number;
 }
 
-const focusable = 'button:not([disabled]), input:not([disabled]), a[href], select:not([disabled]), textarea:not([disabled]), [tabindex="0"]';
-
 /** Moves won between the spend balance and the Reserve; no fee, no conversion. */
 export default function InternalTransferDialog({ direction, state, onClose, dispatch }: InternalTransferDialogProps) {
-  const sourceName = direction === 'in' ? '잔액' : '리저브';
-  const targetName = direction === 'in' ? '리저브' : '잔액';
+  const sourceName = direction === 'in' ? '지갑 잔액' : '리저브';
+  const targetName = direction === 'in' ? '리저브' : '지갑 잔액';
   const title = direction === 'in' ? '리저브에 넣기' : '리저브에서 빼기';
   const available = direction === 'in' ? state.spend : state.reserve;
   const targetBefore = direction === 'in' ? state.reserve : state.spend;
@@ -45,8 +44,7 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
   const panel = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  const close = useRef(onClose);
-  close.current = onClose;
+  useModal(panel, onClose, input);
   const uid = useId();
   const headingId = `${uid}-heading`;
   const inputId = `${uid}-amount`;
@@ -66,38 +64,6 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
   const valid = value.trim() !== '' && previewIssue === '';
   const issue = error || previewIssue;
   const canProceed = valid && !busy;
-
-  useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const oldOverflow = document.body.style.overflow;
-    const oldPadding = document.body.style.paddingRight;
-    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = 'hidden';
-    if (scrollbar > 0) document.body.style.paddingRight = `${(Number.parseFloat(getComputedStyle(document.body).paddingRight) || 0) + scrollbar}px`;
-    const keydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        close.current();
-      } else if (event.key === 'Tab') {
-        const targets = Array.from(panel.current?.querySelectorAll<HTMLElement>(focusable) ?? []).filter((element) => element.getClientRects().length > 0);
-        const first = targets[0];
-        const last = targets[targets.length - 1];
-        if (!first || !last) { event.preventDefault(); panel.current?.focus(); return; }
-        const active = document.activeElement;
-        if (!targets.includes(active as HTMLElement)) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
-        else if (event.shiftKey && active === first) { event.preventDefault(); last.focus(); }
-        else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
-      }
-    };
-    document.addEventListener('keydown', keydown, true);
-    return () => {
-      document.removeEventListener('keydown', keydown, true);
-      document.body.style.overflow = oldOverflow;
-      document.body.style.paddingRight = oldPadding;
-      if (previous?.isConnected) previous.focus();
-    };
-  }, []);
 
   useEffect(() => {
     const focusTimer = setTimeout(() => { if (step === 'amount') input.current?.focus(); else heading.current?.focus(); }, 0);
@@ -140,22 +106,31 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
     }
   }
 
+  const route = <div className="reserve-route" role="group" aria-label="이동 경로">
+    <div><span>보내는 곳</span><strong>{sourceName}</strong></div>
+    <ArrowRight size={18} aria-hidden="true" />
+    <div><span>받는 곳</span><strong>{targetName}</strong></div>
+  </div>;
+
   const balanceChanges = (sourceBefore: number, sourceAfter: number, beforeTarget: number, afterTarget: number) => (
-    <section className="itd-balances" aria-label="금액 변화">
-      <h3>{step === 'completed' ? '이렇게 바뀌었어요' : '옮기면 이렇게 바뀌어요'}</h3>
-      <div className="itd-balance"><span>{sourceName}</span><div><span>{money(sourceBefore)}</span><ArrowRight size={13} aria-label="변경 후" /><strong data-testid="transfer-source-after">{money(sourceAfter)}</strong></div></div>
-      <div className="itd-balance"><span>{targetName}</span><div><span>{money(beforeTarget)}</span><ArrowRight size={13} aria-label="변경 후" /><strong data-testid="transfer-target-after">{money(afterTarget)}</strong></div></div>
-    </section>
+    <table className="reserve-balances">
+      <caption>잔액 변화</caption>
+      <thead><tr><th scope="col">계정</th><th scope="col">이동 전</th><th scope="col">이동 후</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">{sourceName}</th><td>{money(sourceBefore)}</td><td data-testid="transfer-source-after">{money(sourceAfter)}</td></tr>
+        <tr><th scope="row">{targetName}</th><td>{money(beforeTarget)}</td><td data-testid="transfer-target-after">{money(afterTarget)}</td></tr>
+      </tbody>
+    </table>
   );
 
   return (
     <div className="itd-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="internal-transfer-dialog" ref={panel} role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1} data-testid="dialog-transfer">
-        <header className="itd-header"><div><h2 id={headingId} ref={heading} tabIndex={-1}>{step === 'completed' ? '이동 완료' : title}</h2></div><button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button></header>
+      <section className="internal-transfer-dialog reserve-transfer" ref={panel} role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1} data-testid="dialog-transfer">
+        <header className="itd-header"><div className="reserve-heading">{step === 'review' && <button type="button" className="itd-close" data-testid="transfer-back" aria-label="이전" disabled={busy} onClick={() => { setStep('amount'); setError(''); }}><ChevronLeft size={22} /></button>}<h2 id={headingId} ref={heading} tabIndex={-1}>{step === 'completed' ? '이동 완료' : title}</h2></div><button type="button" className="itd-close" aria-label="창 닫기" onClick={onClose}><X size={20} /></button></header>
 
         <div className="itd-body">
           {step !== 'completed' && <form id={formId} onSubmit={submit} noValidate>
-            <div className="itd-route"><strong>{sourceName}</strong><ArrowRight size={16} aria-label="이동 대상" /><strong>{targetName}</strong></div>
+            {route}
 
             {step === 'amount' ? <>
               <div className="itd-amount"><label htmlFor={inputId}>이동할 금액</label><div className="itd-input"><AmountInput ref={input} id={inputId} unit="원" data-testid="action-amount" value={value} onValueChange={updateAmount} autoComplete="off" aria-invalid={Boolean(issue)} aria-describedby={issue ? errorId : helpId} /></div>{issue ? <p className="itd-field-error itd-in-place" id={errorId} role="alert">{issue}</p> : <div className="itd-available" id={helpId}><span>이동 가능</span><strong data-testid="transfer-available">{money(available)}</strong></div>}</div>
@@ -165,7 +140,7 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
               <div className="itd-review-amount"><span>이동할 금액</span><strong data-testid="transfer-review-amount">{money(amount)}</strong></div>
               <dl className="itd-detail-list"><div><dt>수수료</dt><dd>0원</dd></div></dl>
               {balanceChanges(available, Math.max(0, available - amount), targetBefore, targetBefore + amount)}
-              <p className="itd-reserve-note">{direction === 'in' ? '넣은 순간부터 보상이 쌓여요.' : '뺀 금액에는 이제 보상이 쌓이지 않아요. 이미 쌓인 보상은 그대로예요.'}</p>
+              <p className="itd-reserve-note">{direction === 'in' ? '옮긴 원금은 리저브에 남고, 보상은 결제에 쓸 리워드로 쌓여요.' : '지갑으로 옮긴 원금의 적립이 멈춰요. 이미 받은 리워드는 그대로예요.'}</p>
             </>}
 
             {step === 'review' && issue && <p className="itd-error" id={errorId} role="alert">{issue}</p>}
@@ -175,14 +150,14 @@ export default function InternalTransferDialog({ direction, state, onClose, disp
 
             <p>{targetName === '리저브' ? '리저브로 옮겼어요.' : '잔액으로 옮겼어요.'}</p>
             <strong className="itd-result-amount">{money(receipt.targetAfter - receipt.targetBefore)}</strong>
-            <div className="itd-route"><strong>{sourceName}</strong><ArrowRight size={16} aria-label="이동 대상" /><strong>{targetName}</strong></div>
+            {route}
             <dl className="itd-detail-list"><div><dt>수수료</dt><dd>0원</dd></div></dl>
             {balanceChanges(receipt.sourceBefore, receipt.sourceAfter, receipt.targetBefore, receipt.targetAfter)}
             <dl className="itd-detail-list itd-receipt-meta"><div><dt>처리 시각</dt><dd>{shortDate(receipt.timestamp)}</dd></div><div><dt>처리 번호</dt><dd>{receipt.reference}</dd></div></dl>
           </div>}
         </div>
 
-        <footer className="itd-footer">{step === 'amount' ? <button key="next" type="submit" form={formId} className="itd-button itd-primary" data-testid="transfer-next" disabled={!canProceed}>이동 금액 확인</button> : step === 'review' ? <><button key="back" type="button" className="itd-button itd-secondary" data-testid="transfer-back" disabled={busy} onClick={(event) => { event.preventDefault(); setStep('amount'); setError(''); }}><ChevronLeft size={16} />이전</button><button key="confirm" type="submit" form={formId} className="itd-button itd-primary" data-testid="confirm-action" disabled={!canProceed}>{busy ? '처리 중' : `${money(amount)} 옮기기`}</button></> : <button key="done" type="button" className="itd-button itd-primary itd-guarded" data-testid="transfer-done" disabled={!completionReady} onClick={onClose}>확인</button>}</footer>
+        <footer className="itd-footer">{step === 'amount' ? <button key="next" type="submit" form={formId} className="itd-button itd-primary" data-testid="transfer-next" disabled={!canProceed}>이동 금액 확인</button> : step === 'review' ? <button key="confirm" type="submit" form={formId} className="itd-button itd-primary" data-testid="confirm-action" disabled={!canProceed}>{busy ? '처리 중' : `${money(amount)} 옮기기`}</button> : <button key="done" type="button" className="itd-button itd-primary itd-guarded" data-testid="transfer-done" disabled={!completionReady} onClick={onClose}>확인</button>}</footer>
       </section>
     </div>
   );

@@ -1,0 +1,13 @@
+/* The sheet body owns vertical scrolling. Opening a disclosure keeps the form at
+   the same width even on systems with a full-width native scrollbar. */
+@media (forced-colors: none) {
+  :is(.funding-body, .receipt-body, .reserve-transfer > .itd-body, .send-sheet > .itd-body,
+      .payment-dialog > .modal-body) {
+    scrollbar-width: none;
+    scrollbar-gutter: auto;
+  }
+  :is(.funding-body, .receipt-body, .reserve-transfer > .itd-body, .send-sheet > .itd-body,
+      .payment-dialog > .modal-body)::-webkit-scrollbar {
+    display: none;
+  }
+}

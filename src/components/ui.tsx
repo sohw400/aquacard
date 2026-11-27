@@ -30,7 +30,11 @@ export function LiveEarnings({ state, period, testId }: { state: AppState; perio
 
 export function Toggle({ checked, onChange, label, detail, testId }: { checked: boolean; onChange: (value: boolean) => void; label: string; detail?: string; testId?: string }) {
   const description = useId();
-  return <div className="toggle-row"><div><strong>{label}</strong>{detail && <p id={description}>{detail}</p>}</div><button type="button" className={`switch${checked ? ' on' : ''}`} role="switch" aria-checked={checked} aria-label={label} aria-describedby={detail ? description : undefined} data-testid={testId} onClick={() => onChange(!checked)}><span /></button></div>;
+  return <button type="button" className="toggle-row switch-control" role="switch" aria-checked={checked}
+    aria-label={label} aria-describedby={detail ? description : undefined} data-testid={testId} onClick={() => onChange(!checked)}>
+    <span className="toggle-copy"><strong>{label}</strong>{detail && <span className="toggle-detail" id={description}>{detail}</span>}</span>
+    <span className={`switch${checked ? ' on' : ''}`} aria-hidden="true"><span /></span>
+  </button>;
 }
 
 /** One tappable settings or summary line: label on the left, value and chevron on the right. */

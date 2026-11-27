@@ -5,6 +5,7 @@ import { money } from '../lib/format';
 import { getCashbackSummary } from '../lib/rewards';
 import type { AppState, Payment, Transaction } from '../lib/types';
 import './AccountPages.css';
+import './WalletActivity.css';
 
 export type ActivityFilter = 'all' | 'payment' | 'cash';
 const FILTERS: [ActivityFilter, string][] = [['all', '전체'], ['payment', '카드'], ['cash', '입출금']];
@@ -23,7 +24,7 @@ export default function ActivityPage({ state, filter, onFilter, onFunding, onDet
   const transactions = listedTransactions(state.transactions);
   const items = transactions.filter((item) => filter === 'all' || (filter === 'payment' ? ['payment', 'refund', 'card'].includes(item.kind) : ['deposit', 'convert', 'transfer'].includes(item.kind)));
   const filterName = FILTERS.find(([key]) => key === filter)?.[1];
-  return <div className="page activity-page">
+  return <div className="page activity-page wallet-ledger">
     <section className="activity-overview" aria-label="카드 이용 요약">
       <details className="rule-details activity-month">
         <summary><span>이번 달 카드 이용<strong>{money(state.monthlySpent)}</strong></span></summary>

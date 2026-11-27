@@ -14,12 +14,12 @@ function isReserveAction(raw: unknown): raw is ReserveAction {
     && typeof raw.expectedVersion === 'number' && Number.isSafeInteger(raw.expectedVersion) && raw.expectedVersion >= 0;
 }
 
-export default function ReservePanel({ owner, reserve, walletWon, useFirst, rewardControls, canTransact, refresh }: {
+export default function ReservePanel({ owner, reserve, walletWon, useFirst, rewardControls, manageOpen, onManage, canTransact, refresh }: {
+  manageOpen: boolean; onManage: (open: boolean) => void;
   owner: string; useFirst: boolean; rewardControls: ReactNode; reserve: ReserveSnapshot | undefined; walletWon: number | undefined;
   canTransact: boolean; refresh: () => void;
 }) {
   const [amount, setAmount] = useState('');
-  const [manageOpen, setManageOpen] = useState(false);
   const action = useMemberAction('aqua.reserve.' + owner, isReserveAction, async (command, key) => {
     if ('direction' in command) {
       await api.reserveMove(command, key, owner);
@@ -37,7 +37,7 @@ export default function ReservePanel({ owner, reserve, walletWon, useFirst, rewa
       <div><dt>연 보상률</dt><dd>{(reserve.accrual.rateBps / 100).toLocaleString('ko-KR')}%</dd></div>
       <div><dt>리워드 지급 대기</dt><dd>{BigInt(reserve.accrual.pendingWon).toLocaleString('ko-KR')}원</dd></div>
     </dl>}
-    <details onToggle={event => setManageOpen(event.currentTarget.open)}><summary>리저브 관리</summary>
+    <details open={manageOpen} onToggle={event => onManage(event.currentTarget.open)}><summary id="reserve-management-toggle">리저브 관리</summary>
       <label>옮길 금액 (원)<input inputMode="numeric" aria-describedby="reserve-source-balances" value={amount} disabled={disabled} onChange={event => setAmount(event.target.value)} placeholder="1원 이상" /></label>
       <p className="sa-reserve-order" id="reserve-source-balances">{reserve && walletWon !== undefined
         ? `지갑 ${walletWon.toLocaleString('ko-KR')}원 · 리저브 ${reserve.availableWon.toLocaleString('ko-KR')}원` : '잔액 확인 중'}</p>
