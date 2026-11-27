@@ -221,6 +221,30 @@ async function refresh(target = page) {
   await target.getByTestId('issuer-refresh').click();
   await target.waitForFunction(() => document.querySelector('[data-testid="issuer-card-panel"]')?.getAttribute('data-fresh') === 'true');
 }
+// Hold the foreground tab's next poll. Clicking refresh after installing the route can
+// deadlock when the poll reaches it first and disables the refresh button.
+async function holdNextIssuerRead() {
+  const captured = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const delivered = Promise.withResolvers();
+  await page.route('**/api/issuer-card', async route => {
+    try {
+      const response = await route.fetch();
+      captured.resolve();
+      await release.promise;
+      await route.fulfill({ response }).catch(() => {}); // A write or account switch may cancel the stale read.
+    } catch (error) {
+      captured.reject(error);
+    } finally {
+      delivered.resolve();
+    }
+  }, { times: 1 });
+  const timeout = setTimeout(() => captured.reject(new Error('Issuer poll did not arrive.')), 15_000);
+  try { await captured.promise; }
+  catch (error) { release.resolve(); throw error; }
+  finally { clearTimeout(timeout); }
+  return async () => { release.resolve(); await delivered.promise; };
+}
 async function countCommands(userId = ownerId) {
   return Number((await database.query('SELECT count(*)::text AS n FROM issuer_outbox WHERE user_id=$1', [userId])).rows[0].n);
 }
@@ -458,18 +482,10 @@ try {
   pass('A committed request with a lost 202 survives reload and tab closure, then reuses the original owner, key and payload without another outbox record.');
 
   await unlock(); await finishSuccess('active');
-  let releaseOld, heldResponse, oldCaptured;
-  const captured = new Promise((resolve) => { oldCaptured = resolve; });
-  const released = new Promise((resolve) => { releaseOld = resolve; });
-  const holdOld = async (route) => {
-    heldResponse = await route.fetch(); oldCaptured(); await released;
-    await route.fulfill({ response: heldResponse }).catch(() => {});
-  };
-  await page.route('**/api/issuer-card', holdOld, { times: 1 });
-  await page.getByTestId('issuer-refresh').click(); await captured;
+  const releaseOld = await holdNextIssuerRead();
   const accepted = page.waitForResponse((reply) => isCommand(reply.request()));
   await page.getByTestId('issuer-lock').click(); assert.equal((await accepted).status(), 202);
-  releaseOld(); await state('active', 'pending');
+  await releaseOld(); await state('active', 'pending');
   assert.equal(await page.getByTestId('issuer-lock').isDisabled(), true);
   await delay(100);
   assert.equal(await panel().getAttribute('data-command-status'), 'pending');
@@ -598,15 +614,7 @@ try {
   await otherPage.getByTestId('issuer-refresh').click(); await state('active', 'none', otherPage);
   await page.bringToFront();
   await refresh();
-  let releaseOldOwner, oldOwnerCaptured;
-  const capturedOwner = new Promise((resolve) => { oldOwnerCaptured = resolve; });
-  const releaseOwner = new Promise((resolve) => { releaseOldOwner = resolve; });
-  await page.route('**/api/issuer-card', async (route) => {
-    const previousOwnerResponse = await route.fetch();
-    oldOwnerCaptured(); await releaseOwner;
-    await route.fulfill({ response: previousOwnerResponse }).catch(() => {});
-  }, { times: 1 });
-  await page.getByTestId('issuer-refresh').click(); await capturedOwner;
+  const releaseOldOwner = await holdNextIssuerRead();
   const swapped = await context.request.post(new URL('/api/auth/login', base).href, { headers: { Origin: base.origin }, data: { email: other.email, password } });
   assert.equal(swapped.status(), 200);
   const wrongOwner = await context.request.get(new URL('/api/issuer-card', base).href, { headers: { 'X-Aqua-Account': ownerId } });
@@ -619,7 +627,7 @@ try {
   assert.equal(await page.getByTestId('issuer-card-panel').count(), 0);
   assert.equal(await page.locator(`[data-card-id="${otherCard.cardId}"]`).count(), 0);
   await login(page, other); await state('active', 'none');
-  releaseOldOwner(); await delay(100);
+  await releaseOldOwner(); await delay(100);
   assert.equal(await panel().getAttribute('data-card-id'), otherCard.cardId);
   assert.equal(await page.locator(`[data-card-id="${cardId}"]`).count(), 0);
   assert.equal(await page.getByTestId('issuer-retry').count(), 0);
@@ -636,6 +644,11 @@ try {
   }, null, 2));
   console.log(`${checks.length} issuer browser checks passed with real sessions, PostgreSQL and signed local provider requests.`);
 } catch (error) {
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    const line = error?.stack?.match(/^\s*at [^\n]*?\/issuer-browser-check\.mjs:(\d+):\d+\)?$/m)?.[1];
+    const location = 'file=scripts/issuer-browser-check.mjs' + (line ? ',line=' + line : '');
+    console.error('::error ' + location + '::Issuer browser suite failed after ' + checks.length + ' completed checks.');
+  }
   if (page && !page.isClosed()) await page.screenshot({ path: new URL('failure.png', artifacts).pathname, fullPage: true }).catch(() => {});
   console.error(error); process.exitCode = 1;
 } finally {
