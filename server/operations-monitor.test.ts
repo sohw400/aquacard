@@ -64,10 +64,13 @@ test('incomplete checks preserve independent incident metrics and report a separ
   assert.deepEqual(event._aws.CloudWatchMetrics[0].Dimensions, [['Environment']]);
   assert.equal(event._aws.CloudWatchMetrics[0].Namespace, 'AquaCard/Operations');
   assert.equal(event._aws.CloudWatchMetrics[0].Metrics.find((item: { Name: string }) => item.Name === 'CardInboxOldestDueSeconds').Unit, 'Seconds');
-  const complete = monitorResult('test-ops', { queues, ledgerFindings: 0, failedChecks: [] });
+  const complete = monitorResult('test-ops', { queues, ledgerFindings: 0, budget: { budgetLow: false, unfunded24h: 0 }, failedChecks: [] });
   assert.equal(complete.exitCode, 1);
   const ledgerOnly = monitorResult('test-ops', { ledgerFindings: 2, failedChecks: ['queues'] });
   assert.equal(ledgerOnly.exitCode, 2);
+  const missingBudget = monitorResult('test-ops', { ledgerFindings: 0, queues, failedChecks: ['budget'] });
+  assert.equal(missingBudget.exitCode, 2);
+  assert.equal(Object.hasOwn(missingBudget.event, 'RewardBudgetLow'), false);
   assert.equal(Object.hasOwn(ledgerOnly.event, 'CardInboxDueCount'), false);
 });
 
@@ -108,6 +111,8 @@ test('scheduled CLI reports the same internal discrepancies as the operator, wit
   const healthy = JSON.parse(clean.stdout);
   assert.equal(healthy.MonitorHealthy, 1);
   assert.equal(healthy.LedgerFindings, 0);
+  assert.equal(healthy.RewardBudgetLow, 0);
+  assert.equal(healthy.UnfundedCashbackAuthorizations24h, 0);
   assert.equal(healthy.Environment, 'test-ops');
   assert.equal(healthy.CardInboxDueCount, 0);
   assert.equal(healthy.IssuerOutboxReviewCount, 0);

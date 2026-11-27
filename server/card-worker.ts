@@ -27,7 +27,8 @@ async function run() {
     if (args[0] === '--once') {
       if (stop.signal.aborted) return;
       const result = await inbox.processNext();
-      console.log(JSON.stringify({ event: 'card_inbox_once', result }));
+      const expiry = await inbox.expireHold();
+      console.log(JSON.stringify({ event: 'card_inbox_once', result, holdExpired: expiry !== null }));
       if (result?.status === 'dead_letter') process.exitCode = 2;
     } else {
       await runCardWorker(inbox, { signal: stop.signal, pollMs, report: (event) => console.log(JSON.stringify(event)) });

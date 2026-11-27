@@ -5,6 +5,7 @@ import type { CustomerAccessSnapshot } from '../../shared/api';
 import { Wordmark } from '../components/Logo';
 import { useModal } from '../components/useModal';
 import { useIssuerCard } from './useIssuerCard';
+import CardApplicationPanel from './CardApplicationPanel';
 import './IssuerCardPanel.css';
 
 interface IssuerCardPanelProps {
@@ -115,7 +116,7 @@ export default function IssuerCardPanel({ ownerId, visible, access, onSessionExp
   } else if (card && rejected) {
     stage = 'rejected'; title = `${targetLabel} 요청이 반영되지 않았어요`; description = '새 결제 승인은 중단된 상태예요. 아래에서 다시 요청할 수 있어요.';
   } else if (model.snapshot && !card) {
-    stage = 'empty'; title = '연결된 카드가 없어요'; description = '테스트 카드가 연결되면 잠금을 설정할 수 있어요.';
+    stage = 'empty';
   } else if (card && !access?.canTransact) {
     description = access ? '계정의 거래가 제한되어 새 결제를 승인할 수 없어요. 카드 잠금과 기존 결제의 취소·환불은 계속 이용할 수 있어요.'
       : '계정 상태를 확인하고 있어요. 확인이 끝나면 새 결제 승인 가능 여부를 알려드릴게요.';
@@ -150,19 +151,20 @@ export default function IssuerCardPanel({ ownerId, visible, access, onSessionExp
     <div className="sa-issuer-content">
       <CardFace empty={!card} />
       <div className={`sa-issuer-details${compact ? ' is-compact' : ''}`}>
-        <div className="sa-issuer-state" aria-live="polite" aria-atomic="true">
+        {stage === 'empty' ? <div data-testid="issuer-empty"><CardApplicationPanel ownerId={ownerId} visible={visible}
+          onSessionExpired={onSessionExpired} onActivated={model.refresh} /></div> : <div className="sa-issuer-state" aria-live="polite" aria-atomic="true">
           <h3 ref={statusHeading} tabIndex={-1} data-testid="issuer-request-state">{showApprovalHeading
             ? <span data-testid="issuer-authorization-state" data-authorization={authorizationState}>결제 {authorizationLabel}</span>
             : title}</h3>
-          {(stage !== 'active' || !access?.canTransact) && <p {...(stage === 'empty' ? { 'data-testid': 'issuer-empty' } : {})}>{description}</p>}
-        </div>
+          {(stage !== 'active' || !access?.canTransact) && <p>{description}</p>}
+        </div>}
         {card && <dl className="sa-issuer-confirmed" id={detailId} hidden={compact && !detailOpen}>
           {!showApprovalHeading && <div><dt>새 결제 승인</dt><dd data-testid="issuer-authorization-state" data-authorization={authorizationState}>{authorizationLabel}</dd></div>}
           <div><dt>{lastConfirmed ? '마지막 확인 상태' : '카드 상태'}</dt>
             <dd data-testid="issuer-confirmed-state">{locked ? '잠금' : '잠금 해제'}</dd></div>
           <div><dt>변경 시각</dt><dd><time dateTime={new Date(card.updatedAt).toISOString()}>{checkedAt(card.updatedAt)}</time></dd></div>
         </dl>}
-        {readonly && <p className="sa-issuer-readonly" data-testid="issuer-readonly">현재는 카드 상태만 확인할 수 있어요.</p>}
+        {card && readonly && <p className="sa-issuer-readonly" data-testid="issuer-readonly">현재는 카드 상태만 확인할 수 있어요.</p>}
         {card && !readonly && <div className="sa-issuer-actions">
           {locked ? <button className="sa-issuer-button" data-testid="issuer-unlock" disabled={!access?.canTransact || !model.canChange} onClick={() => { if (access?.canTransact && model.canChange) setUnlockOpen({ cardId: card.id, version: card.version }); }}>잠금 해제</button>
             : <button className="sa-issuer-button secondary" data-testid="issuer-lock" disabled={!model.canChange} onClick={() => model.requestStatus('locked')}>잠그기</button>}

@@ -141,6 +141,7 @@ test('a failed queue-health scan is not repeated for every successfully processe
   const stop = new AbortController(); let processed = 0; let scans = 0;
   const events: Record<string, unknown>[] = [];
   await runCardWorker({
+    async expireHold() { return null; },
     async processNext() {
       processed++;
       if (processed === 3) stop.abort();

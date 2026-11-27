@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chromium } from 'playwright-core';
+import { chromium, webkit } from 'playwright-core';
 import { createServer } from 'vite';
 
 async function openIssuedHome(page, base) {
@@ -89,7 +89,7 @@ async function checkFundingChoices(browser, base) {
           if (await toggle.getAttribute('aria-checked') !== String(enabled)) await toggle.tap();
         }
         const names = [...(useRewards ? ['리워드'] : []), '지갑 잔액', ...(useReserve ? ['리저브 잔액'] : [])];
-        assert.deepEqual(await page.getByTestId('funding-order').locator('li > span').allTextContents(), names);
+        assert.deepEqual(await page.getByTestId('funding-order').locator('li span').allTextContents(), names);
         await page.getByTestId('nav-home').tap();
         await page.getByTestId('open-payment').tap();
         const dialog = page.getByTestId('dialog-payment');
@@ -111,6 +111,42 @@ async function checkFundingChoices(browser, base) {
   } finally { await page.close(); }
 }
 
+async function checkKeyboardAndTextScale(browser, base) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
+  try {
+    await openIssuedHome(page, base);
+    await page.getByTestId('open-payment-sources').focus();
+    await page.keyboard.press('Enter');
+    const sources = page.getByTestId('page-payment-sources');
+    await sources.waitFor();
+    // Emulate a user text-style override without also magnifying the tap targets.
+    await sources.evaluate(root => {
+      const text = [...root.querySelectorAll('strong,p,h3,li,li span')];
+      const px = text.map(el => parseFloat(getComputedStyle(el).fontSize));
+      text.forEach((el, i) => { el.style.fontSize = px[i] * 2 + 'px'; });
+    });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '200% payment preference text must reflow');
+    const toggle = sources.getByRole('switch', { name: '결제할 때 리워드 쓰기' });
+    assert.match(await toggle.getAttribute('aria-describedby'), /\S/);
+    await toggle.focus();
+    await page.keyboard.press('Space');
+    assert.equal(await toggle.getAttribute('aria-checked'), 'false');
+    await page.getByTestId('go-back').focus();
+    await page.keyboard.press('Enter');
+    const opener = page.getByTestId('open-payment');
+    await opener.focus();
+    await page.keyboard.press('Enter');
+    const dialog = page.getByTestId('dialog-payment');
+    await dialog.waitFor();
+    await dialog.getByTestId('confirm-action').focus();
+    await page.keyboard.press('Tab');
+    assert.ok(await dialog.evaluate(element => element.contains(document.activeElement)), 'Tab must keep focus inside the open payment dialog');
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'hidden' });
+    assert.ok(await opener.evaluate(element => element === document.activeElement), 'Escape must return focus to the payment opener');
+  } finally { await page.close(); }
+}
+
 let preview;
 let browser;
 try {
@@ -119,15 +155,20 @@ try {
     preview = await createServer({ mode: 'mobile-preview', server: { host: '127.0.0.1', port: 5198, strictPort: true } });
     await preview.listen();
   }
-  browser = await chromium.launch({
-    executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium', headless: true,
-    ignoreDefaultArgs: ['--hide-scrollbars'],
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-features=OverlayScrollbar'],
-  });
-  await checkDesktop(browser, base);
+  const useWebKit = process.env.AQUA_LAYOUT_ENGINE === 'webkit';
+  if (useWebKit) browser = await webkit.launch();
+  else {
+    browser = await chromium.launch({
+      executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium', headless: true,
+      ignoreDefaultArgs: ['--hide-scrollbars'],
+      args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-features=OverlayScrollbar'],
+    });
+    await checkDesktop(browser, base);
+  }
   await checkPhone(browser, base);
   await checkFundingChoices(browser, base);
-  console.log('Desktop and phone layouts, Reserve access and all four card funding settings passed.');
+  await checkKeyboardAndTextScale(browser, base);
+  console.log(`${browser.browserType().name()} passed phone layout, Reserve access, card funding settings, keyboard and 200% text checks.`);
 } finally {
   try { await browser?.close(); } finally { await preview?.close(); }
 }

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
@@ -11,7 +13,8 @@ import { AuthMailOutbox, PostgresAuthMailQueue, authMailKeyringFromEnvironment, 
   type AuthMailMessage, type AuthMailKeyring, type AuthMailClaim } from './auth-mail';
 import { dispatchAuthMailOnce } from './auth-mail-dispatch';
 import { createFileAuthMailTransport, createSesAuthMailTransport, authMailTransportFromEnvironment, AuthMailTransportError } from './auth-mail-transport';
-import { grantApplicationRole, grantAuthMailRole, verifyApplicationRole, verifyAuthMailRole } from './permissions';
+import { parseAuthMailFeedback, recordAuthMailFeedback } from './auth-mail-feedback';
+import { grantApplicationRole, grantAuthMailFeedbackRole, grantAuthMailRole, verifyApplicationRole, verifyAuthMailFeedbackRole, verifyAuthMailRole } from './permissions';
 
 const NOW = Date.UTC(2026, 10, 26, 5);
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -252,4 +255,134 @@ test('file delivery is private, idempotent and never selected as a production fa
     await assert.rejects(authMailTransportFromEnvironment({ NODE_ENV: 'production', AQUA_AUTH_MAIL_TRANSPORT: 'file', AQUA_MAIL_DIR: directory }), /disabled/);
     await assert.rejects(authMailTransportFromEnvironment({ NODE_ENV: 'production' }), /explicit/);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+const address = 'mail-alice@example.test';
+function bounce(mailId: string, eventId: string, bounceType: 'Permanent' | 'Transient', recipient = address) {
+  return { eventType: 'Bounce', mail: { tags: { 'aqua-message': [mailId] }, destination: [recipient] },
+    bounce: { feedbackId: eventId, bounceType, bouncedRecipients: [{ emailAddress: recipient, diagnosticCode: 'private diagnostic' }] } };
+}
+function complaint(mailId: string, eventId: string, complaintFeedbackType: string) {
+  return { eventType: 'Complaint', mail: { tags: { 'aqua-message': [mailId] }, destination: [address] },
+    complaint: { feedbackId: eventId, complaintFeedbackType, complainedRecipients: [{ emailAddress: address }] } };
+}
+
+test('SES feedback matches exactly one tagged message and recipient without retaining the provider envelope', () => {
+  const mailId = randomUUID();
+  const event = bounce(mailId, 'provider-event:1', 'Permanent', address.toUpperCase());
+  assert.deepEqual(parseAuthMailFeedback(event), {
+    eventId: event.bounce.feedbackId, mailId, kind: 'permanent_bounce', recipientHash: digest(address),
+  });
+  for (const invalid of [
+    { ...event, eventType: 'Delivery' },
+    { ...event, mail: { ...event.mail, tags: {} } },
+    { ...event, mail: { ...event.mail, destination: [address, 'other@example.test'] } },
+    { ...event, mail: { ...event.mail, destination: ['other@example.test'] } },
+    { ...event, bounce: { ...event.bounce, bouncedRecipients: [] } },
+    { ...event, bounce: { ...event.bounce, feedbackId: 'private@example.test' } },
+    complaint(mailId, 'complaint-1', 'unknown'),
+    { ...complaint(mailId, 'complaint-1', 'abuse'), complaint: {
+      feedbackId: 'complaint-1', complainedRecipients: [{ emailAddress: address }], complaintFeedbackType: ['abuse'],
+    } },
+  ]) assert.throws(() => parseAuthMailFeedback(invalid), /INVALID_MAIL_FEEDBACK/);
+});
+
+test('restricted SES feedback import deduplicates, suppresses queued and future mail and leaves active claims fenced', async (t) => {
+  const f = await fixture(t);
+  const mode = process.env.AQUA_AUTH_MAIL_FEEDBACK_MODE;
+  t.after(() => {
+    if (mode === undefined) delete process.env.AQUA_AUTH_MAIL_FEEDBACK_MODE;
+    else process.env.AQUA_AUTH_MAIL_FEEDBACK_MODE = mode;
+  });
+  delete process.env.AQUA_AUTH_MAIL_FEEDBACK_MODE;
+  const transient = parseAuthMailFeedback(bounce(randomUUID(), 'transient', 'Transient'));
+  await assert.rejects(recordAuthMailFeedback(f.database, transient, NOW), /MAIL_FEEDBACK_DISABLED/);
+  process.env.AQUA_AUTH_MAIL_FEEDBACK_MODE = 'sandbox';
+
+  const role = 'test_feedback_' + randomBytes(6).toString('hex');
+  const password = randomBytes(20).toString('hex');
+  await f.database.query(`CREATE ROLE "${role}" LOGIN PASSWORD '${password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`);
+  const url = new URL(f.connectionString);
+  url.username = role;
+  url.password = password;
+  const restricted = new Database({ connectionString: url.toString(), schema: f.schema });
+  f.defer(async () => {
+    await restricted.close();
+    await f.database.query(`DROP OWNED BY "${role}"`);
+    await f.database.query(`DROP ROLE "${role}"`);
+  });
+  await grantAuthMailFeedbackRole(f.database, role);
+  await verifyAuthMailFeedbackRole(restricted);
+  for (const table of ['auth_mail_outbox', 'auth_mail_attempts', 'auth_mail_feedback_events', 'users']) {
+    await assert.rejects(restricted.query(`SELECT * FROM ${table}`), /permission denied/);
+  }
+  await assert.rejects(restricted.query('SELECT claim_auth_mail($1)', [NOW]), /permission denied/);
+
+  await f.issue();
+  const delivery = (await f.database.query('SELECT id FROM auth_mail_outbox')).rows[0].id as string;
+  transient.mailId = delivery;
+  await assert.rejects(recordAuthMailFeedback(restricted, transient, NOW), /MAIL_FEEDBACK_UNMATCHED/);
+  const claim = await f.outbox.claim();
+  assert.ok(claim);
+  await assert.rejects(recordAuthMailFeedback(restricted, { ...transient, recipientHash: digest('wrong@example.test') }, NOW), /MAIL_FEEDBACK_UNMATCHED/);
+  const results = await Promise.all([recordAuthMailFeedback(restricted, transient, NOW), recordAuthMailFeedback(restricted, transient, NOW)]);
+  assert.deepEqual(results[0], { kind: 'transient_bounce', receivedAt: NOW, suppressionEvent: false });
+  assert.deepEqual(results[0], results[1]);
+  assert.equal((await f.database.query('SELECT count(*) FROM auth_mail_feedback_events')).rows[0].count, '1');
+  await assert.rejects(recordAuthMailFeedback(restricted, { ...transient, kind: 'complaint' }, NOW), /MAIL_FEEDBACK_CONFLICT/);
+  await f.outbox.finish(finish(claim));
+
+  await f.issue('email-verification');
+  const active = await f.outbox.claim();
+  assert.ok(active);
+  await f.issue();
+  const directory = await mkdtemp(join(tmpdir(), 'aqua-feedback-'));
+  f.defer(() => rm(directory, { recursive: true }));
+  const filename = join(directory, 'event.json');
+  await writeFile(filename, JSON.stringify(bounce(active.id, 'source-permanent', 'Permanent')), { mode: 0o600 });
+  const cmd = ['--import', 'tsx', 'server/auth-mail-feedback-operator.ts', filename];
+  const env = { ...process.env, NODE_ENV: 'test', AUTH_MAIL_FEEDBACK_DATABASE_URL: url.toString(), DATABASE_SCHEMA: f.schema };
+  const run = promisify(execFile);
+  await assert.rejects(run(process.execPath, cmd, { env: { ...env, NODE_ENV: 'production' } }), /MAIL_FEEDBACK_DISABLED/);
+  const imported = await run(process.execPath, cmd, { env });
+  const receipt = JSON.parse(imported.stdout);
+  assert.deepEqual(Object.keys(receipt).sort(), ['kind', 'receivedAt', 'suppressionEvent']);
+  assert.equal(receipt.kind, 'permanent_bounce');
+  assert.equal(receipt.suppressionEvent, true);
+  assert.equal((await run(process.execPath, cmd, { env })).stdout, imported.stdout);
+
+  // Feedback may arrive before the local worker commits its provider acknowledgment.
+  assert.equal((await f.outbox.finish(finish(active))).status, 'sent');
+  assert.equal(await f.outbox.claim(), null);
+  assert.equal((await f.database.query("SELECT count(*) FROM auth_mail_outbox WHERE error_code='RECIPIENT_SUPPRESSED'")).rows[0].count, '1');
+  const retained = await recordAuthMailFeedback(restricted, parseAuthMailFeedback(complaint(active.id, 'positive', 'not-spam')), NOW);
+  assert.equal(retained.suppressionEvent, false);
+  await f.issue();
+  assert.equal(await f.outbox.claim(), null);
+  const discarded = (await f.database.query("SELECT status,attempt_count,key_id,auth_tag,iv,ciphertext FROM auth_mail_outbox WHERE error_code='RECIPIENT_SUPPRESSED'")).rows;
+  assert.equal(discarded.length, 2);
+  for (const row of discarded) assert.deepEqual(row, { status: 'discarded', attempt_count: 0, key_id: null, auth_tag: null, iv: null, ciphertext: null });
+  const persisted = (await f.database.query('SELECT * FROM auth_mail_feedback_events')).rows;
+  assert.equal(persisted.length, 3);
+  assert.ok(persisted.every(row => row.actor === role));
+  assert.doesNotMatch(JSON.stringify(persisted), /@|private diagnostic/);
+  await assert.rejects(f.database.query('DELETE FROM auth_mail_feedback_events'), /immutable/);
+});
+
+test('an abuse complaint suppresses only the matched account', async (t) => {
+  const f = await fixture(t);
+  await f.issue();
+  const original = await f.outbox.claim();
+  assert.ok(original);
+  const event = parseAuthMailFeedback(complaint(original.id, 'complaint-1', 'abuse'));
+  const { rows } = await f.database.query('SELECT record_auth_mail_feedback($1::jsonb,$2::bigint) AS result', [JSON.stringify(event), NOW]);
+  assert.deepEqual(rows[0].result, { kind: 'complaint', receivedAt: NOW, suppressionEvent: true });
+  await f.outbox.finish(finish(original));
+  await f.issue('email-verification');
+  const store = new LedgerStore(f.database);
+  await store.createUser({ id: 'mail-bob', email: 'mail-bob@example.test', name: '메일 테스트', tag: 'mail.bob', passwordHash: 'test-password-hash', createdAt: NOW });
+  await f.issue('password-recovery', { message: { purpose: 'password-recovery', userId: 'mail-bob', email: 'mail-bob@example.test',
+    token: randomBytes(32).toString('hex'), createdAt: NOW, expiresAt: NOW + 900_000 } });
+  const next = await f.outbox.claim();
+  assert.equal(next?.userId, 'mail-bob');
 });

@@ -173,6 +173,45 @@ try {
   programChanged = !originalProgramActive;
   command('server:rewards', ['grant', owner.email, '3000', `${runId}-grant`]);
   await snapshot({ cash: 100_000, cashHeld: 0, cashTotal: 100_000, reward: 3_000, rewardHeld: 0, debt: 0, confirmed: 0, pending: 0, reversed: 0, remaining: 10_000 });
+  const reserve = page.getByTestId('server-reserve');
+  await reserve.locator('summary').click();
+  await reserve.getByLabel('옮길 금액 (원)').fill('1000');
+  const movementKeys = [];
+  const droppedMovement = Promise.withResolvers();
+  await page.route('**/api/reserve/movement', async (route) => {
+    movementKeys.push(route.request().headers()['idempotency-key']);
+    if (movementKeys.length === 1) {
+      const committed = await route.fetch();
+      assert.equal(committed.status(), 200);
+      await route.abort('failed');
+      droppedMovement.resolve();
+    } else await route.continue();
+  });
+  await reserve.getByRole('button', { name: '지갑에서 넣기' }).click();
+  await droppedMovement.promise;
+  await page.reload();
+  await reserve.getByRole('button', { name: '이전 요청 확인' }).click();
+  await reserve.getByRole('button', { name: '이전 요청 확인' }).waitFor({ state: 'hidden' });
+  await moneyIs('server-reserve-balance', 1000);
+  await moneyIs('server-balance', 99_000);
+  assert.ok(movementKeys[0]);
+  assert.deepEqual(movementKeys, [movementKeys[0], movementKeys[0]]);
+  await page.unroute('**/api/reserve/movement');
+  const fallback = reserve.getByRole('switch', { name: '지갑 부족분을 리저브에서 결제' });
+  for (const expected of [true, false]) {
+    const response = page.waitForResponse(reply => reply.request().method() === 'POST' && new URL(reply.url()).pathname === '/api/reserve/preference');
+    await fallback.click();
+    assert.equal((await response).status(), 200);
+    assert.equal((await account()).reserve.autoUse, expected);
+    await page.waitForFunction(expected => document.querySelector('[aria-labelledby="reserve-fallback-label"]')?.getAttribute('aria-checked') === String(expected), expected);
+  }
+  await reserve.locator('summary').click();
+  await reserve.getByLabel('옮길 금액 (원)').fill('1000');
+  await reserve.getByRole('button', { name: '지갑으로 빼기' }).click();
+  await moneyIs('server-reserve-balance', 0);
+  await moneyIs('server-balance', 100_000);
+  pass('Reserve movements recover a lost response after reload, preserve one booking and the fallback setting, then restore wallet funds.');
+
   await setPreference(true);
   assert.equal((await account()).rewards.programActive, true);
   pass('One new account receives funded card-only rewards; principal totals and transfer capacity exclude the reward units.');

@@ -22,9 +22,9 @@ export default function PaymentSources({ state, onRewardsAuto, onReserveAuto }: 
     <div className="funding-order" aria-live="polite" aria-atomic="true">
       <h3>사용 순서</h3>
       <ol data-testid="funding-order">
-        {state.rewardsAuto && <li><span>리워드</span><strong>{money(state.rewards)}</strong></li>}
-        <li><span>지갑 잔액</span><strong>{money(state.spend)}</strong></li>
-        {state.reserveAuto && <li><span>리저브 잔액</span><strong>{money(state.reserve)}</strong></li>}
+        {state.rewardsAuto && <li><div><span>리워드</span><strong>{money(state.rewards)}</strong></div></li>}
+        <li><div><span>지갑 잔액</span><strong>{money(state.spend)}</strong></div></li>
+        {state.reserveAuto && <li><div><span>리저브 잔액</span><strong>{money(state.reserve)}</strong></div></li>}
       </ol>
     </div>
   </>;

@@ -73,7 +73,7 @@ function evidence(rows: readonly IssuerStatementRow[]): SideEvidence {
 export function matchIssuerStatement(
   statement: Pick<IssuerStatement, 'businessDate' | 'currency' | 'rows'>,
   ledgerRows: readonly IssuerStatementRow[],
-  maxFindings = 100,
+  maxFindings = 100, focusEventId?: string,
 ) {
   if (!Number.isInteger(maxFindings) || maxFindings < 1 || maxFindings > 1_000) {
     throw new Error('maxFindings must be between 1 and 1000.');
@@ -89,7 +89,7 @@ export function matchIssuerStatement(
     const codes = discrepancies(statementGroup, ledgerGroup);
     if (!codes.length) continue;
     findingCount++;
-    if (findings.length < maxFindings) {
+    if (findings.length < maxFindings && (focusEventId === undefined || eventId === focusEventId)) {
       findings.push({ eventId, codes, statement: evidence(statementGroup), ledger: evidence(ledgerGroup) });
     }
   }

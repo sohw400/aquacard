@@ -24,6 +24,22 @@ export interface CustomerAccessSnapshot {
   canTransact: boolean;
 }
 
+export type CardApplicationStatus = 'submitted' | 'approved' | 'declined' | 'issued' | 'dispatched' | 'delivered' | 'active';
+export interface CardApplication {
+  id: string;
+  form: 'virtual' | 'physical';
+  status: CardApplicationStatus;
+  version: number;
+  reason: 'ELIGIBILITY' | 'DETAILS_REQUIRED' | null;
+  createdAt: number;
+  updatedAt: number;
+}
+export interface CardApplicationSnapshot {
+  application: CardApplication | null;
+  canApply: boolean;
+  canActivate: boolean;
+}
+
 /** Public session IDs are unrelated to the secret cookie and its stored hash. */
 export interface AuthSessionRecord {
   id: string;
@@ -47,7 +63,15 @@ export interface TransferRecord {
   createdAt: number;
 }
 
+export interface ReserveSnapshot {
+  accrual?: { rateBps: number; policyVersion: number; pendingWon: string };
+  availableWon: number;
+  autoUse: boolean;
+  preferenceVersion: number;
+}
+
 export interface AccountSnapshot {
+  reserve: ReserveSnapshot;
   user: MemberProfile;
   access: CustomerAccessSnapshot;
   /** Available funds. Authorized card amounts are excluded until released. */
@@ -57,6 +81,8 @@ export interface AccountSnapshot {
   rewards: RewardsSnapshot;
   cardPayments: CardPaymentRecord[];
   transactions: TransferRecord[];
+  cardDeclines?: import('./account-activity').CardDeclineRecord[];
+  historyCursors?: { cards: string | null; transfers: string | null; declines?: string | null };
   limits: {
     perTransfer: number;
     daily: number;
@@ -81,7 +107,8 @@ export interface CardPaymentRecord {
   createdAt: number;
   updatedAt: number;
   /** Absent on historical event responses; those immutable responses are never rewritten. */
-  funding?: { principal: CardFundingAmounts; rewards: CardFundingAmounts };
+  /** When present, reserve is the portion of principal funded from Reserve. */
+  funding?: { principal: CardFundingAmounts; rewards: CardFundingAmounts; reserve?: CardFundingAmounts };
   cashback?: CardCashbackRecord;
 }
 
@@ -94,6 +121,7 @@ export interface CardFundingAmounts {
 }
 
 export interface CardCashbackRecord {
+  reason?: 'budget_unavailable';
   policyVersion: string;
   month: string;
   rateBps: number;
@@ -105,6 +133,7 @@ export interface CardCashbackRecord {
 }
 
 export interface RewardRecord {
+  origin?: 'reserve';
   id: string;
   kind: 'grant' | 'cashback' | 'card_authorize' | 'card_capture' | 'card_release' | 'card_refund' | 'cashback_reversal' | 'adjustment_offset';
   amountWon: number;

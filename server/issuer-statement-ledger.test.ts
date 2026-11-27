@@ -100,9 +100,13 @@ test('unsafe opaque references are withheld from direct SQL and client reports',
   at(start);
   await cards.apply({ ...card, kind: 'authorize', eventId: 'authorized', amountWon: 100, merchantName: '테스트 가게' });
   await cards.apply({ ...capture, eventId: 'local-9999-0000-1111-2222' });
-  await assert.rejects(database.query('SELECT * FROM issuer_statement_postings($1,$2)', [start, end]),
-    { message: 'STATEMENT_LEDGER_INCONSISTENT' });
-  await assert.rejects(readIssuerStatementLedger(database, start, end), { message: 'STATEMENT_LEDGER_INCONSISTENT' });
+  const day = await readIssuerStatementLedger(database, start, end);
+  assert.equal(day.length, 1);
+  assert.match(day[0].eventId, /^~e1\.[a-f0-9]{64}$/);
+  assert.equal(day[0].paymentId, 'purchase');
+  const direct = (await database.query('SELECT * FROM issuer_statement_postings($1,$2)', [start, end])).rows;
+  assert.equal(direct[0].event_id, day[0].eventId);
+  assert.doesNotMatch(JSON.stringify(direct), /9999-0000/);
 });
 
 test('conflicting directions stay separate and an isolated wrong event link blocks a match', async t => {

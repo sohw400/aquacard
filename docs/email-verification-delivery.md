@@ -89,3 +89,38 @@ npm run server:mail:worker -- --once
 `npm run test:email:browser`는 별도 스키마에서 제한된 API·발송 역할과 실제 로컬 파일 작업자를 실행합니다. 먼저 `npm run build:server`, `npm run build:connected`를 실행하고 로컬 `TEST_DATABASE_URL`, `DATABASE_URL`, `AUTH_MAIL_DATABASE_URL`을 설정합니다. 외부 SES에 메일을 보내지는 않습니다.
 
 실제 본인확인 연동, MFA·패스키, 금융 거래의 추가 인증, 이메일 변경, 실서비스 메일 도달률 검증은 이 구현에 포함되지 않습니다.
+
+## SES 반송·불만 처리 시험
+
+격리된 샌드박스에서 반송이나 스팸 신고 뒤 발송 대기열의 동작을 시험할 수 있습니다. 마이그레이션 025와 전용 로그인 권한을 적용하고, 발송 작업자가 한 번 이상 가져간 테스트 메일의 UUID와 받는 주소를 준비합니다. 운영 명령에는 `AUTH_MAIL_FEEDBACK_DATABASE_URL`로 전용 로그인을 연결합니다. 마이그레이션 시 권한을 부여할 역할은 `DATABASE_AUTH_MAIL_FEEDBACK_ROLE`입니다.
+
+아래 파일은 SES 구성 세트의 단일 수신자 이벤트 형식입니다. 예시의 주소와 `aqua-message` 값을 해당 테스트 메일에 맞게 바꿉니다. SNS 봉투가 있는 경우 내부 메시지가 이 형식입니다.
+
+```json
+{
+  "eventType": "Bounce",
+  "mail": {
+    "destination": ["member@example.test"],
+    "tags": { "aqua-message": ["00000000-0000-4000-8000-000000000000"] }
+  },
+  "bounce": {
+    "bounceType": "Permanent",
+    "feedbackId": "sample-feedback-1",
+    "bouncedRecipients": [{ "emailAddress": "member@example.test" }]
+  }
+}
+```
+
+```bash
+AQUA_AUTH_MAIL_FEEDBACK_MODE=sandbox npm run server:mail:feedback -- ./bounce.json
+```
+
+| 이벤트 | 이후 발송 |
+| --- | --- |
+| 영구 반송(Permanent), 스팸 신고(Complaint) | 해당 회원의 인증·복구 메일 발송 중단 |
+| 일시 반송(Transient) | 이후 발송 허용 |
+| 스팸 아님(not-spam) | 이력만 추가. 이전 중단 결정 유지 |
+
+발송 대기 중이던 메일은 작업자가 가져갈 때 폐기합니다. 새 요청은 평소와 같은 사용자 응답을 돌려주고 인증 메일의 암호문을 저장하지 않습니다. 작업자가 이미 가져간 메일은 발송을 마칠 수 있습니다. 같은 이벤트 ID로 다시 실행하면 첫 수신 결과를 반환하고, 내용이 달라지면 충돌로 처리합니다. 감사 이력에는 이벤트 ID, 메일·회원 식별자, 분류, 시각과 처리 역할을 기록합니다.
+
+이 명령은 기본적으로 비활성화되며 `NODE_ENV=production`에서도 차단됩니다. 실제 서비스 도입에는 SES 구성 세트의 이벤트 전달 대상, 수신 경로의 AWS 계정·리전 및 권한 검증, 재처리 큐와 전달 지연 감시를 별도로 연결하고 실제 반송·불만 수신을 확인해야 합니다.

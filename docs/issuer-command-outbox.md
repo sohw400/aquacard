@@ -107,3 +107,14 @@ npm run server:issuer:dispatch
 실제 PostgreSQL 테스트에서 상태·명령의 원자적 기록, 동시 요청, 임대 회수, 늦은 응답 차단, 기한과 감사 이력을 검사한다. 실제 HTTP 상대와 별도 작업자 프로세스로 전송 후 응답 유실·재시작·조회 복구를 확인한다. 이때 금전 원장은 바뀌지 않는다.
 
 실제 발급사 카드 발급·본인확인·상태 조회 계약, 실시간 승인과 잠금 정책 연결, 운영 승인 절차·관측·부하·복구 검증은 남아 있다. 이 작업이 실제 카드 발급이나 운영 배포를 뜻하지 않는다.
+
+### Sandbox card applications
+
+A verified, approved member without a registered card can apply for a virtual or physical card in the connected card view. The application returns a version. Use the separate issuer simulation login (`ISSUANCE_DATABASE_URL`) for each simulated decision and delivery event.
+
+```sh
+npm run server:issuance -- "$application_id" 1 review-001 approve
+npm run server:issuance -- "$application_id" 2 issue-001 issue
+```
+
+A virtual card can now be activated by the same member. For a physical card, submit `dispatch` and then `deliver` with each newly returned version before activation. To decline a submitted application, supply `decline ELIGIBILITY` or `decline DETAILS_REQUIRED`. Retry an uncertain result with the original event ID, version and payload. Member activation registers one synthetic card and preserves its existing lock/unlock workflow. The production API suppresses these sandbox actions.

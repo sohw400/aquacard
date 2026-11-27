@@ -1,3 +1,7 @@
+import { useEffect, useState } from 'react';
+import type { RewardActivityPage } from '../../shared/account-activity';
+import { api, errorMessage } from './api';
+import ActivityPages from './ActivityPages';
 import type { RewardRecord, RewardsSnapshot } from '../../shared/api';
 import './RewardsPanel.css';
 
@@ -20,8 +24,31 @@ const labels: Record<RewardRecord['kind'], string> = {
   cashback_reversal: '페이백 조정', adjustment_offset: '조정액 반영',
 };
 
-export default function RewardsPanel({ rewards, saving, unresolved, message, error, onUseFirstChange, onRetry }: RewardsPanelProps) {
-  const history = rewards?.history.slice(0, 50) ?? [];
+export function RewardControls({ rewards, saving, unresolved, message, error, onUseFirstChange, onRetry }: RewardsPanelProps) {
+  if (!rewards) return null;
+  return <>
+      <div className="sa-rewards-preference"><div><strong>결제할 때 리워드 쓰기</strong><p>켜면 지갑보다 먼저 쓰고, 끄면 리워드를 모아 둬요.</p></div><button type="button" className={`sa-rewards-switch${rewards.useFirst ? ' on' : ''}`} role="switch" aria-checked={rewards.useFirst} aria-label="결제할 때 리워드 쓰기" data-testid="rewards-use-first" disabled={saving || unresolved} onClick={() => onUseFirstChange(!rewards.useFirst)}><span /></button></div>
+      {saving && <p className="sa-rewards-feedback" role="status">설정을 확인하고 있어요.</p>}
+      {unresolved && !saving && <div className="sa-rewards-unknown" data-testid="rewards-preference-unknown"><p>확인되지 않은 설정 요청이 있어요. 결과 확인 전에는 다시 변경할 수 없어요.</p><button type="button" className="sa-secondary" data-testid="rewards-preference-retry" onClick={onRetry}>설정 결과 다시 확인</button></div>}
+      {error && <p className="sa-error" role="alert" data-testid="rewards-preference-error">{error}</p>}
+      {message && !saving && <p className="sa-rewards-feedback" role="status">{message}</p>}
+  </>;
+}
+
+export default function RewardsPanel({ rewards, owner }: { rewards: RewardsSnapshot | null; owner: string }) {
+  const [open, setOpen] = useState(false);
+  const [first, setFirst] = useState<RewardActivityPage | null>(null);
+  const [issue, setIssue] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    setIssue('');
+    api.rewardHistory(owner, null, controller.signal).then(page => {
+      if (!controller.signal.aborted) setFirst(page);
+    }).catch(error => { if (!controller.signal.aborted) setIssue(errorMessage(error)); });
+    return () => controller.abort();
+  }, [owner, open, attempt, rewards?.availableWon, rewards?.heldWon, rewards?.adjustmentDueWon]);
   const rate = rewards ? `${Number((rewards.policy.rateBps / 100).toFixed(2))}%` : '';
   return <section className="sa-transactions sa-rewards-panel" aria-label="페이백과 리워드" data-testid="server-rewards-panel">
     {!rewards ? <div className="sa-empty-state">리워드를 불러오고 있어요.</div> : <>
@@ -40,19 +67,26 @@ export default function RewardsPanel({ rewards, saving, unresolved, message, err
             <div><dt>남은 한도</dt><dd data-testid="cashback-remaining">{money(rewards.cashback.remainingWon)}</dd></div>
             <div><dt>환수 금액</dt><dd data-testid="cashback-reversed">{money(rewards.cashback.reversedWon)}</dd></div>
           </dl>
+          {rewards.programActive && <p className="sa-rewards-policy">승인 때 적립 재원이 확보된 결제에 페이백을 지급해요.</p>}
           {!rewards.programActive && <p className="sa-rewards-program" data-testid="rewards-program-status">새 페이백 적립 중지</p>}
         </div>
         <div className="sa-rewards-wallet">
           <div className="sa-section-heading"><div><h2>카드 리워드</h2><p>카드 결제에 사용할 수 있어요.</p></div></div>
       <dl className="sa-rewards-balances"><div><dt>사용 가능</dt><dd data-testid="rewards-available">{money(rewards.availableWon)}</dd></div><div><dt>결제대기</dt><dd data-testid="rewards-held">{money(rewards.heldWon)}</dd></div></dl>
       {rewards.adjustmentDueWon > 0 && <div className="sa-rewards-adjustment"><div><span>조정 대기</span><strong data-testid="rewards-adjustment">{money(rewards.adjustmentDueWon)}</strong></div><p>앞으로 지급될 리워드에서 먼저 반영해요. 원금에서는 차감하지 않아요.</p></div>}
-      <div className="sa-rewards-preference"><div><strong>리워드 우선 사용</strong><p>결제할 때 리워드부터 사용해요.</p></div><button type="button" className={`sa-rewards-switch${rewards.useFirst ? ' on' : ''}`} role="switch" aria-checked={rewards.useFirst} aria-label="리워드 우선 사용" data-testid="rewards-use-first" disabled={saving || unresolved} onClick={() => onUseFirstChange(!rewards.useFirst)}><span /></button></div>
-      {saving && <p className="sa-rewards-feedback" role="status">설정을 확인하고 있어요.</p>}
-      {unresolved && !saving && <div className="sa-rewards-unknown" data-testid="rewards-preference-unknown"><p>확인되지 않은 설정 요청이 있어요. 결과 확인 전에는 다시 변경할 수 없어요.</p><button type="button" className="sa-secondary" data-testid="rewards-preference-retry" onClick={onRetry}>설정 결과 다시 확인</button></div>}
-      {error && <p className="sa-error" role="alert" data-testid="rewards-preference-error">{error}</p>}
-      {message && !saving && <p className="sa-rewards-feedback" role="status">{message}</p>}
-      </div></div>
-      <details className="sa-rewards-history" data-testid="rewards-history"><summary><span>리워드 이용 내역</span><span>{history.length}건</span></summary><p className="sa-rewards-rule">사용 가능 리워드의 실제 변동액이에요. 승인 때 확보한 리워드는 결제 확정 시 다시 차감하지 않아요.</p>{history.length ? history.map((record) => <details className="sa-rewards-record" key={record.id} data-testid={`rewards-record-${record.id}`} data-kind={record.kind}><summary><div><strong>{labels[record.kind]}</strong><span>{date(record.createdAt)}</span></div><strong className={record.availableDeltaWon > 0 ? 'positive' : ''} data-testid={`rewards-record-available-${record.id}`} data-delta={record.availableDeltaWon}>{record.availableDeltaWon === 0 ? '변동 없음' : signed(record.availableDeltaWon)}</strong></summary><dl><div><dt>사용 가능 변동</dt><dd>{signed(record.availableDeltaWon)}</dd></div><div><dt>결제대기 변동</dt><dd data-testid={`rewards-record-held-${record.id}`}>{signed(record.heldDeltaWon)}</dd></div><div><dt>조정 대기 변동</dt><dd data-testid={`rewards-record-adjustment-${record.id}`}>{signed(record.adjustmentDeltaWon)}</dd></div><div><dt>기록 금액</dt><dd>{money(record.amountWon)}</dd></div>{record.paymentId && <div><dt>카드 내역 번호</dt><dd>{record.paymentId}</dd></div>}</dl></details>) : <div className="sa-empty-state">아직 리워드 변동이 없어요.</div>}</details>
+        </div>
+      </div>
+      <details className="sa-rewards-history" data-testid="rewards-history" onToggle={event => setOpen(event.currentTarget.open)}>
+        <summary>리워드 이용 내역</summary>
+        {open && <>
+          <p className="sa-rewards-rule">카드 승인을 받을 때 사용 가능 리워드에서 차감해요.</p>
+          {issue && <p role="alert">{issue} <button type="button" className="sa-secondary" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></p>}
+          {!first && !issue && <p role="status">내역을 불러오고 있어요.</p>}
+          {first && <ActivityPages key={owner + ':' + first.nextCursor} first={first.items} cursor={first.nextCursor} owner={owner} fetchPage={api.rewardHistory}>
+            {history => history && (history.length ? history.map((record) => <details className="sa-rewards-record" key={record.id} data-testid={`rewards-record-${record.id}`} data-kind={record.kind}><summary><div><strong>{record.origin === 'reserve' ? '리저브 보상 지급' : labels[record.kind]}</strong><span>{date(record.createdAt)}</span></div><strong className={record.availableDeltaWon > 0 ? 'positive' : ''} data-testid={`rewards-record-available-${record.id}`} data-delta={record.availableDeltaWon}>{record.availableDeltaWon === 0 ? '변동 없음' : signed(record.availableDeltaWon)}</strong></summary><dl><div><dt>사용 가능 변동</dt><dd>{signed(record.availableDeltaWon)}</dd></div><div><dt>결제대기 변동</dt><dd data-testid={`rewards-record-held-${record.id}`}>{signed(record.heldDeltaWon)}</dd></div><div><dt>조정 대기 변동</dt><dd data-testid={`rewards-record-adjustment-${record.id}`}>{signed(record.adjustmentDeltaWon)}</dd></div><div><dt>기록 금액</dt><dd>{money(record.amountWon)}</dd></div>{record.paymentId && <div><dt>카드 내역 번호</dt><dd>{record.paymentId}</dd></div>}</dl></details>) : <div className="sa-empty-state">아직 리워드 변동이 없어요.</div>)}
+          </ActivityPages>}
+        </>}
+      </details>
     </>}
   </section>;
 }

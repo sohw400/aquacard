@@ -9,20 +9,29 @@ export interface CardWorkerOptions {
 }
 
 /** One awaited DB transaction at a time. Shutdown never abandons an active commit. */
-export async function runCardWorker(inbox: Pick<CardInboxStore, 'processNext' | 'stats'>, { signal, pollMs, report }: CardWorkerOptions): Promise<void> {
+export async function runCardWorker(inbox: Pick<CardInboxStore, 'processNext' | 'expireHold' | 'stats'>, { signal, pollMs, report }: CardWorkerOptions): Promise<void> {
   if (!Number.isInteger(pollMs) || pollMs < 250 || pollMs > 60_000) throw new Error('Worker poll interval must be between 250 and 60000 ms.');
   const heartbeat = workerHeartbeat('CardWorkerHeartbeat', process.env.AQUA_MONITOR_ENVIRONMENT, report);
   let failures = 0;
   let nextHealth = 0;
+  let nextExpiry = 0;
   while (!signal.aborted) {
     let waitMs = pollMs;
     let processed = false;
     try {
       const result = await inbox.processNext();
+      if (result) report({ event: 'card_inbox_processed', ...result });
+      if (!signal.aborted && Date.now() >= nextExpiry) {
+        const expired = await inbox.expireHold();
+        // Drain expired holds without delaying ordinary inbox work. Poll at
+        // most once per interval when there are no more eligible deadlines.
+        nextExpiry = expired ? 0 : Date.now() + pollMs;
+        if (expired) report({ event: 'card_hold_expired' });
+        processed = expired !== null;
+      }
       if (!signal.aborted) heartbeat?.();
       failures = 0;
-      if (result) report({ event: 'card_inbox_processed', ...result });
-      processed = result !== null;
+      processed ||= result !== null;
     } catch {
       // A lost COMMIT reply is resolved from durable inbox state on the next pass.
       // SQL errors, connection strings, payloads and HMAC secrets never enter logs.

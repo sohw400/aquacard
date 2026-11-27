@@ -48,7 +48,7 @@ const stats = async () => ({
 });
 const unexpected = () => { throw new Error('An idle worker cannot dispatch or complete a job.'); };
 const workers: Record<string, Worker> = {
-  CardWorkerHeartbeat: (poll, options) => runCardWorker({ processNext: poll, stats }, options),
+  CardWorkerHeartbeat: (poll, options) => runCardWorker({ processNext: poll, expireHold: async () => null, stats }, options),
   IssuerDispatcherHeartbeat: (poll, options) => runIssuerDispatcher(
     { claim: poll, finish: unexpected, stats }, { execute: unexpected }, options),
   AuthMailWorkerHeartbeat: (poll, options) => runAuthMailWorker(

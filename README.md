@@ -1,6 +1,6 @@
 # Aqua Card PoC
 
-한국 사용자를 위한 카드 서비스 **Aqua Card**의 인터랙티브 PoC입니다. 코인을 보내면 받는 즉시 원화 스테이블로 바뀌어 잔액이 되고, 카드로 쓰면 페이백을, 리저브에 두면 1초마다 보상을 받습니다. KAST의 구조(받은 코인 자동 매도, 세 멤버십, 회원 간 무료 송금)를 한국 원화 스테이블에 맞춰 옮겼고, 멤버십 요금과 요율은 한국 카드 시장에 맞췄습니다.
+한국 사용자를 위한 카드 서비스 **Aqua Card**의 인터랙티브 PoC입니다. 코인 입금 확인과 전환을 거쳐 채운 지갑으로 카드 결제를 체험할 수 있습니다. 결제 페이백과 리저브 보상은 카드에 쓸 수 있는 리워드로 쌓입니다. KAST의 구조(받은 코인 자동 매도, 세 멤버십, 회원 간 무료 송금)를 한국 원화 스테이블에 맞춰 옮겼고, 멤버십 요금과 요율은 한국 카드 시장에 맞췄습니다.
 
 React·TypeScript·Vite로 만든 웹 앱입니다. 기본 웹 데모의 자금·카드·본인확인은 브라우저 안의 모의 처리이고, 별도 서버 연결 모드는 PostgreSQL 테스트 원장을 사용합니다. 실제 입금, 카드 발급, 개인정보 확인, 외부 송금이나 과금은 하지 않습니다.
 
@@ -118,6 +118,6 @@ KAST는 지원 자산마다 청산 주소를 두고 받은 코인을 거래 확�
 | 제품 | [기획서](docs/product-plan.md), [요금과 정책](docs/policy.md), [KAST 비교와 한국 적용](docs/kast-alignment.md), [KAST 공식 자료 확인](docs/kast-funding-model.md) |
 | 기능 | [카드 신청·발급·운영 흐름](docs/card-issuance-flow.md), [입출금 흐름](docs/funding-flows.md), [입출금과 백엔드 설계](docs/funding-architecture.md), [리저브·리워드 정책](docs/reserve-rewards.md), [화면 설계](docs/screen-design.md) |
 | 출시 준비 | [출시 준비 목록](docs/launch-readiness.md), [KYC·AML 규제와 법률 검토](docs/kyc-aml-review.md), [앱스토어·구글 플레이 심사 준비](docs/store-review.md), [모바일 앱 준비 (iOS·Android)](docs/mobile-app-plan.md) |
-| 개발 | [서버 실행·검증](docs/server-development.md), [카드 서버 처리](docs/card-payment-server.md), [리워드 서버 처리](docs/rewards-server.md), [카드 수신·재처리](docs/card-event-inbox.md), [발급사 요청·복구](docs/issuer-command-outbox.md), [기술 결정](docs/technology-decisions.md), [테스트 안내](docs/testing.md), [웹 배포](docs/deployment.md) |
+| 개발 | [서버 실행·검증](docs/server-development.md), [카드 서버 처리](docs/card-payment-server.md), [리워드 서버 처리](docs/rewards-server.md), [리저브 원장과 보상](docs/reserve-server.md), [정산 차이 처리](docs/settlement-cases.md), [카드 수신·재처리](docs/card-event-inbox.md), [발급사 요청·복구](docs/issuer-command-outbox.md), [기술 결정](docs/technology-decisions.md), [테스트 안내](docs/testing.md), [웹 배포](docs/deployment.md) |
 
 실제 서비스를 위해서는 본인확인, 보관·전환 파트너, 카드 발급·정산, 원화 스테이블 발행·상환, 리저브 보상 재원과 한국 제공 가능 범위를 확정해야 합니다. 브라우저 장부는 실제 금융 장부나 인증 시스템으로 쓸 수 없습니다.

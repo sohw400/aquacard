@@ -1,6 +1,21 @@
 import { checkedSchema, type Database } from './database';
 
 /** The deployment creates this login role and stores its credentials outside source control. */
+const memberWalletFunctions = [
+  'reserve_snapshot(text)', 'reserve_payment_funding(text)', 'apply_reserve_command(jsonb,bigint)',
+  'funding_intent(text,text,jsonb,bigint)', 'funding_member_history(text)',
+  'member_reward_summary(text,bigint)', 'member_reward_activity(text,bigint,text,integer)',
+  'customer_transfer_limited(text)', 'member_card_declines(text,bigint,text,integer)',
+  'member_card_application(text)', 'submit_card_application(jsonb,bigint)', 'activate_card_application(jsonb,bigint)',
+] as const;
+const privateWalletTables = [
+  'sandbox_card_hold_policy', 'card_hold_deadlines', 'card_hold_expirations', 'card_capture_resolutions',
+  'reserve_wallets', 'reserve_commands', 'card_reserve_allocations', 'reserve_entries',
+  'funding_operations', 'funding_member_commands', 'funding_events', 'funding_cash_postings', 'funding_chain_receipts', 'funding_invalid_blocks',
+  'sandbox_sync_requests', 'sandbox_sync_decisions', 'auth_mail_feedback_events', 'settlement_reference_key', 'settlement_cases', 'settlement_case_events',
+  'reserve_reward_policy', 'reserve_reward_rates', 'reserve_reward_accruals', 'reserve_reward_payouts', 'customer_transfer_risk_events', 'card_applications', 'card_application_events',
+] as const;
+
 export async function grantApplicationRole(database: Database, role: string): Promise<void> {
   checkedSchema(role);
   await database.transaction(async (client) => {
@@ -42,14 +57,17 @@ export async function grantApplicationRole(database: Database, role: string): Pr
     await client.query(`GRANT EXECUTE ON FUNCTION issuer_card_snapshot(text), request_issuer_card_status(jsonb,bigint) TO ${quoted}`);
     await client.query(`REVOKE ALL ON FUNCTION operator_fund_reward_budget(jsonb, bigint), operator_set_reward_program(jsonb, bigint), operator_grant_rewards(jsonb, bigint) FROM ${quoted}`);
     await client.query(`REVOKE ALL ON FUNCTION apply_sandbox_card_event_legacy_003(jsonb, bigint) FROM ${quoted}`);
+    await client.query(`REVOKE ALL ON ${privateWalletTables.join(', ')} FROM ${quoted}`);
+    await client.query(`GRANT EXECUTE ON FUNCTION ${memberWalletFunctions.join(', ')} TO ${quoted}`);
     const internalFunctions = await client.query<{ signature: string }>(`SELECT p.oid::regprocedure::text AS signature
       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = $1 AND p.prosecdef
-      AND p.oid NOT IN ('apply_sandbox_card_event(jsonb,bigint)'::regprocedure,
+      AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) AS f(sig) WHERE to_regprocedure(f.sig)=p.oid)
+        AND p.oid NOT IN ('apply_sandbox_card_event(jsonb,bigint)'::regprocedure,
         'rewards_snapshot(text,bigint)'::regprocedure, 'apply_reward_preference(jsonb,bigint)'::regprocedure,
         'issuer_card_snapshot(text)'::regprocedure, 'request_issuer_card_status(jsonb,bigint)'::regprocedure,
         'customer_access_snapshot(text)'::regprocedure, 'customer_require_active(text[])'::regprocedure,
-        'confirm_auth_email_verification(text,text,bigint)'::regprocedure, 'cleanup_auth_email_verification(bigint)'::regprocedure, 'enqueue_auth_mail(jsonb)'::regprocedure)`, [database.schema]);
+        'confirm_auth_email_verification(text,text,bigint)'::regprocedure, 'cleanup_auth_email_verification(bigint)'::regprocedure, 'enqueue_auth_mail(jsonb)'::regprocedure)`, [database.schema, memberWalletFunctions]);
     for (const { signature } of internalFunctions.rows) await client.query(`REVOKE ALL ON FUNCTION ${signature} FROM ${quoted}`);
   });
 }
@@ -96,14 +114,22 @@ export async function verifyApplicationRole(database: Database): Promise<void> {
   const internalAccess = await database.query<{ unsafe: boolean }>(`SELECT EXISTS (
     SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = $1 AND p.prosecdef AND p.prorettype <> 'trigger'::regtype
-      AND p.oid NOT IN ('apply_sandbox_card_event(jsonb,bigint)'::regprocedure,
+      AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) AS f(sig) WHERE to_regprocedure(f.sig)=p.oid)
+        AND p.oid NOT IN ('apply_sandbox_card_event(jsonb,bigint)'::regprocedure,
         'rewards_snapshot(text,bigint)'::regprocedure, 'apply_reward_preference(jsonb,bigint)'::regprocedure,
         'issuer_card_snapshot(text)'::regprocedure, 'request_issuer_card_status(jsonb,bigint)'::regprocedure,
         'customer_access_snapshot(text)'::regprocedure, 'customer_require_active(text[])'::regprocedure,
         'confirm_auth_email_verification(text,text,bigint)'::regprocedure, 'cleanup_auth_email_verification(bigint)'::regprocedure, 'enqueue_auth_mail(jsonb)'::regprocedure)
       AND has_function_privilege(current_user, p.oid, 'EXECUTE')
-  ) AS unsafe`, [database.schema]);
+  ) AS unsafe`, [database.schema, memberWalletFunctions]);
   if (internalAccess.rows[0]?.unsafe !== false) throw new Error('The API cannot execute private ledger helper functions.');
+  const walletRights = await database.query<{ unsafe: boolean }>(`SELECT EXISTS (
+    SELECT 1 FROM unnest($1::text[]) t(name) WHERE has_table_privilege(current_user,name,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+      OR has_any_column_privilege(current_user,name,'SELECT,INSERT,UPDATE,REFERENCES')
+  ) OR EXISTS (
+    SELECT 1 FROM unnest($2::text[]) f(signature) WHERE NOT has_function_privilege(current_user,signature,'EXECUTE')
+  ) AS unsafe`, [privateWalletTables.map(table => database.schema + '.' + table), memberWalletFunctions]);
+  if (walletRights.rows[0]?.unsafe !== false) throw new Error('The API needs restricted wallet functions without raw wallet or operator access.');
   const issuerAccess = await database.query<{ unsafe: boolean }>(`SELECT EXISTS (
     SELECT 1 FROM unnest($1::text[]) t(name)
     WHERE has_table_privilege(current_user,name,'SELECT') OR has_any_column_privilege(current_user,name,'SELECT')
@@ -120,11 +146,17 @@ export async function verifyApplicationRole(database: Database): Promise<void> {
 
 const cardServiceFunctions = {
   ingress: ['enqueue_sandbox_card_event(jsonb,bigint)'],
-  worker: ['process_card_inbox(bigint)', 'card_inbox_stats(bigint)'],
+  worker: ['process_card_inbox(bigint)', 'card_inbox_stats(bigint)', 'expire_sandbox_card_hold(bigint)', 'settle_next_reserve_reward()'],
   dispatcher: ['claim_issuer_outbox(bigint)', 'finish_issuer_outbox(jsonb,bigint)', 'issuer_outbox_stats(bigint)'],
   operations: ['prepare_card_operations_report(jsonb)', 'read_card_operations_report(text)'],
   settlement: ['issuer_statement_postings(bigint,bigint)'],
-  monitor: ['read_queue_health(bigint)', 'operations_ledger_finding_count()'],
+  correction: ['operator_resolve_card_capture(jsonb,bigint)'],
+  funding: ['funding_operator_event(jsonb,bigint)'],
+  issuance: ['apply_card_application_event(jsonb,bigint)'],
+  authorizationSimulator: ['decide_sandbox_authorization(jsonb)', 'lookup_sandbox_authorization(uuid)'],
+  settlementCase: ['open_settlement_case(jsonb)', 'transition_settlement_case(jsonb)', 'read_settlement_case(uuid)', 'list_settlement_cases(text,uuid)'],
+  monitor: ['read_queue_health(bigint)', 'operations_ledger_finding_count()', 'reward_budget_health(bigint)'],
+  mailFeedback: ['record_auth_mail_feedback(jsonb,bigint)'],
   mail: ['claim_auth_mail(bigint)', 'finish_auth_mail(jsonb,bigint)', 'auth_mail_stats(bigint)'],
 } as const;
 
@@ -212,3 +244,18 @@ export const verifyMonitorRole = (database: Database) => verifyCardServiceRole(d
 
 export const grantAuthMailRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'mail');
 export const verifyAuthMailRole = (database: Database) => verifyCardServiceRole(database, 'mail');
+
+export const grantFundingRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'funding');
+export const verifyFundingRole = (database: Database) => verifyCardServiceRole(database, 'funding');
+
+export const grantCorrectionRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'correction');
+export const verifyCorrectionRole = (database: Database) => verifyCardServiceRole(database, 'correction');
+
+export const grantIssuanceRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'issuance');
+export const verifyIssuanceRole = (database: Database) => verifyCardServiceRole(database, 'issuance');
+export const grantAuthorizationSimulatorRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'authorizationSimulator');
+export const verifyAuthorizationSimulatorRole = (database: Database) => verifyCardServiceRole(database, 'authorizationSimulator');
+export const grantAuthMailFeedbackRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'mailFeedback');
+export const verifyAuthMailFeedbackRole = (database: Database) => verifyCardServiceRole(database, 'mailFeedback');
+export const grantSettlementCaseRole = (database: Database, role: string) => grantCardServiceRole(database, role, 'settlementCase');
+export const verifySettlementCaseRole = (database: Database) => verifyCardServiceRole(database, 'settlementCase');

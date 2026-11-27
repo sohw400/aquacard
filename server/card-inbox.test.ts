@@ -246,25 +246,25 @@ test('insufficient customer funds are terminal and later funding cannot revive t
   assert.equal((await f.database.query('SELECT COUNT(*)::int AS count FROM card_payment_events')).rows[0].count, 0);
 });
 
-test('company budget failures retry and retain the authorization receipt month across Korean midnight', async (t) => {
+test('unfunded cashback never delays an authorization and later company funding cannot change its original terms', async (t) => {
   const beforeMidnight = Date.UTC(2026, 10, 30, 14, 59, 59);
   const f = await fixture(t, beforeMidnight); await f.fund(10_000);
   await f.rewards.setProgram({ enabled: true, idempotencyKey: 'on-before-midnight' });
   const event = authorize('month-preserved');
   const receipt = await f.inbox.enqueue(event);
-  const delayed = await f.inbox.processNext();
-  assert.equal(delayed?.status, 'retry'); assert.equal(delayed?.errorCode, 'REWARD_BUDGET_UNAVAILABLE');
-  assert.equal((await f.ledger.snapshot('alice')).heldBalanceWon, 0);
+  const approval = await applied(f.inbox);
+  assert.equal(approval.attemptCount, 1);
+  assert.equal((await f.ledger.snapshot('alice')).heldBalanceWon, 10_000);
   f.advance(2_000);
   await f.rewards.fundBudget({ amountWon: 1_000, idempotencyKey: 'budget-after-midnight' });
-  await applied(f.inbox);
   await f.inbox.enqueue(capture('month-preserved')); await applied(f.inbox);
   const current = await f.ledger.snapshot('alice');
   assert.equal(current.cardPayments[0].createdAt, beforeMidnight);
   assert.equal(current.cardPayments[0].cashback?.month, '2026-11');
-  assert.equal(current.cardPayments[0].cashback?.awardedWon, 100);
+  assert.equal(current.cardPayments[0].cashback?.awardedWon, 0);
   assert.equal(current.rewards.cashback.month, '2026-12'); assert.equal(current.rewards.cashback.confirmedWon, 0);
-  assert.equal(current.rewards.availableWon, 100);
+  assert.equal(current.rewards.availableWon, 0);
+  assert.equal(current.cardPayments[0].cashback?.reason, 'budget_unavailable');
   const again = await f.inbox.enqueue(event);
   assert.equal(again.id, receipt.id); assert.equal(again.receivedAt, beforeMidnight); assert.equal(again.duplicate, true);
   await cleanBooks(f.database);

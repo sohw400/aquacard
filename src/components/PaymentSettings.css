@@ -26,4 +26,5 @@
 .funding-order ol { margin: 0; padding-left: 1.35em; list-style: decimal; }
 .funding-order li { padding: 4px 0; color: var(--ink); font-size: 15px; line-height: 1.5; }
 .funding-order li::marker { color: var(--muted); font-variant-numeric: tabular-nums; }
-.funding-order strong { float: right; padding-left: 8px; font-variant-numeric: tabular-nums; }
+.funding-order li > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 8px; }
+.funding-order strong { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }

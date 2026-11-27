@@ -118,7 +118,7 @@ export function verifyBankSettlementScope(statement: IssuerStatement, advice: Se
   }
 }
 
-export function matchBankSettlement(statement: IssuerStatement, advice: SettlementAdvice, bank: BankStatement) {
+export function matchBankSettlement(statement: IssuerStatement, advice: SettlementAdvice, bank: BankStatement, focusBatchId?: string) {
   verifyBankSettlementScope(statement, advice, bank);
   const expected = expectedPostings(statement, advice);
   const booked = bookedPostings(bank.rows);
@@ -131,7 +131,7 @@ export function matchBankSettlement(statement: IssuerStatement, advice: Settleme
     const codes = differences(posting, observed, booked.duplicateBatches.has(batchId));
     if (!codes.length) continue;
     findingCount++;
-    if (findings.length < 100) findings.push({ batchId, codes, expected: posting ?? null, bank: reportGross(observed) });
+    if (findings.length < 100 && (focusBatchId === undefined || batchId === focusBatchId)) findings.push({ batchId, codes, expected: posting ?? null, bank: reportGross(observed) });
   }
   return {
     scope: 'bank_settlement' as const, businessDate: statement.businessDate, settlementDate: bank.settlementDate,

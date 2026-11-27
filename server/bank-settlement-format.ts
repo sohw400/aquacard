@@ -1,3 +1,4 @@
+import { readSettlementReference } from './settlement-reference';
 import { isStatementReference, isStatementWon, MAX_ISSUER_STATEMENT_ROWS, objectWithFields,
   statementDayWindow } from './issuer-statement-format';
 
@@ -58,7 +59,7 @@ function won(value: unknown, maximum: bigint, allowZero: boolean): string {
   return value;
 }
 
-export function parseSettlementAdvice(input: unknown): SettlementAdvice {
+export function parseSettlementAdvice(input: unknown, readReference = readSettlementReference): SettlementAdvice {
   if (!objectWithFields(input, ['version', 'currency', 'businessDate', 'settlementDate', 'accountRef', 'batches'])
     || input.version !== 1 || input.currency !== 'TEST_KRW' || !Array.isArray(input.batches)
     || input.batches.length > maxRows) {
@@ -81,7 +82,8 @@ export function parseSettlementAdvice(input: unknown): SettlementAdvice {
     batchIds.add(batchId);
     const eventIds: string[] = [];
     for (const value of batch.eventIds) {
-      const eventId = reference(value);
+      const eventId = readReference('event', value);
+      if (eventId === undefined) throw new BankSettlementFormatError('INVALID_SETTLEMENT_REFERENCE');
       if (assigned.has(eventId)) throw new BankSettlementFormatError('DUPLICATE_ADVICE_EVENT');
       assigned.add(eventId);
       eventIds.push(eventId);

@@ -18,18 +18,21 @@ export function embeddedMetrics(environment: string, metrics: MetricDatum[], tim
 
 export interface MonitorObservation {
   ledgerFindings?: number;
+  budget?: { budgetLow: boolean; unfunded24h: number };
   queues?: QueueHealth;
-  failedChecks: ('connection' | 'migrations' | 'role' | 'ledger' | 'queues' | 'shutdown' | 'deadline')[];
+  failedChecks: ('connection' | 'migrations' | 'role' | 'ledger' | 'budget' | 'queues' | 'shutdown' | 'deadline')[];
 }
 
 const queuePrefixes = { cardInbox: 'CardInbox', issuerOutbox: 'IssuerOutbox', authMail: 'AuthMail' } as const;
 
 export function monitorResult(environment: string, observation: MonitorObservation) {
-  const { ledgerFindings, queues, failedChecks } = observation;
-  const complete = ledgerFindings !== undefined && queues !== undefined && failedChecks.length === 0;
+  const { ledgerFindings, queues, budget, failedChecks } = observation;
+  const complete = ledgerFindings !== undefined && queues !== undefined && budget !== undefined && failedChecks.length === 0;
   const metrics: MetricDatum[] = [{ name: 'MonitorHealthy', value: Number(complete), unit: 'Count' }];
   let incident = (ledgerFindings ?? 0) > 0;
   if (ledgerFindings !== undefined) metrics.push({ name: 'LedgerFindings', value: ledgerFindings, unit: 'Count' });
+  if (budget) metrics.push({ name: 'RewardBudgetLow', value: Number(budget.budgetLow), unit: 'Count' },
+    { name: 'UnfundedCashbackAuthorizations24h', value: budget.unfunded24h, unit: 'Count' });
   if (queues) {
     for (const key of ['cardInbox', 'issuerOutbox', 'authMail'] as const) {
       const queue = queues[key];

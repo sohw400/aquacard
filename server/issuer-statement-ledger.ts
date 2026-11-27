@@ -1,5 +1,6 @@
 import type { Database } from './database';
-import { isStatementReference, type IssuerStatementRow } from './issuer-statement-format';
+import type { IssuerStatementRow } from './issuer-statement-format';
+import { readSettlementReference } from './settlement-reference';
 
 export type IssuerStatementPosting = IssuerStatementRow;
 
@@ -32,7 +33,7 @@ export async function readIssuerStatementLedger(
       SELECT event_id AS "eventId", payment_id AS "paymentId", kind, amount_won AS "amountWon"
       FROM issuer_statement_postings($1::bigint, $2::bigint)
       ORDER BY event_id COLLATE "C", payment_id COLLATE "C", kind`, [startMs, endMs]);
-    if (rows.some(row => !isStatementReference(row.eventId) || !isStatementReference(row.paymentId))) {
+    if (rows.some(row => !readSettlementReference('event', row.eventId) || !readSettlementReference('payment', row.paymentId))) {
       throw new Error('STATEMENT_LEDGER_INCONSISTENT');
     }
     return rows;

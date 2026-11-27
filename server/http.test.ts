@@ -311,7 +311,7 @@ test('funded rewards remain card-only and the API exposes the original funding s
     const alice = await f.signupForTransactions('rewardowner'); const bob = await f.signupForTransactions('rewardother');
     await new IssuerOutboxStore(f.database).register({ userId: alice.user.id, providerCardId: 'sandbox-card-http-reward', initialStatus: 'active' });
     const rewards = new RewardsStore(f.database);
-    await rewards.fundBudget({ amountWon: 100_000, idempotencyKey: 'http-company-budget' });
+    await rewards.fundBudget({ amountWon: 7_040, idempotencyKey: 'http-company-budget' });
     await rewards.setProgram({ enabled: true, idempotencyKey: 'http-enable-rewards' });
     await rewards.grant({ userId: alice.user.id, amountWon: 7_000, idempotencyKey: 'http-reward-grant' });
     await f.store.creditSandbox({ userId: alice.user.id, amountWon: 5_000, idempotencyKey: 'http-principal-funding' });
@@ -335,6 +335,13 @@ test('funded rewards remain card-only and the API exposes the original funding s
     assert.equal(captured.data.balanceWon, 2_000); assert.equal(captured.data.rewards.availableWon, 30);
     assert.equal(captured.data.rewards.heldWon, 0); assert.equal(captured.data.rewards.cashback.confirmedWon, 30);
     assert.equal(captured.data.cardPayments[0].cashback?.awardedWon, 30);
+    // Only ten won of company funding remain. An eligible 19-won award cannot be promised in full.
+    await cards.apply({ kind: 'authorize', eventId: 'http-budget-short-auth', paymentId: 'http-budget-short', userId: alice.user.id, amountWon: 2_000, merchantName: '테스트 서점' });
+    const history = await f.request('/account/activity/cards', { cookie: alice.cookie });
+    const limited = history.data.items.find((payment: { id: string }) => payment.id === 'http-budget-short');
+    assert.equal(limited.cashback.reason, 'budget_unavailable');
+    assert.equal(limited.cashback.pendingWon, 0);
+    assert.equal(limited.heldWon, 2_000);
     const other = await f.request(`/account?userId=${alice.user.id}`, { cookie: bob.cookie });
     assert.equal(other.data.rewards.availableWon, 0); assert.deepEqual(other.data.rewards.history, []);
     assert.equal(captured.body.includes('canonical_input'), false);
@@ -574,5 +581,91 @@ test('structured request logs omit query strings, credentials, cookies and recov
     assert.equal(completed.method, 'GET');
     assert.equal(typeof completed.requestId, 'string');
     assert.equal(typeof completed.durationMs, 'number');
+  } finally { await f.close(); }
+});
+
+test('Reserve HTTP commands bind to the signed-in account and replay a completed move without moving funds again', async () => {
+  const f = await fixture();
+  try {
+    const member = await f.signup('reservehttp');
+    const send = (path: string, body: object, key: string, account = member.user.id) =>
+      f.request(path, { method: 'POST', cookie: member.cookie, body,
+        headers: { 'Idempotency-Key': key, 'X-Aqua-Account': account } });
+    await f.store.creditSandbox({ userId: member.user.id, amountWon: 3_000, idempotencyKey: 'starting-reserve-balance' });
+    const deposit = { direction: 'in', amountWon: 1_000 };
+    assert.equal((await send('/reserve/movement', deposit, 'pending-approval')).status, 403);
+    await approveTestCustomer(f.database, member.user.id);
+    assert.equal((await send('/reserve/movement', deposit, 'wrong-account-key', 'stale-owner')).status, 409);
+    assert.equal((await send('/reserve/movement', { ...deposit, userId: 'other' }, 'forged-account')).status, 400);
+    const moved = await send('/reserve/movement', deposit, 'valid-movement');
+    assert.equal(moved.status, 200);
+    assert.deepEqual(moved.data, { availableWon: 1_000, autoUse: false, preferenceVersion: 0 });
+    assert.deepEqual((await send('/reserve/movement', deposit, 'valid-movement')).data, moved.data);
+    assert.equal((await send('/reserve/movement', { ...deposit, amountWon: 900 }, 'valid-movement')).data.error.code, 'IDEMPOTENCY_CONFLICT');
+    assert.equal((await send('/reserve/preference', { autoUse: true, expectedVersion: 0 }, 'turn-fallback-on')).status, 200);
+    const snapshot = (await f.request('/account', { cookie: member.cookie })).data;
+    assert.equal(snapshot.balanceWon, 2_000);
+    assert.deepEqual(snapshot.reserve, { availableWon: 1_000, autoUse: true, preferenceVersion: 1 });
+  } finally { await f.close(); }
+});
+
+test('connected funding requires the session owner and recent authentication before holding a withdrawal',async()=>{
+  const f=await fixture();
+  try {
+    const alice=await f.signup('fundingalice'), bob=await f.signup('fundingbob');
+    await approveTestCustomer(f.database,alice.user.id);
+    await f.store.creditSandbox({userId:alice.user.id,amountWon:20000,idempotencyKey:'funding-http-seed'});
+    const post=(body:unknown,key:string,account=alice.user.id)=>f.request('/funding',{method:'POST',body,cookie:alice.cookie,
+      headers:{'X-Aqua-Account':account,'Idempotency-Key':key}});
+    const quote={action:'quote',direction:'withdrawal',asset:'USDC',network:'polygon',quantity:'14000',destination:'aqua-test:polygon:my-wallet'};
+    assert.equal((await f.request('/funding')).status,401);
+    assert.equal((await post(quote,'foreign-quote',bob.user.id)).status,409);
+    assert.equal((await post({...quote,operator:true},'bad-quote')).status,400);
+    const prepared=await post(quote,'prepare-quote');
+    assert.equal(prepared.status,200,prepared.body);
+    const row=JSON.parse(prepared.body) as {id:string;status:string};
+    assert.equal(row.status,'quoted');
+    await f.database.query('UPDATE auth_sessions SET reauthenticated_at=NULL WHERE user_id=$1',[alice.user.id]);
+    const accept={action:'accept_withdrawal',id:row.id};
+    assert.equal((await post(accept,'accept-quote')).data.error.code,'REAUTHENTICATION_REQUIRED');
+    assert.equal((await f.request('/auth/reauthenticate',{method:'POST',cookie:alice.cookie,headers:{'X-Aqua-Account':alice.user.id},body:{password:PASSWORD}})).status,200);
+    const held=await post(accept,'accept-quote');
+    assert.equal(held.status,200,held.body);
+    assert.equal(JSON.parse(held.body).status,'held');
+    assert.deepEqual((await post(accept,'accept-quote')).data,held.data);
+    assert.equal((await f.request('/funding',{cookie:bob.cookie,headers:{'X-Aqua-Account':bob.user.id}})).body,'[]');
+    const cancelled=await post({action:'cancel',id:row.id},'cancel-funding');
+    assert.equal(JSON.parse(cancelled.body).status,'cancelled');
+    assert.equal((await f.store.snapshot(alice.user.id)).balanceWon,20000);
+  } finally {await f.close();}
+});
+
+test('card decline history binds the owner to the signed-in member and removes internal decision details', async () => {
+  const f = await fixture();
+  try {
+    const alice = await f.signupForTransactions('history.alice');
+    const other = await f.signupForTransactions('history.other');
+    const card = new IssuerOutboxStore(f.database);
+    await card.register({ userId: alice.user.id, providerCardId: 'sandbox-card-private-member', initialStatus: 'active' });
+    await new CustomerAccessStore(f.database).transition({ userId:alice.user.id,status:'frozen',expectedVersion:2,
+      idempotencyKey:'freeze-for-test',reason:'Sandbox risk investigation case for test.' });
+    await f.database.query('SELECT apply_sandbox_card_event($1::jsonb,$2::bigint)',
+      [JSON.stringify({kind:'authorize',eventId:'private-event',paymentId:'private-payment',userId:alice.user.id,
+        amountWon:50,merchantName:'private-merchant'}), Date.now()]);
+    const url='/account/activity/declines';
+    assert.equal((await f.request(url)).status,401);
+    const mismatched = await f.request(url,{cookie:other.cookie,headers:{'X-Aqua-Account':alice.user.id}});
+    assert.notEqual(mismatched.status,200);
+    const empty = await f.request(url,{cookie:other.cookie,headers:{'X-Aqua-Account':other.user.id}});
+    assert.deepEqual(JSON.parse(empty.body),{items:[],nextCursor:null});
+    const own = await f.request(url,{cookie:alice.cookie,headers:{'X-Aqua-Account':alice.user.id}});
+    assert.equal(own.status,200);
+    const page=JSON.parse(own.body);
+    assert.equal(page.items.length,1);
+    assert.equal(page.items[0].reason,'unavailable');
+    assert.deepEqual(Object.keys(page.items[0]).sort(),['createdAt','id','reason']);
+    assert.doesNotMatch(own.body,/frozen|private-|CUSTOMER_ACCESS_REQUIRED|investigation/i);
+    assert.deepEqual((await f.request('/account',{cookie:alice.cookie})).data.cardDeclines,page.items);
+    assert.equal((await f.request('/account',{cookie:alice.cookie,headers:{'X-Aqua-View':'summary'}})).data.cardDeclines,undefined);
   } finally { await f.close(); }
 });

@@ -1,6 +1,6 @@
 # 운영 알림과 장애 대응
 
-AWS 서울 리전에서 ECS Fargate 작업이 5분마다 내부 원장과 세 대기열을 읽는다. 결과는 CloudWatch Logs에 한 줄로 기록하고 CloudWatch가 `AquaCard/Operations` 지표를 추출한다. 경보 상태가 `ALARM` 또는 `OK`로 바뀔 때 기존 SNS 구독자에게 통지한다. AWS 계정에서의 설치와 수신 확인은 별도로 수행한다. [CloudFormation 템플릿](../infra/operations-monitoring.yaml)
+AWS 서울 리전에서 ECS Fargate 작업이 5분마다 내부 원장과 리워드 재원 상태, 세 대기열을 읽는다. 결과는 CloudWatch Logs에 한 줄로 기록하고 CloudWatch가 `AquaCard/Operations` 지표를 추출한다. 경보 상태가 `ALARM` 또는 `OK`로 바뀔 때 기존 SNS 구독자에게 통지한다. AWS 계정에서의 설치와 수신 확인은 별도로 수행한다. [CloudFormation 템플릿](../infra/operations-monitoring.yaml)
 
 ## 배포 입력
 
@@ -30,9 +30,15 @@ docker run --rm --entrypoint node aqua-server:rds \
 
 두 입력을 생략하면 로컬용 이미지에는 RDS 번들이 설치되지 않는다. 데이터베이스 연결은 계속 인증서와 호스트 이름을 검증한다.
 
+## 페이백 재원 경보
+
+`RewardBudgetLow`는 활성 프로그램의 미약정 재원이 스탠다드 회원 한 명의 월 한도인 1만원 미만일 때 1이다. `UnfundedCashbackAuthorizations24h`는 재원 부족으로 페이백을 약정하지 못한 최근 24시간의 승인 건수다. 각각 양수가 되면 알린다. 점검 역할은 두 집계값만 조회한다.
+
+경보를 받으면 운영자는 테스트 원장에서 회사의 미약정 재원과 진행 중인 페이백 약정액을 확인한다. 필요시 회사 예산을 보충하고 다음 승인에서 적립 예정액을 확인한다. 예산을 보충해도 과거 승인의 조건은 바뀌지 않는다. 24시간 건수 경보는 마지막 해당 승인이 집계 구간을 벗어나야 해제된다.
+
 ## 설치와 인수 확인
 
-1. 격리 환경에서 `npm run server:monitor` 또는 빌드된 `node dist-server/operations-monitor.js`로 권한과 마이그레이션을 확인한다. 종료값 `0`은 점검 완료, `1`은 확인된 원장 차이·검토 대기·최근 실패, `2`는 점검 미완료다. 대기 시간과 선행 거래 지연의 통지 기준은 CloudWatch에 둔다.
+1. 격리 환경에서 `npm run server:monitor` 또는 빌드된 `node dist-server/operations-monitor.js`로 권한과 마이그레이션을 확인한다. 종료값 `0`은 점검 완료, `1`은 확인된 원장 차이·검토 대기·최근 실패, `2`는 점검 미완료다. 페이백 예산, 대기 시간, 선행 거래 지연은 CloudWatch 경보에서 확인한다.
 2. `cfn-lint --regions ap-northeast-2 --template infra/operations-monitoring.yaml`로 리전 스키마를 검사한다. 같은 Python 환경에서 프로젝트 의존성을 설치하고 `node --import tsx scripts/check-operations-alarms.mjs`를 실행하면 경보가 실제 점검 결과와 작업자 신호를 구독하는지도 확인할 수 있다. 배포 담당자가 스테이징에서 템플릿과 위 입력으로 CloudFormation 변경 세트를 만든다. 스택에 IAM 역할이 있어 `CAPABILITY_IAM` 승인이 필요하다. 예상 리소스와 SNS 대상을 확인하고 변경 세트를 적용한다.
 3. `MonitorScheduleArn`의 스케줄이 켜졌는지, `MonitorTaskDefinitionArn`으로 뜬 작업이 종료값 `0`을 냈는지 확인한다. `MonitorLogGroup`에서 `Environment`, `MonitorHealthy=1`, `LedgerFindings=0`과 세 큐의 지표를 함께 확인한다. 이어지는 실행에서도 지표가 들어오는지 보고 각 경보의 실제 상태와 SNS 구독자 수신 경로를 확인한다.
 4. [스테이징 경보 훈련 절차](staging-recovery.md)에 따라 시험용 구독에서 부재 경보를 점검한다. 스케줄을 잠시 중단하고 부재 알림을 받은 시각을 기록한 뒤 바로 재개한다. 다음 정상 표본과 정상 복귀 알림을 확인한다. 상시 작업자도 시험 환경에서 건별로 중단·복구해 대기열이 비어 있을 때의 통지를 확인한다. 장애 감지까지 걸린 시간, 담당자, 대응 시간과 알림 수신 기록을 남긴다.

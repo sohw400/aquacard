@@ -21,12 +21,22 @@ const fundingFields: { key: keyof CardFundingAmounts; label: string; id: string 
 ];
 
 function CardFundingDetail({ payment }: { payment: CardPaymentRecord }) {
-  return <div className="sa-card-funding-detail"><h3>결제 재원</h3>{payment.funding ? <div className="sa-card-funding-columns">{(['principal', 'rewards'] as const).map((source) => <div key={source}><h4>{source === 'principal' ? '원금' : '카드 전용 리워드'}</h4><dl>{fundingFields.map((field) => <div key={field.key}><dt>{field.label}</dt><dd data-testid={`server-card-${source}-${field.id}-${payment.id}`}>{money(payment.funding![source][field.key])}</dd></div>)}</dl></div>)}</div> : <p className="sa-card-detail-note" data-testid={`server-card-funding-unavailable-${payment.id}`}>이전 기록에는 재원별 상세 정보가 없어요.</p>}</div>;
+  const funding = payment.funding;
+  if (!funding) return <div className="sa-card-funding-detail"><h3>결제 재원</h3><p className="sa-card-detail-note" data-testid={`server-card-funding-unavailable-${payment.id}`}>이전 기록에는 재원별 상세 정보가 없어요.</p></div>;
+  const parts = [
+    { key: 'principal', label: '지갑 잔액', amount: (field: keyof CardFundingAmounts) => funding.principal[field] - (funding.reserve?.[field] ?? 0) },
+    { key: 'rewards', label: '카드 전용 리워드', amount: (field: keyof CardFundingAmounts) => funding.rewards[field] },
+  ];
+  if (funding.reserve) parts.push({ key: 'reserve', label: '리저브 원금', amount: field => funding.reserve![field] });
+  return <div className="sa-card-funding-detail"><h3>결제 재원</h3><div className="sa-card-funding-columns">
+    {parts.map(part => <div key={part.key}><h4>{part.label}</h4><dl>{fundingFields.map(field =>
+      <div key={field.key}><dt>{field.label}</dt><dd data-testid={`server-card-${part.key}-${field.id}-${payment.id}`}>{money(part.amount(field.key))}</dd></div>
+    )}</dl></div>)}</div>{funding.reserve && <p className="sa-card-detail-note">미사용 승인액은 원래 재원으로 돌아갑니다. 매입 후 환불된 리저브 원금은 지갑 잔액에서 확인할 수 있어요.</p>}</div>;
 }
 
 function CardCashbackDetail({ payment }: { payment: CardPaymentRecord }) {
   const cashback = payment.cashback;
-  return <div className="sa-card-cashback-detail"><h3>이 결제의 페이백</h3>{cashback ? <><dl><div><dt>대기</dt><dd data-testid={`server-card-cashback-pending-${payment.id}`}>{money(cashback.pendingWon)}</dd></div><div><dt>확정 누계</dt><dd data-testid={`server-card-cashback-awarded-${payment.id}`}>{money(cashback.awardedWon)}</dd></div><div><dt>환수 누계</dt><dd data-testid={`server-card-cashback-reversed-${payment.id}`}>{money(cashback.reversedWon)}</dd></div><div><dt>조정액 상계</dt><dd data-testid={`server-card-cashback-offset-${payment.id}`}>{money(cashback.offsetWon)}</dd></div></dl><p className="sa-card-detail-note">{payment.heldWon > 0 ? '결제대기 금액이 남아 있어 아직 지급되지 않았어요. ' : ''}리워드 결제분은 페이백 대상에서 제외돼요.{cashback.offsetWon > 0 ? ' 확정된 페이백 일부는 이전 조정액에 반영됐어요.' : ''}</p><p className="sa-card-cashback-policy">{cashback.month} 결제 기준 · {Number((cashback.rateBps / 100).toFixed(2))}%</p></> : <p className="sa-card-detail-note" data-testid={`server-card-cashback-unavailable-${payment.id}`}>이 기록에는 페이백 상세 정보가 없어요.</p>}</div>;
+  return <div className="sa-card-cashback-detail"><h3>이 결제의 페이백</h3>{cashback ? <><dl><div><dt>대기</dt><dd data-testid={`server-card-cashback-pending-${payment.id}`}>{money(cashback.pendingWon)}</dd></div><div><dt>확정 누계</dt><dd data-testid={`server-card-cashback-awarded-${payment.id}`}>{money(cashback.awardedWon)}</dd></div><div><dt>환수 누계</dt><dd data-testid={`server-card-cashback-reversed-${payment.id}`}>{money(cashback.reversedWon)}</dd></div><div><dt>조정액 상계</dt><dd data-testid={`server-card-cashback-offset-${payment.id}`}>{money(cashback.offsetWon)}</dd></div></dl>{cashback.reason === 'budget_unavailable' && <p className="sa-card-detail-note">승인 당시 페이백 재원이 부족해 이 결제의 적립액은 0원입니다.</p>}<p className="sa-card-detail-note">{payment.heldWon > 0 && cashback.pendingWon > 0 ? '결제대기 금액이 남아 있어 아직 지급되지 않았어요. ' : ''}리워드 결제분은 페이백 대상에서 제외돼요.{cashback.offsetWon > 0 ? ' 확정된 페이백 일부는 이전 조정액에 반영됐어요.' : ''}</p><p className="sa-card-cashback-policy">{cashback.month} 결제 기준 · {Number((cashback.rateBps / 100).toFixed(2))}%</p></> : <p className="sa-card-detail-note" data-testid={`server-card-cashback-unavailable-${payment.id}`}>이 기록에는 페이백 상세 정보가 없어요.</p>}</div>;
 }
 
 export default function CardPaymentsPanel({ payments }: { payments: CardPaymentRecord[] | null }) {
