@@ -272,6 +272,10 @@ jobs:
             aqua_browser="$(node --input-type=module -e 'import { chromium } from "playwright-core"; process.stdout.write(chromium.executablePath())')"
           fi
           printf 'CHROMIUM_PATH=%s\n' "$aqua_browser" >> "$GITHUB_ENV"
+      - name: Check expanding Reserve and payment layouts
+        env:
+          AQUA_BASE_URL: ''
+        run: npm run test:home-layout
       - name: Check the connected browser flow
         shell: bash
         run: |

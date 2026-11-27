@@ -26,7 +26,7 @@
   inset: -2px -8px;
   background: repeating-linear-gradient(0deg, transparent 0 2px, #23394e06 2px 3px),
     linear-gradient(114deg, #f8fafb 1%, #d7e3e8 35%, #eef3f4 60%, #bfcfd8 97%);
-  mask-image: radial-gradient(ellipse 81% 65% at 50% 50%, #000 34%, transparent 88%);
+  mask-image: radial-gradient(ellipse 50% 50% at center, #000 30%, transparent 100%);
 }
 .card-stage-art::after {
   content: '';

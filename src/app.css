@@ -512,6 +512,7 @@ a { color: var(--accent); }
 @keyframes toast-down { from { opacity: 0; transform: translate(-50%, -14px); } }
 
 @media (min-width: 640px) {
+  html, .modal-body { scrollbar-gutter: stable; }
   .modal-backdrop { align-items: center; padding: 24px; }
   .modal { width: 460px; max-height: min(90dvh, 860px); border-radius: 24px; animation-name: pop-in; animation-duration: .24s; }
   .modal::before { display: none; }
