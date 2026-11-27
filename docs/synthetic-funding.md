@@ -51,3 +51,46 @@ node --env-file-if-exists=.env --import tsx scripts/funding-browser-check.mjs
 ```
 
 브라우저 검증은 서로 다른 로컬 `TEST_DATABASE_URL`과 `DATABASE_URL`, Chromium(`CHROMIUM_PATH`로 지정 가능)을 사용한다. 390px 화면에서 입금 확정 후 새로고침, 출금 비밀번호 재확인, 보류, 회원 취소와 잔액 복원을 검사하고 `artifacts/server-funding/funding-mobile.png`에 결과를 저장한다. 운영 결제에 연결하려면 별도 수탁사·체인 확인·가격 공급·실제 전송 증빙·규제 심사를 연결해야 한다.
+
+## 블록체인과 지갑 원장 함께 검증하기
+
+### 로컬 원화 토큰으로 입금부터 카드 결제까지
+
+Node.js 24와 Docker가 필요하다. 처음 체크아웃한 경우 `.env.example`을 `.env`로 복사하고 로컬 PostgreSQL 접속 정보 `TEST_DATABASE_URL`을 확인한다.
+
+```bash
+npm ci --no-audit --no-fund
+docker compose up -d --wait postgres
+npm run test:chain
+```
+
+이 명령은 임시 Anvil 노드(체인 ID 31337)와 전용 PostgreSQL 스키마를 만들고, 그 체인에 소수 6자리의 시험 토큰 `MockKRWS`를 배포한다. 매 실행마다 송금인, 수탁 지갑, 출금 수취인의 키를 새로 만들고 시험용 가스를 지급한다. 체험판의 입금 주소와 테스트 수탁 주소는 전송 전에 짝지어 둔다. 이 대응표와 지갑은 해당 시험에서만 유효하다.
+
+| 단계 | 체인에서 확인할 내용 | Aqua의 사용 가능 잔액 |
+| --- | --- | ---: |
+| 25,000토큰 입금 관측 후 블록 재편성 | 원래 영수증이 사라지고 수탁 지갑의 토큰 잔액이 0으로 돌아간다. | 0원 |
+| 입금 재전송 후 12회 확인 | 토큰 계약, 송금인, 수취인, 수량과 로그 위치가 일치한다. 적립 이벤트를 동시에 두 번 보내도 원장 분개는 한 건이다. | 25,000원 |
+| 14,000원 출금 | 수취 지갑에 11,200토큰이 도착한다. 2,800원은 견적에 정한 시험 수수료다. 노드의 실제 가스비는 테스트 ETH로 낸다. | 11,000원 |
+| 샌드박스 카드로 3,000원 결제 | 승인 때 3,000원을 보류하고 매입 때 보류를 해제한다. 승인·매입을 재처리해도 카드 결제는 한 건이고 체인 높이는 그대로다. | 8,000원 |
+
+금액의 원장 단위는 `TEST_KRW`다. 스크립트가 출력하는 거래 해시는 해당 로컬 체인에서 발행한 값이다. 명령을 마치면 노드와 시험 스키마를 정리한다.
+
+### 공개 Sepolia에서 테스트 USDC 확인하기
+
+`probe`는 체인 ID 11155111과 Circle이 공시한 USDC 계약의 배포 코드 및 소수 자릿수를 확인한다. `sample`은 최근 블록에서 충분히 확인된 일반 전송 한 건을 찾아 영수증과 대조한다. 두 명령은 개인 키, 테스트 코인과 데이터베이스 없이 실행할 수 있다. 공개 거래를 조회해도 Aqua 잔액은 바뀌지 않는다.
+
+```bash
+npm run chain:sepolia -- probe
+npm run chain:sepolia -- sample
+```
+
+특정 전송을 검사할 때는 송금 전 정해 둔 주소와 사람이 읽는 단위의 수량을 입력한다. 로그 번호는 블록 전체에서의 `logIndex`를 쓴다.
+
+```bash
+npm run chain:sepolia -- verify --tx "$TX_HASH" --log-index "$LOG_INDEX" \
+  --from "$SENDER" --to "$RECIPIENT" --amount 10.25
+```
+
+기본 RPC 호스트는 `ethereum-sepolia-rpc.publicnode.com`이다. 별도 공급자를 쓰는 경우 `AQUA_SEPOLIA_RPC_URL`에 해당 Sepolia HTTPS 주소를 지정한다. 검사기는 영수증 성공 여부, 계약, 송금인, 수취인, 최소 단위 수량, 정식 체인에 포함된 블록과 12회 확인을 대조한다. 여기서 12회는 Aqua의 시험 기준이다. 공개 체인의 합의상 최종 확정과는 다른 시점이다. [Circle의 테스트 USDC 주소](https://github.com/circlefin/skills/blob/a0457677ce1ba6e1e20ca06cee1c21a39b77aaa8/plugins/circle/skills/use-usdc/SKILL.md) · [Ethereum Sepolia 체인 등록 정보](https://github.com/ethereum-lists/chains/blob/master/_data/chains/eip155-11155111.json)
+
+공개 테스트넷에서 앱 회원이 직접 입출금하려면 회원별 입금 주소 발급과 영구 보관, 마지막 처리 블록부터의 재관측, 수탁 서명·전송과 결과 미확인 출금의 재조회가 다음 개발 범위다. 현재 회원 화면의 `aqua-test:…`는 합성 주소다.

@@ -36,6 +36,8 @@
     "server:authorization:simulate": "node --env-file-if-exists=.env --import tsx server/authorization-simulator.ts",
     "server:issuance": "node --env-file-if-exists=.env --import tsx server/card-application-provider.ts",
     "server:funding": "node --env-file-if-exists=.env --import tsx server/funding-operator.ts",
+    "chain:sepolia": "NODE_USE_ENV_PROXY=1 node --import tsx scripts/check-testnet-transfer.ts",
+    "test:chain": "node --env-file-if-exists=.env --import tsx scripts/evm-funding-drill.ts",
     "server:normalize:references": "node --env-file-if-exists=.env --import tsx server/normalize-settlement-refs.ts",
     "server:reconcile:bank": "node --env-file-if-exists=.env --import tsx server/reconcile-bank-settlement.ts",
     "server:reconcile": "node --env-file-if-exists=.env --import tsx server/reconcile-rewards.ts",
@@ -75,6 +77,7 @@
     "uqr": "0.1.3"
   },
   "devDependencies": {
+    "@foundry-rs/anvil": "1.7.1",
     "@types/node": "26.6.5",
     "@types/pg": "8.23.1",
     "@types/react": "19.3.0",
@@ -83,8 +86,10 @@
     "@vitejs/plugin-react": "6.1.2",
     "esbuild": "0.28.2",
     "playwright-core": "1.64.0",
+    "solc": "0.8.39",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
+    "viem": "2.58.8",
     "vite": "8.3.4"
   }
 }

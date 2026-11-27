@@ -129,6 +129,10 @@ jobs:
         run: npm run db:migrate
       - name: Check server behavior
         run: npm run test:server
+      - name: Verify token transfers on a disposable Ethereum chain and reconcile wallet balances
+        run: |
+          node --import tsx --test scripts/check-testnet-transfer.test.ts
+          npm run test:chain
       - name: Restore a synthetic PostgreSQL backup into a fresh cluster
         run: npm run test:recovery
       - name: Recover a disposable physical backup to the selected transaction time

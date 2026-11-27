@@ -19,6 +19,8 @@ npm run dev
 
 서버 기반은 **Node.js 24 LTS·Fastify 5·PostgreSQL 18**입니다. `docker compose up -d --wait postgres`로 로컬 DB를 실행하고 `.env.example`을 참고해 접속 정보를 설정한 뒤 `npm run db:migrate`, `npm run server:dev`를 실행합니다. 별도 터미널의 `npm run dev:server`에서 가입·로그인·회원 간 송금과 카드 결제 내역을 확인합니다. 신규 계정은 0원에서 시작하며 브라우저 체험 잔액을 가져오지 않습니다. CLI 적립은 테스트 금액이며 실제 자금·카드·본인확인과 연결되지 않습니다.
 
+`npm run test:chain`은 로컬 Ethereum 노드에 원화 시험 토큰을 배포하고 입금, 출금, 카드 결제 후 지갑 원장을 대조합니다. 공개 Sepolia 테스트 USDC는 `npm run chain:sepolia -- sample`로 읽어 볼 수 있습니다. [블록체인 검증 방법](docs/synthetic-funding.md#블록체인과-지갑-원장-함께-검증하기)
+
 카드 승인·부분 매입·취소·환불은 내부 테스트 명령 `npm run server:card -- <event.json>`으로 처리합니다. 승인액은 별도 보류 계정에 확보해 송금에 다시 쓰지 못하며 화면에서 사용 가능·보류·전체 잔액과 결제 상태를 확인합니다. [카드 서버 처리 안내](docs/card-payment-server.md)에 JSON 예시와 확인 순서가 있습니다. 실제 발급사 API나 일반 회원용 결제 실행 API는 연결하지 않았습니다.
 
 카드 전용 리워드와 스탠다드 페이백도 서버 장부로 처리합니다. 원금과 리워드·회사 재원을 분리하고, 부분 매입·환불·이미 쓴 페이백 회수 및 설정 재시도를 처리합니다. 기본 비활성이며 테스트 재원을 넣은 뒤 활성화합니다. [리워드 서버 처리 안내](docs/rewards-server.md)에 정책·운영자 명령·내부 대사와 출시 전 남은 범위를 정리했습니다.
