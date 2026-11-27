@@ -1,5 +1,5 @@
 import { isIP } from 'node:net';
-import { createApiServer } from './http';
+import { createApiServer, trustStagingLoadBalancer } from './http';
 import { LedgerStore } from './ledger';
 import { databaseFromEnvironment } from './database';
 import { verifyMigrations } from './migrations';
@@ -16,7 +16,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('AQUA_P
 if (!origins.length || origins.some((origin) => {
   try { const url = new URL(origin); return url.origin !== origin || !['http:', 'https:'].includes(url.protocol) || (hardened && url.protocol !== 'https:'); }
   catch { return true; }
-})) throw new Error('Set AQUA_ALLOWED_ORIGINS to exact origins; production requires HTTPS.');
+})) throw new Error('Set AQUA_ALLOWED_ORIGINS to exact origins; staging and production require HTTPS.');
 const trustedProxies = (process.env.AQUA_TRUSTED_PROXIES ?? '').split(',').map((value) => value.trim()).filter(Boolean);
 if (trustedProxies.some((value) => {
   const [address, mask, extra] = value.split('/');
@@ -40,7 +40,7 @@ const app = createApiServer(store, {
   exposeOpenApi: !hardened,
   // The staging edge is the task's only allowed caller and appends the real peer
   // to X-Forwarded-For. Stop at that one hop even if the client supplies a chain.
-  trustedProxies: staging && process.env.AQUA_STAGING_ALB === 'true' ? 1 : trustedProxies,
+  trustedProxies: staging && process.env.AQUA_STAGING_ALB === 'true' ? trustStagingLoadBalancer : trustedProxies,
   staticDir: process.env.AQUA_STATIC_DIR,
   mailQueue,
 });

@@ -79,6 +79,21 @@ MIGRATION_DATABASE_URL="$admin_url" docker run --rm "${runtime[@]}" -e MIGRATION
 MIGRATION_DATABASE_URL="$admin_url" DATABASE_URL="$fallback_url" docker run --rm "${runtime[@]}" \
   -e MIGRATION_DATABASE_URL -e DATABASE_URL "$fallback" node dist-server/fallback-provision.js
 
+# The original shorter manifest still fails startup after the schema advances.
+prior=$(docker image inspect --format '{{index .Config.Labels "io.aquacard.fallback.app-revision"}}' "$fallback")
+[[ "$prior" =~ ^[0-9a-f]{40}$ ]]
+mkdir "$scratch/historical"
+git archive "$prior" server/migrations | tar -x -C "$scratch/historical"
+chmod 0755 "$scratch/historical/server/migrations"
+chmod 0444 "$scratch/historical/server/migrations/"*.sql
+if DATABASE_URL="$fallback_url" timeout 15s docker run --rm "${runtime[@]}" "${http[@]}" -e DATABASE_URL \
+  --mount "type=bind,src=$scratch/historical/server/migrations,dst=/app/dist-server/migrations,readonly" "$fallback" > "$scratch/stale.log" 2>&1; then
+  echo 'Fallback unexpectedly accepted a stale migration manifest.' >&2; exit 1
+else
+  rc=$?
+  [[ $rc == 1 ]] && rg -q 'Applied database migrations differ from this release' "$scratch/stale.log" || { cat "$scratch/stale.log" >&2; exit 1; }
+fi
+
 # A runtime role containing newer grants must fail the historical verifier.
 if DATABASE_URL="$app_url" timeout 15s docker run --rm "${runtime[@]}" "${http[@]}" -e DATABASE_URL "$fallback" > "$scratch/wrong-role.log" 2>&1; then
   echo 'Fallback unexpectedly accepted the current runtime role.' >&2; exit 1

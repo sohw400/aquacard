@@ -1,5 +1,5 @@
 import type { FundingInput, MemberFunding } from '../../shared/funding';
-import type { CardActivityPage, CardDeclinePage, TransferActivityPage } from '../../shared/account-activity';
+import type { CardActivityPage, CardDeclinePage, ReserveActivityPage, TransferActivityPage } from '../../shared/account-activity';
 import type { ReserveSnapshot, AccountSnapshot, EmailVerificationSnapshot, IssuerCardSnapshot, IssuerCardStatus, IssuerCardStatusReceipt, MemberProfile, RewardPreferenceResult, SessionSecuritySnapshot, TransferResult } from '../../shared/api';
 import type { CardApplication, CardApplicationSnapshot } from '../../shared/api';
 export type { EmailVerificationSnapshot } from '../../shared/api';
@@ -57,6 +57,8 @@ export const api = {
     request<TransferActivityPage>('/account/activity/transfers?cursor=' + encodeURIComponent(cursor), { ownerId, signal }),
   member: (tag: string, signal?: AbortSignal) => request<{ member: Recipient }>(`/members?tag=${encodeURIComponent(tag)}`, { signal }),
   transfer: (body: { recipientTag: string; amountWon: number }, key: string, ownerId: string) => request<TransferResult>('/transfers', { method: 'POST', body, key, ownerId }),
+  reserveHistory: (ownerId: string, cursor: string | null, signal: AbortSignal) =>
+    request<ReserveActivityPage>('/account/activity/reserve' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''), { ownerId, signal }),
   reserveMove: (body: { direction: 'in' | 'out'; amountWon: number }, key: string, ownerId: string) =>
     request<ReserveSnapshot>('/reserve/movement', { method: 'POST', body, key, ownerId }),
   reservePreference: (body: { autoUse: boolean; expectedVersion: number }, key: string, ownerId: string) =>

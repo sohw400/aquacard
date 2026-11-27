@@ -1,19 +1,20 @@
-# Compatible fallback for the connected sandbox
+# 연결형 샌드박스 웹 버전 복구
 
-The current migration history extends revision `3f11f799b1550f9c7936cba5e451069e808f684b`. The original API image checks its migration history at startup and will refuse the newer database. Build a paired fallback image before promoting the candidate. It packages the previous connected client and API, that release’s dependencies, and the candidate image’s actual SQL files. The build requires the pinned Git revision locally. Both releases retain their checksum and production role checks.
+현재 후보의 DB 마이그레이션은 `3f11f799b1550f9c7936cba5e451069e808f684b` 이후까지 진행된다. 해당 커밋의 원래 이미지는 새 DB에서 체크섬 검사를 통과할 수 없다. 후보 배포 전에 호환 이미지를 함께 만든다. 빌드는 지정한 커밋의 API, 연결형 웹과 의존성을 사용하고, 후보 이미지에서 SQL 파일과 DB 신뢰 인증서를 가져온다. 빌드 머신의 Git 이력에 해당 커밋이 있어야 한다.
 
 ```sh
 bash scripts/build-fallback-image.sh aqua-card-server:candidate aqua-card-server:compatible
 bash scripts/fallback-drill.sh aqua-card-server:candidate aqua-card-server:compatible
 ```
 
-The drill starts a fresh ephemeral PostgreSQL instance and runs both images as restricted users with production TLS verification against it. A current worker settles a pending partial capture and refund while the previous API serves reads. The drill then restarts the candidate and verifies the same session, balance, hold, settlement and duplicate receipts. It never contacts a configured service or registry for payment activity. Record the candidate and compatible fallback image digests from the release registry together with the successful drill output.
+훈련은 임시 PostgreSQL에서 두 이미지를 실제로 실행한다. 제한된 전용 로그인, 운영 모드의 DB TLS 검증, 원래의 마이그레이션·권한 검사를 사용한다. 1,000 TEST_KRW를 가진 사용자의 승인 보류 100을 만든 뒤, 이전 API가 조회를 처리하는 동안 현재 워커가 80을 매입하고 30을 환불한다. 후보 API를 다시 시작해 같은 세션에서 사용 가능 잔액 950, 보류 0, 정산 계정 50을 확인하고 중복 요청도 검증한다. 후보와 호환 이미지의 레지스트리 다이제스트, 커밋, 훈련 결과를 함께 기록한다.
 
-## Preparing an environment
+## 환경 준비와 전환
 
-1. Provision a dedicated ordinary PostgreSQL login named `aqua_fallback_api_015` with a distinct secret, no role memberships, no object ownership and no pre-existing grants. Apply migrations using the candidate image and its normal deployment process.
-2. Run the paired fallback image’s `node dist-server/fallback-provision.js` once with `NODE_ENV=production`, the correct `DATABASE_SCHEMA`, trusted `DATABASE_CA_FILE`, the candidate database owner in `MIGRATION_DATABASE_URL` and the dedicated login in `DATABASE_URL`. It verifies migration history, installs the previous API’s allowlist for that login, and verifies the resulting permissions. Keep the owner credential scoped to this provisioning job.
-3. Start the fallback web service with only its own database login, the normal HTTPS origin, TLS trust and static serving settings. Check `/api/health`, the web assets and an authenticated account using a synthetic member before directing traffic. Retain the candidate workers, queue consumers and migrations. Evaluate any newer features and coordinate customer communication before switching all web traffic.
-4. During fallback an existing session can view the previous balance and activity screens and sign out. New sessions and other POST requests return HTTP 503 with a retry interval. Reserve and other newer screens resume with the candidate. The current workers continue processing accepted events. Switch web traffic back after the candidate passes the same checks with its original API role. Record both image digests, timestamps, reason, checks and worker evidence.
+1. PostgreSQL에 별도 시크릿을 쓰는 일반 로그인 `aqua_fallback_api_015`를 준비한다. 역할 멤버십, 객체 소유권, 기존 테이블 권한이 없어야 한다. 평소 배포 절차에 따라 후보 이미지로 마이그레이션한다.
+2. 호환 이미지에서 `node dist-server/fallback-provision.js`를 한 번 실행한다. `NODE_ENV=production`, 대상 `DATABASE_SCHEMA`, 신뢰할 `DATABASE_CA_FILE`과 함께 `MIGRATION_DATABASE_URL`에는 마이그레이션 역할을, `DATABASE_URL`에는 호환 API 전용 로그인을 지정한다. 명령은 스키마 이력을 확인하고 이전 API의 권한을 전용 로그인에 부여한 뒤 재검증한다. 마이그레이션 시크릿은 이 준비 작업에서만 사용한다.
+3. 호환 웹 서비스에는 전용 DB 로그인, 기존 HTTPS 오리진, DB 인증서와 정적 파일 설정을 지정한다. `/api/health`, 웹 파일, 합성 회원의 실제 잔액 조회를 확인한 뒤 웹 트래픽을 전환한다. 결제 워커와 큐 소비자는 현재 후보 버전을 계속 사용한다.
+4. 복구 중 기존 세션 사용자는 이전 버전의 잔액과 이용 내역을 조회하고 로그아웃할 수 있다. 로그인·송금 등 나머지 쓰기 요청은 HTTP 503과 재시도 간격을 돌려준다. 리저브와 새 화면은 후보 API를 복구하면 다시 이용할 수 있다. 고객에게 일시 중단 기능을 안내한다.
+5. 후보 웹 서비스를 원래의 API 로그인으로 다시 시작해 같은 조회와 워커 반영 결과를 확인하고 트래픽을 복귀시킨다. 전환 사유, 시작·종료 시각, 두 이미지 다이제스트와 검증 결과를 기록한다.
 
-This repository exercises a sandbox release candidate. A Seoul staging drill with the actual roles, secrets, task definitions, ingress and deployment routing is still required before release.
+서울 스테이징에서는 실제 역할, 시크릿, 태스크 정의와 트래픽 전환 경로를 사용해 같은 훈련을 수행해야 한다.

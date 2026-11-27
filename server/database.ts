@@ -33,16 +33,17 @@ export class Database {
       throw new Error('DATABASE_URL must identify a PostgreSQL server and database.');
     }
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    const requireTls = options.production || process.env.NODE_ENV === 'staging';
     const sslMode = url.searchParams.get('sslmode');
     if (sslMode && !['disable', 'require', 'verify-ca', 'verify-full'].includes(sslMode)) throw new Error('Unsupported PostgreSQL TLS mode.');
-    if (sslMode === 'disable' && (!local || options.production)) throw new Error('PostgreSQL TLS cannot be disabled for remote or production connections.');
+    if (sslMode === 'disable' && (!local || requireTls)) throw new Error('PostgreSQL TLS cannot be disabled for remote or production connections.');
     // pg's URL SSL parameters can otherwise override rejectUnauthorized. Parse and enforce them here.
     for (const key of ['ssl', 'sslmode', 'sslcert', 'sslkey', 'sslrootcert']) {
       if (key !== 'sslmode' && url.searchParams.has(key)) throw new Error('Configure database certificates through DATABASE_CA_FILE; URL TLS overrides are not supported.');
       url.searchParams.delete(key);
     }
     if (url.searchParams.has('options')) throw new Error('PostgreSQL URL session options are not supported; use DATABASE_SCHEMA.');
-    const useTls = options.production || !local || (sslMode !== null && sslMode !== 'disable');
+    const useTls = requireTls || !local || (sslMode !== null && sslMode !== 'disable');
     const max = options.maxConnections ?? 10;
     if (!Number.isInteger(max) || max < 1 || max > 100) throw new Error('DATABASE_POOL_SIZE must be between 1 and 100.');
     this.pool = new Pool({

@@ -4,7 +4,7 @@ import { CardApplicationStore } from './card-applications';
 import { memberCardDeclines } from './card-declines';
 import { registerFundingRoutes } from './funding-http';
 import { FundingStore } from './funding-store';
-import { applyReserve } from './reserve';
+import { applyReserve, reserveActivity } from './reserve';
 import Fastify, { LogController, type FastifyInstance, type FastifyLoggerOptions, type FastifyReply, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
@@ -30,7 +30,7 @@ export interface ServerOptions {
   staticDir?: string;
   exposeOpenApi?: boolean;
   logger?: boolean | FastifyLoggerOptions;
-  trustedProxies?: string[] | 1;
+  trustedProxies?: string[] | typeof trustStagingLoadBalancer;
 }
 
 const COOKIE = 'aqua_session';
@@ -158,6 +158,10 @@ function tokenOf(request: FastifyRequest): string | undefined {
   const token = request.cookies[COOKIE];
   return typeof token === 'string' && /^[a-zA-Z0-9_-]{32,128}$/.test(token) ? token : undefined;
 }
+
+// The private task security group accepts only its ALB. Ignore forwarding headers
+// beyond the address that this immediate caller appended.
+export const trustStagingLoadBalancer = (_address: string, hop: number) => hop === 0;
 
 /** Plugins and routes are registered synchronously; callers await ready/listen and close their own database. */
 export function createApiServer(store: LedgerStore, options: ServerOptions): FastifyInstance {
@@ -363,6 +367,13 @@ export function createApiServer(store: LedgerStore, options: ServerOptions): Fas
         querystring: { type: 'object', additionalProperties: false, properties: { cursor: { type: 'string', minLength: 1, maxLength: 1500 } } },
         response: { 200: objectBody({ items: { type: 'array', items: memberDeclineSchema }, nextCursor: { type: ['string','null'] } }), ...errorResponses } },
     }, request => memberCardDeclines(store.database, request.aquaUser!.id, request.query.cursor));
+    api.get<{ Querystring: { cursor?: string } }>('/api/account/activity/reserve', {
+      preValidation: async request => { await signedIn(request); accountMatches(request, request.aquaUser!); },
+      schema: { tags: ['ledger'], summary: '내 리저브 이동 내역', security: secured, headers: securityHeaders,
+        querystring: { type: 'object', additionalProperties: false, properties: { cursor: { type: 'string', minLength: 1, maxLength: 1500 } } },
+        response: { 200: objectBody({ items: { type: 'array', items: objectBody({ id: { type: 'string' }, createdAt: amount, amountWon: amount,
+          direction: { type: 'string', enum: ['in','out'] }, source: { type: 'string', enum: ['wallet','card'] } }) }, nextCursor: { type: ['string','null'] } }), ...errorResponses } },
+    }, request => reserveActivity(store.database, request.aquaUser!.id, request.query.cursor));
     api.get<{ Querystring: { cursor?: string } }>('/api/account/activity/rewards', {
       preValidation: async request => { await signedIn(request); accountMatches(request, request.aquaUser!); },
       schema: { tags: ['ledger'], security: secured, headers: securityHeaders,

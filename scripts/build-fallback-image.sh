@@ -33,12 +33,23 @@ JS
 repo="$OLDPWD"
 patch --batch --forward --fuzz=0 -p1 < "$repo/docker/fallback/read-only.patch"
 cp "$repo/docker/fallback/provision.ts" server/fallback-provision.ts
-cat "$repo/docker/fallback/overlay.Dockerfile" >> Dockerfile
+node_image=$(sed -n 's/^ARG NODE_IMAGE=//p' Dockerfile)
+[[ "$node_image" =~ @sha256:[a-f0-9]{64}$ ]] || exit 1
+cp "$repo/docker/fallback/overlay.Dockerfile" Dockerfile
 # Preserve the current candidate's DB certificate bundle, including intentionally absent bundles.
-args=(--load --build-arg "FALLBACK_APP_REVISION=$prior" --build-arg "FALLBACK_SCHEMA_IMAGE=$current")
-if docker cp "$(<"$scratch/candidate.id"):/etc/aqua/rds-ca.pem" "$scratch/rds-ca.pem" 2>/dev/null; then
-  read -r ca_hash _ < <(sha256sum "$scratch/rds-ca.pem")
-  args+=(--secret "id=rds_ca,src=$scratch/rds-ca.pem" --build-arg "RDS_CA_SHA256=$ca_hash")
+args=(--load --build-arg "NODE_IMAGE=$node_image" --build-arg "FALLBACK_APP_REVISION=$prior" --build-arg "FALLBACK_SCHEMA_IMAGE=$current")
+ca_hash=$(docker run --rm --read-only --network none --entrypoint node "$current" --input-type=module -e '
+  import { createHash } from "node:crypto";
+  import { readFileSync } from "node:fs";
+  try { console.log(createHash("sha256").update(readFileSync("/etc/aqua/rds-ca.pem")).digest("hex")); }
+  catch (error) { if (error.code !== "ENOENT") throw error; console.log("absent"); }
+')
+if [[ "$ca_hash" != absent ]]; then
+  [[ "$ca_hash" =~ ^[0-9a-f]{64}$ ]] || exit 1
+  docker cp "$(<"$scratch/candidate.id"):/etc/aqua/rds-ca.pem" "$scratch/rds-ca.pem"
+  read -r actual _ < <(sha256sum "$scratch/rds-ca.pem")
+  [[ "$actual" == "$ca_hash" ]] || exit 1
+  args+=(--secret "id=rds_ca,src=$scratch/rds-ca.pem" --no-cache-filter historical)
 fi
 if [[ -n ${AQUA_BUILD_NPM_CA_FILE:-} ]]; then args+=(--secret "id=npm_ca,src=$AQUA_BUILD_NPM_CA_FILE"); fi
 docker buildx build "${args[@]}" --target compatible-fallback --tag "$2" .

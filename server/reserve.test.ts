@@ -6,7 +6,7 @@ import { LedgerStore } from './ledger';
 import { CardPaymentStore } from './card-payments';
 import { IssuerOutboxStore } from './issuer-outbox';
 import { RewardsStore } from './rewards';
-import { applyReserve, type ReserveCommand } from './reserve';
+import { applyReserve, reserveActivity, type ReserveCommand } from './reserve';
 
 const userId = 'member-reserve';
 const now = Date.UTC(2025, 10, 26, 1);
@@ -99,7 +99,32 @@ test('reserve-only funding works on the legacy no-rewards path; release returns 
   assert.deepEqual(await f.authorize('reserve-only',300),approved);
   const account=await f.snapshot();
   assert.equal(account.balanceWon,0); assert.equal(account.reserve.availableWon,401);
+  const history = await reserveActivity(f.database, userId);
+  assert.deepEqual(history.items.map(row => [row.source,row.direction,row.amountWon].join(':')).sort(),
+    ['card:in:201','card:out:300','wallet:in:500']);
   assert.deepEqual((await f.database.query('SELECT * FROM internal_ledger_findings()')).rows,[]);
+});
+
+test('reserve history pages equal timestamps once and binds each cursor to its owner and journal', async t => {
+  const f = await fixture(t);
+  await f.fund(1_000);
+  for (let i = 0; i < 27; i++) {
+    await f.command('movement-' + i, { kind: i % 2 ? 'out' : 'in', amountWon: 1 });
+  }
+  const first = await reserveActivity(f.database, userId);
+  assert.equal(first.items.length, 25);
+  assert.ok(first.nextCursor);
+  const last = await reserveActivity(f.database, userId, first.nextCursor);
+  assert.equal(last.items.length, 2);
+  assert.equal(last.nextCursor, null);
+  const all = [...first.items, ...last.items];
+  assert.equal(new Set(all.map(row => row.id)).size, 27);
+  assert.equal(all.filter(row => row.direction === 'out').length, 13);
+  assert.ok(all.every(row => row.source === 'wallet' && row.amountWon === 1 && row.createdAt === now));
+  assert.deepEqual(await reserveActivity(f.database, 'other-member'), { items: [], nextCursor: null });
+  await assert.rejects(reserveActivity(f.database, 'other-member', first.nextCursor), { code: 'INVALID_CURSOR' });
+  const otherJournal = Buffer.from(JSON.stringify([userId,'rewards',now,all[0].id])).toString('base64url');
+  await assert.rejects(reserveActivity(f.database, userId, otherJournal), { code: 'INVALID_CURSOR' });
 });
 
 test('Reserve accrual preserves exact rate intervals and principal changes; budget delays cannot block withdrawal or pay twice', async t => {

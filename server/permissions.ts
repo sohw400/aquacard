@@ -2,7 +2,7 @@ import { checkedSchema, type Database } from './database';
 
 /** The deployment creates this login role and stores its credentials outside source control. */
 const memberWalletFunctions = [
-  'reserve_snapshot(text)', 'reserve_payment_funding(text)', 'apply_reserve_command(jsonb,bigint)',
+  'member_reserve_activity(text,bigint,text,integer)', 'reserve_snapshot(text)', 'reserve_payment_funding(text)', 'apply_reserve_command(jsonb,bigint)',
   'funding_intent(text,text,jsonb,bigint)', 'funding_member_history(text)',
   'member_reward_summary(text,bigint)', 'member_reward_activity(text,bigint,text,integer)',
   'customer_transfer_limited(text)', 'member_card_declines(text,bigint,text,integer)',

@@ -320,7 +320,7 @@ export default function ServerApp() {
               </div>
               {notice && <p role="status">{notice}</p>}
             </section>}
-          {screen === 'home' && <ReservePanel key={'reserve:' + user.id} owner={user.id} reserve={account?.reserve}
+          {screen === 'home' && <ReservePanel key={'reserve:' + user.id} owner={user.id} reserve={account?.reserve} walletWon={account?.balanceWon}
             useFirst={account?.rewards.useFirst ?? false} rewardControls={<RewardControls rewards={account?.rewards ?? null} saving={preferenceSaving || preferenceConfirming}
             unresolved={preferenceIntent !== null} message={preferenceMessage} error={preferenceError}
             onUseFirstChange={changeRewardPriority} onRetry={retryRewardPreference} />}

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import type { FastifyInstance } from 'fastify';
-import { createApiServer } from './http';
+import { createApiServer, trustStagingLoadBalancer } from './http';
 import { Database } from './database';
 import { LedgerStore } from './ledger';
 import { CardPaymentStore } from './card-payments';
@@ -607,6 +607,19 @@ test('Reserve HTTP commands bind to the signed-in account and replay a completed
     const snapshot = (await f.request('/account', { cookie: member.cookie })).data;
     assert.equal(snapshot.balanceWon, 2_000);
     assert.deepEqual(snapshot.reserve, { availableWon: 1_000, autoUse: true, preferenceVersion: 1 });
+    const path = '/account/activity/reserve';
+    const other = await f.signup('otherreserve');
+    const memberHeader = { 'X-Aqua-Account': member.user.id };
+    assert.equal((await f.request(path, { headers: memberHeader })).status, 401);
+    assert.equal((await f.request(path, { cookie: other.cookie, headers: memberHeader })).status, 409);
+    const own = await f.request(path, { cookie: member.cookie, headers: memberHeader });
+    assert.equal(own.status, 200);
+    const { items, nextCursor } = JSON.parse(own.body);
+    assert.equal(items.length, 1); assert.equal(nextCursor, null);
+    assert.deepEqual([items[0].source,items[0].direction,items[0].amountWon], ['wallet','in',1_000]);
+    assert.deepEqual(Object.keys(items[0]).sort(), ['amountWon','createdAt','direction','id','source']);
+    const otherRead = await f.request(path, { cookie: other.cookie, headers: { 'X-Aqua-Account': other.user.id } });
+    assert.deepEqual(JSON.parse(otherRead.body), {items:[], nextCursor:null});
   } finally { await f.close(); }
 });
 
@@ -669,4 +682,19 @@ test('card decline history binds the owner to the signed-in member and removes i
     assert.deepEqual((await f.request('/account',{cookie:alice.cookie})).data.cardDeclines,page.items);
     assert.equal((await f.request('/account',{cookie:alice.cookie,headers:{'X-Aqua-View':'summary'}})).data.cardDeclines,undefined);
   } finally { await f.close(); }
+});
+
+
+test('private staging ALB trusts only the last forwarded client when enforcing signup limits', async () => {
+  const f = await fixture();
+  const app = createApiServer(f.store, { allowedOrigins: [ORIGIN], trustedProxies: trustStagingLoadBalancer, logger: false });
+  try {
+    const attempt = (forged: string, actualClient: string) => request(app, '/auth/signup', {
+      method: 'POST', headers: { 'x-forwarded-for': forged + ', ' + actualClient },
+      body: { email: 'invalid', name: '테스트', tag: 'member', password: PASSWORD },
+    });
+    for (let i = 0; i < 5; i++) assert.equal((await attempt('192.0.2.' + i, '10.1.0.10')).status, 400);
+    assert.equal((await attempt('192.0.2.6', '10.1.0.10')).status, 429);
+    assert.equal((await attempt('192.0.2.6', '10.1.0.11')).status, 400);
+  } finally { await app.close(); await f.close(); }
 });

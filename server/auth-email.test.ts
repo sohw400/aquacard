@@ -47,12 +47,36 @@ async function fixture(t: TestContext) {
 async function rejectCode(action: Promise<unknown>, code: string) {
   await assert.rejects(action, (error: unknown) => error instanceof LedgerError && error.code === code);
 }
-async function waitForLock(database: Database, pid: number) {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    if ((await database.query<{ waiting: boolean }>('SELECT cardinality(pg_blocking_pids($1)) > 0 AS waiting', [pid])).rows[0].waiting) return;
-    await new Promise((resolve) => setTimeout(resolve, 10));
+async function waitForLock(database: Database, waiter: number, holder: number) {
+  const deadline = performance.now() + 20_000;
+  while (performance.now() < deadline) {
+    const { rows } = await database.query<{ waiting: boolean }>(
+      'SELECT $2::integer = ANY(pg_blocking_pids($1)) AS waiting', [waiter, holder]);
+    if (rows[0].waiting) return;
+    await new Promise(resolve => setTimeout(resolve, 20));
   }
-  assert.fail('The competing authentication command did not wait for the user lock.');
+  assert.fail('The authentication command did not wait for the expected database session.');
+}
+
+async function withLockBarrier(
+  database: Database,
+  run: (blocker: PoolClient, track: (operation: Promise<void>) => Promise<void>) => Promise<void>,
+) {
+  const blocker = await database.pool.connect();
+  const pending: Promise<PromiseSettledResult<void>[]>[] = [];
+  function track(operation: Promise<void>) {
+    // Observe rejections immediately, including failures while the test still checks the lock graph.
+    pending.push(Promise.allSettled([operation]));
+    return operation;
+  }
+  try {
+    await blocker.query('BEGIN');
+    await blocker.query("SET LOCAL idle_in_transaction_session_timeout = '30s'");
+    await run(blocker, track);
+  } finally {
+    try { await blocker.query('ROLLBACK'); }
+    finally { blocker.release(); await Promise.all(pending); }
+  }
 }
 
 test('email proof starts absent, stores only a token hash, and never grants customer review approval', async (t) => {
@@ -190,19 +214,16 @@ test('a session revoked while verification waits for its owner lock cannot consu
   await f.auth.requestEmailVerification(member.token, member.user.id, 'waiting-request');
   const peer = f.peer();
   const pid = (await peer.database.query('SELECT pg_backend_pid() AS pid')).rows[0].pid as number;
-  const blocker = await f.database.pool.connect();
-  try {
-    await blocker.query('BEGIN');
-    await blocker.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [member.user.id]);
-    const waiting = peer.auth.confirmEmailVerification(member.token, member.user.id, f.mail[0].token, 'waiting-confirm');
-    const checked = rejectCode(waiting, 'AUTH_REQUIRED');
-    await waitForLock(f.database, pid);
+  await withLockBarrier(f.database, async (blocker, track) => {
+    const { rows: [lock] } = await blocker.query('SELECT pg_backend_pid() AS pid FROM users WHERE id=$1 FOR UPDATE', [member.user.id]);
+    const checked = track(rejectCode(peer.auth.confirmEmailVerification(member.token, member.user.id, f.mail[0].token, 'waiting-confirm'), 'AUTH_REQUIRED'));
+    await waitForLock(f.database, pid, lock.pid);
     await blocker.query('DELETE FROM auth_sessions WHERE user_id=$1', [member.user.id]);
     await blocker.query('COMMIT');
     await checked;
     assert.equal((await f.store.getUserById(member.user.id))!.emailVerifiedAt, null);
     assert.equal((await f.database.query('SELECT used_at FROM auth_email_verification WHERE user_id=$1', [member.user.id])).rows[0].used_at, null);
-  } finally { await blocker.query('ROLLBACK'); blocker.release(); }
+  });
 });
 
 test('a password reset that acquires the owner lock first invalidates a waiting verification and all sessions', async (t) => {
@@ -214,20 +235,22 @@ test('a password reset that acquires the owner lock first invalidates a waiting 
   const reset = f.peer(), confirm = f.peer();
   const resetPid = (await reset.database.query('SELECT pg_backend_pid() AS pid')).rows[0].pid as number;
   const confirmPid = (await confirm.database.query('SELECT pg_backend_pid() AS pid')).rows[0].pid as number;
-  const blocker = await f.database.pool.connect();
-  try {
-    await blocker.query('BEGIN');
-    await blocker.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [member.user.id]);
-    const resetting = reset.auth.resetPassword(recovery, REPLACEMENT, 'race-reset');
-    await waitForLock(f.database, resetPid);
-    const confirming = rejectCode(confirm.auth.confirmEmailVerification(member.token, member.user.id, verification, 'race-confirm'), 'AUTH_REQUIRED');
-    await waitForLock(f.database, confirmPid);
+  await withLockBarrier(f.database, async (blocker, track) => {
+    // The reset locks the owner first and then the recovery row. Pause it at that second lock
+    // so the verification must wait on the reset itself, independent of password hashing time.
+    const { rows: [lock] } = await blocker.query(
+      'SELECT pg_backend_pid() AS pid FROM auth_recovery WHERE user_id=$1 FOR UPDATE', [member.user.id]);
+    const resetting = track(reset.auth.resetPassword(recovery, REPLACEMENT, 'race-reset'));
+    await waitForLock(f.database, resetPid, lock.pid);
+    const confirming = track(rejectCode(
+      confirm.auth.confirmEmailVerification(member.token, member.user.id, verification, 'race-confirm'), 'AUTH_REQUIRED'));
+    await waitForLock(f.database, confirmPid, resetPid);
     await blocker.query('COMMIT');
-    await resetting; await confirming;
+    await Promise.all([resetting, confirming]);
     assert.equal((await f.store.getUserById(member.user.id))!.emailVerifiedAt, null);
     assert.equal(Number((await f.database.query('SELECT count(*) FROM auth_email_verification')).rows[0].count), 0);
     assert.equal(Number((await f.database.query('SELECT count(*) FROM auth_sessions')).rows[0].count), 0);
-  } finally { await blocker.query('ROLLBACK'); blocker.release(); }
+  });
 });
 
 test('verification resend limits are shared across sessions and API instances before queueing more mail', async (t) => {

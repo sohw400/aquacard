@@ -2,6 +2,8 @@ import type { PoolClient } from 'pg';
 import type { ReserveSnapshot } from '../shared/api';
 import type { Database } from './database';
 import { LedgerError } from './errors';
+import type { ReserveMovement } from '../shared/account-activity';
+import { activityBoundary, activityPage, activityPageSize } from './activity-cursor';
 import { throwRewardError } from './reward-errors';
 
 export type ReserveCommand = { kind: 'in' | 'out'; amountWon: number } | { kind: 'preference'; autoUse: boolean; expectedVersion: number };
@@ -26,4 +28,12 @@ export async function applyReserve(database: Database, userId: string, requestKe
     }
     return throwRewardError(error);
   }
+}
+
+export async function reserveActivity(database: Database, userId: string, cursor?: string) {
+  const before = activityBoundary(cursor, userId, 'reserve');
+  const result = await database.query<{ record: ReserveMovement }>(
+    'SELECT record FROM member_reserve_activity($1::text,$2::bigint,$3::text,$4::integer) AS record',
+    [userId, before?.createdAt ?? null, before?.id ?? null, activityPageSize + 1]);
+  return activityPage(userId, 'reserve', result.rows.map(row => row.record));
 }

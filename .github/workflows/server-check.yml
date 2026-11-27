@@ -346,6 +346,8 @@ jobs:
           npm run test:card:browser
           npm run test:rewards:browser
           npm run server:reconcile
+      - name: Check connected deposit and withdrawal in an isolated schema
+        run: npm run test:funding:browser
       - name: Check connected issuer controls in an isolated schema
         run: npm run test:issuer:browser
       - name: Check customer access and session security in an isolated schema

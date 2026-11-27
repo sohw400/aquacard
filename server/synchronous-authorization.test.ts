@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { applyMigrations } from './migrations';
 import test, { type TestContext } from 'node:test';
 import { CardPaymentStore } from './card-payments';
 import { Database } from './database';
@@ -131,4 +133,43 @@ test('trusted CLI distinguishes a historical receipt and unavailable result, and
   assert.equal(absent.status,2); assert.equal(JSON.parse(absent.stdout).outcome,'unconfirmed');
   const production=cli(['decide',file],{NODE_ENV:'production'});
   assert.equal(production.status,2); assert.equal(JSON.parse(production.stderr).code,'SIMULATOR_DISABLED');
+});
+
+test('legacy prefixed authorizations keep their holds, captures and refunds across the simulator upgrade', async t => {
+  const connectionString = process.env.TEST_DATABASE_URL;
+  assert.ok(connectionString);
+  const schema = 'test_sync_upgrade_' + randomBytes(8).toString('hex');
+  const db = new Database({ connectionString, schema });
+  const dir = await mkdtemp(join(tmpdir(),'before-026-'));
+  t.after(async () => {
+    try { await db.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`); }
+    finally { await db.close(); await rm(dir,{recursive:true,force:true}); }
+  });
+  const all = new URL('./migrations/',import.meta.url);
+  for (const file of (await readdir(all)).filter(name=>/^\d{3}_.*\.sql$/.test(name)&&name<'026')) {
+    await copyFile(new URL(file,all),join(dir,file));
+  }
+  await applyMigrations(db,pathToFileURL(dir+'/'));
+  const userId='legacy-sync';
+  const ledger=new LedgerStore(db), cards=new CardPaymentStore(db);
+  await ledger.createUser({id:userId,tag:'legacysync',name:'가상',email:'legacy-sync@example.test',passwordHash:'synthetic',createdAt:Date.now()});
+  await approveTestCustomer(db,userId);
+  await new IssuerOutboxStore(db).register({userId,initialStatus:'active',providerCardId:'sandbox-card-legacy-sync'});
+  await ledger.creditSandbox({userId,amountWon:500,idempotencyKey:'initial-credit'});
+  const rid=randomUUID();
+  const old={kind:'authorize' as const,eventId:'legacy-authorize',paymentId:'sync-pay:'+rid,userId,amountWon:100,merchantName:'합성 가게'};
+  const ordinary={...old,eventId:'sync-auth:old-text',paymentId:'sync-pay:old-text'};
+  const before=await cards.apply(old);
+  await cards.apply(ordinary);
+  await applyMigrations(db);
+  assert.deepEqual(await cards.apply(old),before);
+  await cards.apply({...ordinary,eventId:'sync-auth:new-text',paymentId:'sync-pay:new-text'});
+  await cards.apply({kind:'capture',eventId:'sync-auth:old-text-capture',paymentId:ordinary.paymentId,userId,amountWon:100,finalCapture:true});
+  await cards.apply({kind:'capture',eventId:'sync-auth:'+rid,paymentId:old.paymentId,userId,amountWon:100,finalCapture:true});
+  await cards.apply({kind:'refund',eventId:'legacy-refund',paymentId:old.paymentId,userId,amountWon:25});
+  await assert.rejects(db.query('SELECT decide_sandbox_authorization($1::jsonb)',[JSON.stringify({
+    requestId:rid,userId,merchantName:old.merchantName,amountWon:100,issuedAt:Date.now(),
+  })]),/SYNC_ID_CONFLICT/);
+  const payment=(await db.query('SELECT captured_won,refunded_won,held_won FROM card_payments WHERE id=$1',[old.paymentId])).rows[0];
+  assert.deepEqual(payment,{captured_won:'100',refunded_won:'25',held_won:'0'});
 });
