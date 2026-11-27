@@ -1,0 +1,98 @@
+# Run with scripts/local-staging.sh; it provisions secrets, release files and TLS.
+x-node: &node
+  image: node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
+  init: true
+  user: "${STAGE_NODE_USER:?}"
+  working_dir: /app
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: [/tmp]
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:18-bookworm@sha256:ece55f7868da684e400f82f1030a050718adbdd65c23aa500c486f6e2950dc0f
+    entrypoint: ["/bin/sh", "/etc/aqua-postgres.sh"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/aqua-source/db-bootstrap-password
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - "${STAGE_DIR:?}/db-bootstrap-password:/run/aqua-source/db-bootstrap-password:ro"
+      - "${STAGE_DIR:?}/db.key:/run/aqua-source/db.key:ro"
+      - "${STAGE_DIR:?}/db.crt:/run/aqua-source/db.crt:ro"
+      - "./docker/staging/postgres.sh:/etc/aqua-postgres.sh:ro"
+      - "./docker/staging/pg_hba.conf:/etc/aqua-pg-hba.conf:ro"
+    tmpfs: [/run/aqua-tls]
+    ports: ["127.0.0.1:54339:5432"]
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, postgres, -d, postgres]
+      interval: 3s
+      timeout: 3s
+      retries: 35
+  app:
+    <<: *node
+    env_file: ["${STAGE_DIR:?}/api.env"]
+    command: [node, dist-server/index.js]
+    volumes: &app-mounts
+      - "${STAGE_RELEASE:?}:/app:ro"
+      - "${STAGE_DEPENDENCIES:?}:/app/node_modules:ro"
+      - "${STAGE_DIR:?}/ca.crt:/run/aqua/ca.crt:ro"
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3001/api/health',{signal:AbortSignal.timeout(3000)}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 4s
+      retries: 16
+  migrate:
+    <<: *node
+    profiles: [operator]
+    restart: "no"
+    env_file: ["${STAGE_DIR:?}/migration.env"]
+    command: [node, dist-server/migrate.js]
+    volumes: *app-mounts
+  mail:
+    <<: *node
+    env_file: ["${STAGE_DIR:?}/mail.env"]
+    command: [node, dist-server/auth-mail-worker.js]
+    volumes:
+      - "${STAGE_RELEASE:?}:/app:ro"
+      - "${STAGE_DEPENDENCIES:?}:/app/node_modules:ro"
+      - "${STAGE_DIR:?}/ca.crt:/run/aqua/ca.crt:ro"
+      - "${STAGE_DIR:?}/mailbox:/var/aqua-mail:rw"
+  issuer:
+    <<: *node
+    env_file: ["${STAGE_DIR:?}/issuer.env"]
+    command: [node, dist-server/staging-issuer.js]
+    volumes:
+      - "${STAGE_RELEASE:?}:/app:ro"
+      - "${STAGE_DEPENDENCIES:?}:/app/node_modules:ro"
+      - "${STAGE_DIR:?}/issuer-receipts:/var/aqua-issuer:rw"
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3005/live',{signal:AbortSignal.timeout(3000)}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+  dispatcher:
+    <<: *node
+    env_file: ["${STAGE_DIR:?}/dispatcher.env"]
+    command: [node, dist-server/issuer-dispatcher.js]
+    volumes: *app-mounts
+    network_mode: service:issuer
+    depends_on:
+      issuer: {condition: service_healthy, restart: true}
+  edge:
+    image: nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+    entrypoint: [nginx, -g, "daemon off;"]
+    restart: unless-stopped
+    read_only: true
+    volumes:
+      - "./docker/staging/nginx.conf:/etc/nginx/nginx.conf:ro"
+      - "${STAGE_DIR:?}/web.crt:/etc/aqua/web.crt:ro"
+      - "${STAGE_DIR:?}/web.key:/etc/aqua/web.key:ro"
+    tmpfs: [/var/cache/nginx, /var/run]
+    ports: ["127.0.0.1:3443:8443"]
+
+volumes:
+  pgdata:

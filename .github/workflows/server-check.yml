@@ -13,6 +13,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  staging-rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Prepare a browser and its private trust store
+        run: |
+          if ! command -v certutil >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends libnss3-tools
+          fi
+          browser_path="$(command -v google-chrome || command -v chromium || true)"
+          if [[ -z "$browser_path" ]]; then
+            ./node_modules/.bin/playwright-core install --with-deps chromium
+            browser_path="$(node --input-type=module -e 'import { chromium } from "playwright-core"; process.stdout.write(chromium.executablePath())')"
+          fi
+          printf 'CHROMIUM_PATH=%s\n' "$browser_path" >> "$GITHUB_ENV"
+      - name: Start the staging release and provision its test member
+        run: |
+          node --import tsx --test scripts/staging-chain-proof.test.ts
+          npm run staging:up
+          npm run staging:member
+      - name: Exercise the connected release over trusted HTTPS
+        run: npm run staging:smoke
+      - name: Restart the release and verify the same member and transactions
+        run: |
+          npm run staging:down
+          npm run staging:up
+          npm run staging:smoke -- --after-restart
+      - name: Verify a token deposit against an accepted member request
+        run: npm run staging:smoke -- --chain-deposit
+      - name: Confirm card lock, unlock and replay through the signed issuer
+        run: npm run staging:smoke -- --card-controls
+      - name: Stop the rehearsal
+        if: always()
+        run: npm run staging:down
   mobile-webkit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
