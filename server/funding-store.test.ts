@@ -4,6 +4,7 @@ import { createTestDatabase } from './test-support';
 import { approveTestCustomer } from './test-customer-access';
 import { FundingStore } from './funding-store';
 import { LedgerStore } from './ledger';
+import { applyReserve } from './reserve';
 import type { FundingInput, MemberFunding } from '../shared/funding';
 import { LedgerError } from './errors';
 
@@ -66,4 +67,54 @@ test('synthetic funding uses exact quotes, locks withdrawals, reconciles unknown
   const stale=await makeDeposit('old-quote');
   now+=60000;
   await assert.rejects(confirm(stale,'accept-expired'),failure('FUNDING_QUOTE_EXPIRED'));
+});
+
+test('concurrent synthetic withdrawals share one spendable balance and release a confirmed rejection exactly once', async t => {
+  const f = await createTestDatabase();
+  t.after(f.cleanup);
+  const ledger = new LedgerStore(f.database);
+  const funding = new FundingStore(f.database);
+  const user = 'funding-race';
+  await ledger.createUser({ id: user, email: 'race@example.test', name: '출금회원', tag: 'fundingrace',
+    passwordHash: 'test-only', createdAt: Date.now() });
+  await approveTestCustomer(f.database, user);
+  await ledger.creditSandbox({ userId: user, amountWon: 20_000, idempotencyKey: 'race-initial-credit' });
+  const input: FundingInput = { action: 'quote', direction: 'withdrawal', asset: 'USDC', network: 'polygon',
+    quantity: '14000', destination: 'aqua-test:polygon:my-wallet' };
+  const quotes = await Promise.all(['race-quote-one', 'race-quote-two'].map(key => funding.intent(user, key, input)));
+  const results = await Promise.allSettled(quotes.map((quote, i) =>
+    funding.intent(user, 'race-accept-' + i, { action: 'accept_withdrawal', id: quote.id })));
+  const claimed = results.find(r => r.status === 'fulfilled');
+  const rejected = results.find(r => r.status === 'rejected');
+  assert.ok(claimed, 'A single withdrawal must be held');
+  assert.ok(rejected, 'The second withdrawal must be declined');
+  assert.equal(rejected.reason.code, 'FUNDING_BALANCE_LOW', rejected.reason.message);
+  const balance = async () => Number((await f.database.query('SELECT balance_won FROM ledger_accounts WHERE id=$1', ['user:' + user])).rows[0].balance_won);
+  assert.equal(await balance(), 6_000);
+  const id = claimed.value.id;
+  await assert.rejects(funding.intent('other-account', 'race-other-owner', { action: 'cancel', id }), failure('FUNDING_NOT_FOUND'));
+  await funding.event({ id, eventId: 'race-dispatch', action: 'dispatch' });
+  await funding.event({ id, eventId: 'race-unknown', action: 'unknown' });
+  const proof = { id, eventId: 'race-reject', action: 'reject', dispatchKey: id, proofRef: 'sim-proof:rejected' };
+  await Promise.all([funding.event(proof), funding.event(proof)]);
+  assert.equal(await balance(), 20_000);
+  const records = await funding.history(user);
+  assert.equal(records.find(row => row.id === id)?.status, 'released');
+  const recipient = 'fundingreceiver';
+  await ledger.createUser({ id: recipient, email: 'fund-receiver@example.test', name: '수신회원', tag: recipient,
+    passwordHash: 'test-only', createdAt: Date.now() });
+  await approveTestCustomer(f.database, recipient);
+  const third = await funding.intent(user, 'race-shared-quote', input);
+  const competing = await Promise.allSettled([
+    funding.intent(user, 'race-shared-accept', { action: 'accept_withdrawal', id: third.id }),
+    applyReserve(f.database, user, 'race-shared-reserve', { kind: 'in', amountWon: 14_000 }),
+    ledger.transfer({ senderId: user, recipientTag: recipient, amountWon: 14_000, idempotencyKey: 'race-shared-transfer' }),
+  ]);
+  assert.equal(competing.filter(result => result.status === 'fulfilled').length, 1);
+  for (const result of competing) {
+    if (result.status === 'rejected') assert.ok(result.reason instanceof LedgerError
+      && ['FUNDING_BALANCE_LOW', 'INSUFFICIENT_FUNDS'].includes(result.reason.code), result.reason.message);
+  }
+  assert.equal(await balance(), 6_000);
+  assert.equal((await f.database.query('SELECT * FROM internal_ledger_findings()')).rowCount, 0);
 });

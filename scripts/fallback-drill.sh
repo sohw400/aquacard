@@ -12,7 +12,7 @@ scratch=$(mktemp -d)
 cleanup() {
   local result=$?
   trap - EXIT
-  for cid in api db; do
+  for cid in api negative db; do
     if [[ -s "$scratch/$cid" ]]; then docker rm --force --volumes "$(<"$scratch/$cid")" >/dev/null || result=1; fi
   done
   if [[ -s "$scratch/network" ]]; then docker network rm "$(<"$scratch/network")" >/dev/null || result=1; fi
@@ -86,21 +86,27 @@ mkdir "$scratch/historical"
 git archive "$prior" server/migrations | tar -x -C "$scratch/historical"
 chmod 0755 "$scratch/historical/server/migrations"
 chmod 0444 "$scratch/historical/server/migrations/"*.sql
-if DATABASE_URL="$fallback_url" timeout 15s docker run --rm "${runtime[@]}" "${http[@]}" -e DATABASE_URL \
-  --mount "type=bind,src=$scratch/historical/server/migrations,dst=/app/dist-server/migrations,readonly" "$fallback" > "$scratch/stale.log" 2>&1; then
-  echo 'Fallback unexpectedly accepted a stale migration manifest.' >&2; exit 1
-else
-  rc=$?
-  [[ $rc == 1 ]] && rg -q 'Applied database migrations differ from this release' "$scratch/stale.log" || { cat "$scratch/stale.log" >&2; exit 1; }
-fi
-
-# A runtime role containing newer grants must fail the historical verifier.
-if DATABASE_URL="$app_url" timeout 15s docker run --rm "${runtime[@]}" "${http[@]}" -e DATABASE_URL "$fallback" > "$scratch/wrong-role.log" 2>&1; then
-  echo 'Fallback unexpectedly accepted the current runtime role.' >&2; exit 1
-else
-  rc=$?
-  [[ $rc == 1 ]] && rg -q 'cannot execute private ledger helper functions' "$scratch/wrong-role.log" || { cat "$scratch/wrong-role.log" >&2; exit 1; }
-fi
+expect_startup_refusal() {
+  local url=$1 expected=$2 id status
+  shift 2
+  DATABASE_URL="$url" docker run --detach --cidfile "$scratch/negative" "${runtime[@]}" "${http[@]}" \
+    -e DATABASE_URL "$@" "$fallback" >/dev/null
+  id=$(<"$scratch/negative")
+  if ! status=$(timeout 25s docker wait "$id"); then
+    echo 'Fallback kept running when startup should have refused this configuration.' >&2; return 1
+  fi
+  docker logs "$id" > "$scratch/refusal.log" 2>&1
+  if [[ "$status" != 1 ]] || ! rg -Fq "$expected" "$scratch/refusal.log"; then
+    echo "Unexpected startup refusal (exit $status). Expected: $expected" >&2
+    cat "$scratch/refusal.log" >&2
+    return 1
+  fi
+  docker rm --volumes "$id" >/dev/null
+  rm -f "$scratch/negative"
+}
+expect_startup_refusal "$fallback_url" 'Applied database migrations differ from this release' \
+  --mount "type=bind,src=$scratch/historical/server/migrations,dst=/app/dist-server/migrations,readonly"
+expect_startup_refusal "$app_url" 'cannot execute private ledger helper functions'
 
 start_api() {
   DATABASE_URL="$2" docker run --detach --cidfile "$scratch/api" "${runtime[@]}" "${http[@]}" \

@@ -108,13 +108,13 @@ npm run server:issuer:dispatch
 
 실제 발급사 카드 발급·본인확인·상태 조회 계약, 실시간 승인과 잠금 정책 연결, 운영 승인 절차·관측·부하·복구 검증은 남아 있다. 이 작업이 실제 카드 발급이나 운영 배포를 뜻하지 않는다.
 
-### Sandbox card applications
+### 샌드박스 카드 신청과 발급
 
-A verified, approved member without a registered card can apply for a virtual or physical card in the connected card view. The application returns a version. Use the separate issuer simulation login (`ISSUANCE_DATABASE_URL`) for each simulated decision and delivery event.
+이메일 확인과 고객 승인을 마친 회원은 등록된 카드가 없을 때 연결형 카드 화면에서 가상·실물 카드를 신청할 수 있다. 심사, 발급, 배송 이벤트는 발급 시뮬레이터 전용 로그인(`ISSUANCE_DATABASE_URL`)으로 처리한다. 명령에는 직전 처리 결과의 버전을 넣는다.
 
 ```sh
 npm run server:issuance -- "$application_id" 1 review-001 approve
 npm run server:issuance -- "$application_id" 2 issue-001 issue
 ```
 
-A virtual card can now be activated by the same member. For a physical card, submit `dispatch` and then `deliver` with each newly returned version before activation. To decline a submitted application, supply `decline ELIGIBILITY` or `decline DETAILS_REQUIRED`. Retry an uncertain result with the original event ID, version and payload. Member activation registers one synthetic card and preserves its existing lock/unlock workflow. The production API suppresses these sandbox actions.
+가상 카드는 발급 직후 신청자가 활성화할 수 있다. 실물 카드는 `dispatch`, `deliver` 순서로 배송을 확인한 뒤 활성화한다. 신청을 반려할 때는 `decline ELIGIBILITY` 또는 `decline DETAILS_REQUIRED`를 사용한다. 처리 결과를 받지 못하면 원래 이벤트 ID, 버전과 내용으로 재시도한다. 활성화가 끝나면 샌드박스 카드 한 장이 등록되고 카드 설정에서 잠금·해제를 요청할 수 있다. 운영 모드에서는 모의 발급을 차단한다.
