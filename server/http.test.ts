@@ -337,8 +337,9 @@ test('funded rewards remain card-only and the API exposes the original funding s
     assert.equal(captured.data.cardPayments[0].cashback?.awardedWon, 30);
     // Only ten won of company funding remain. An eligible 19-won award cannot be promised in full.
     await cards.apply({ kind: 'authorize', eventId: 'http-budget-short-auth', paymentId: 'http-budget-short', userId: alice.user.id, amountWon: 2_000, merchantName: '테스트 서점' });
-    const history = await f.request('/account/activity/cards', { cookie: alice.cookie });
-    const limited = history.data.items.find((payment: { id: string }) => payment.id === 'http-budget-short');
+    const history = await f.request('/account/activity/cards', { cookie: alice.cookie, headers: { 'X-Aqua-Account': alice.user.id } });
+    assert.equal(history.status, 200, history.body);
+    const limited = JSON.parse(history.body).items.find((payment: { id: string }) => payment.id === 'http-budget-short');
     assert.equal(limited.cashback.reason, 'budget_unavailable');
     assert.equal(limited.cashback.pendingWon, 0);
     assert.equal(limited.heldWon, 2_000);

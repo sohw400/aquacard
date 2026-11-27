@@ -32,6 +32,12 @@ trap 'exit 143' TERM
 
 export NODE_ENV=test DATABASE_SCHEMA=aqua
 export DATABASE_SETTLEMENT_ROLE=aqua_settlement
+export DATABASE_FUNDING_ROLE=aqua_funding
+export DATABASE_CORRECTION_ROLE=aqua_correction
+export DATABASE_ISSUANCE_ROLE=aqua_issuance
+export DATABASE_AUTHORIZATION_SIMULATOR_ROLE=aqua_authorizer
+export DATABASE_AUTH_MAIL_FEEDBACK_ROLE=aqua_feedback
+export DATABASE_SETTLEMENT_CASE_ROLES=aqua_case_analyst,aqua_case_reviewer
 export DATABASE_RUNTIME_ROLE=aqua_app DATABASE_INGRESS_ROLE=aqua_ingress DATABASE_WORKER_ROLE=aqua_worker
 export DATABASE_DISPATCHER_ROLE=aqua_dispatcher DATABASE_OPERATIONS_ROLE=aqua_operations
 export DATABASE_AUTH_MAIL_ROLE=aqua_auth_mail DATABASE_MONITOR_ROLE=aqua_monitor
@@ -67,6 +73,13 @@ use_cluster() {
   export OPERATIONS_DATABASE_URL="postgresql://aqua_operations:aqua_operations_local_only@$address"
   export AUTH_MAIL_DATABASE_URL="postgresql://aqua_auth_mail:aqua_auth_mail_local_only@$address"
   export SETTLEMENT_DATABASE_URL="postgresql://aqua_settlement:aqua_settlement_local_only@$address"
+  export FUNDING_DATABASE_URL="postgresql://aqua_funding:aqua_funding_local_only@$address"
+  export CORRECTION_DATABASE_URL="postgresql://aqua_correction:aqua_correction_local_only@$address"
+  export ISSUANCE_DATABASE_URL="postgresql://aqua_issuance:aqua_issuance_local_only@$address"
+  export AUTHORIZATION_SIMULATOR_DATABASE_URL="postgresql://aqua_authorizer:aqua_authorizer_local_only@$address"
+  export AUTH_MAIL_FEEDBACK_DATABASE_URL="postgresql://aqua_feedback:aqua_feedback_local_only@$address"
+  export SETTLEMENT_CASE_DATABASE_URL="postgresql://aqua_case_analyst:aqua_case_analyst_local_only@$address"
+  export SETTLEMENT_REVIEWER_DATABASE_URL="postgresql://aqua_case_reviewer:aqua_case_reviewer_local_only@$address"
   export MONITOR_DATABASE_URL="postgresql://aqua_monitor:aqua_monitor_local_only@$address"
   export MIGRATION_DATABASE_URL="postgresql://aqua:$admin_password@$address"
   wait_for_primary

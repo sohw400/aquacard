@@ -1,0 +1,246 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: One isolated Seoul synthetic runtime per stack, with a dedicated database login and execution role.
+
+Parameters:
+  ServiceKind:
+    Type: String
+    AllowedValues: [api, ingress, card-worker, issuer-dispatcher, mail-worker]
+  DesiredCount:
+    Type: Number
+    Default: 0
+    AllowedValues: [0, 1, 2]
+    Description: Start at zero until credentials, compatible image and network have been checked.
+  VpcId: { Type: 'AWS::EC2::VPC::Id' }
+  PrivateSubnetIds: { Type: 'List<AWS::EC2::Subnet::Id>' }
+  EndpointSecurityGroupId: { Type: 'AWS::EC2::SecurityGroup::Id' }
+  SourceDatabaseSecurityGroupId: { Type: 'AWS::EC2::SecurityGroup::Id' }
+  S3PrefixListId: { Type: String, AllowedPattern: 'pl-[0-9a-f]+' }
+  ClusterArn: { Type: String, AllowedPattern: 'arn:aws:ecs:ap-northeast-2:[0-9]{12}:cluster/[A-Za-z0-9_-]+' }
+  EcrRepositoryName: { Type: String, AllowedPattern: '[a-z0-9]+(?:[._/-][a-z0-9]+)*' }
+  ImageDigest: { Type: String, AllowedPattern: 'sha256:[a-f0-9]{64}' }
+  RuntimeSecretArn:
+    Type: String
+    AllowedPattern: 'arn:aws:secretsmanager:ap-northeast-2:[0-9]{12}:secret:[A-Za-z0-9/_+=.@!-]+'
+    Description: Separate role-specific JSON secret in this account using the Secrets Manager default key.
+  HttpsOrigin:
+    Type: String
+    Default: ''
+    AllowedPattern: '(|https://[a-z0-9-]+(?:\.[a-z0-9-]+)+)'
+    Description: Private origin matching the edge TLS certificate. Required on the API stack.
+  EdgeSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Private edge security group. Only HTTP service stacks use it.
+  TargetGroupArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '(|arn:aws:elasticloadbalancing:ap-northeast-2:[0-9]{12}:targetgroup/[A-Za-z0-9-]+/[a-f0-9]+)'
+  MonitorEnvironment:
+    Type: String
+    Default: staging
+    AllowedPattern: '^[a-z]([a-z0-9-]{0,30}[a-z0-9])?$'
+
+Mappings:
+  Service:
+    api: { Entry: dist-server/index.js, Database: DATABASE_URL }
+    ingress: { Entry: dist-server/card-ingress.js, Database: INGRESS_DATABASE_URL }
+    card-worker: { Entry: dist-server/card-worker.js, Database: WORKER_DATABASE_URL }
+    issuer-dispatcher: { Entry: dist-server/issuer-dispatcher.js, Database: DISPATCHER_DATABASE_URL }
+    mail-worker: { Entry: dist-server/auth-mail-worker.js, Database: AUTH_MAIL_DATABASE_URL }
+
+Rules:
+  SeoulOnly:
+    Assertions:
+      - Assert: !Equals [!Ref 'AWS::Region', ap-northeast-2]
+        AssertDescription: Use the private Seoul staging foundation.
+  ApiOrigin:
+    RuleCondition: !Equals [!Ref ServiceKind, api]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref HttpsOrigin, '']]
+        AssertDescription: An exact HTTPS origin is required for staging member sessions.
+  HttpAttachment:
+    RuleCondition: !Or [!Equals [!Ref ServiceKind, api], !Equals [!Ref ServiceKind, ingress]]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref TargetGroupArn, '']]
+        AssertDescription: Register the HTTP process in its own target group behind the private edge.
+
+Conditions:
+  Api: !Equals [!Ref ServiceKind, api]
+  Ingress: !Equals [!Ref ServiceKind, ingress]
+  Dispatcher: !Equals [!Ref ServiceKind, issuer-dispatcher]
+  Mail: !Equals [!Ref ServiceKind, mail-worker]
+  Http: !Or [!Condition Api, !Condition Ingress]
+  MailKeys: !Or [!Condition Api, !Condition Mail]
+
+Resources:
+  TaskGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: One synthetic Aqua staging runtime role
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, DestinationSecurityGroupId: !Ref SourceDatabaseSecurityGroupId }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, DestinationSecurityGroupId: !Ref EndpointSecurityGroupId }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, DestinationPrefixListId: !Ref S3PrefixListId }
+  DatabaseFromTask:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SourceDatabaseSecurityGroupId
+      SourceSecurityGroupId: !GetAtt TaskGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+  EndpointsFromTask:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EndpointSecurityGroupId
+      SourceSecurityGroupId: !GetAtt TaskGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+  EdgeToTask:
+    Condition: Http
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref EdgeSecurityGroupId
+      DestinationSecurityGroupId: !GetAtt TaskGroup.GroupId
+      IpProtocol: tcp
+      FromPort: !If [Api, 3001, 3004]
+      ToPort: !If [Api, 3001, 3004]
+  TaskFromEdge:
+    Condition: Http
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt TaskGroup.GroupId
+      SourceSecurityGroupId: !Ref EdgeSecurityGroupId
+      IpProtocol: tcp
+      FromPort: !If [Api, 3001, 3004]
+      ToPort: !If [Api, 3001, 3004]
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { RetentionInDays: 30 }
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { 'aws:SourceAccount': !Ref 'AWS::AccountId' }
+              ArnLike: { 'aws:SourceArn': !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*' }
+      Policies:
+        - PolicyName: RuntimeStartup
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - { Effect: Allow, Action: 'ecr:GetAuthorizationToken', Resource: '*' }
+              - Effect: Allow
+                Action: [ecr:BatchGetImage, ecr:GetDownloadUrlForLayer, ecr:BatchCheckLayerAvailability]
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrRepositoryName}'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt LogGroup.Arn
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref RuntimeSecretArn
+                Condition:
+                  StringEquals: { 'aws:ResourceAccount': !Ref 'AWS::AccountId' }
+  Task:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      RuntimePlatform: { CpuArchitecture: X86_64, OperatingSystemFamily: LINUX }
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: runtime
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/${EcrRepositoryName}@${ImageDigest}'
+          Essential: true
+          ReadonlyRootFilesystem: !If [Mail, false, true]
+          User: node
+          StopTimeout: 45
+          DependsOn: !If [Dispatcher, [{ ContainerName: sandbox-issuer, Condition: HEALTHY }], !Ref 'AWS::NoValue']
+          Command: [node, !FindInMap [Service, !Ref ServiceKind, Entry]]
+          PortMappings: !If [Http, [{ ContainerPort: !If [Api, 3001, 3004], Protocol: tcp }], !Ref 'AWS::NoValue']
+          Environment:
+            - { Name: NODE_ENV, Value: staging }
+            - { Name: DATABASE_SCHEMA, Value: aqua }
+            - { Name: DATABASE_CA_FILE, Value: /etc/aqua/rds-ca.pem }
+            - { Name: AQUA_MONITOR_ENVIRONMENT, Value: !Ref MonitorEnvironment }
+            - !If [Api, { Name: AQUA_STAGING_ALB, Value: 'true' }, !Ref 'AWS::NoValue']
+            - !If [Api, { Name: AQUA_ALLOWED_ORIGINS, Value: !Ref HttpsOrigin }, !Ref 'AWS::NoValue']
+            - !If [Ingress, { Name: AQUA_CARD_INGRESS_HOST, Value: 0.0.0.0 }, !Ref 'AWS::NoValue']
+            - !If [Mail, { Name: AQUA_AUTH_MAIL_TRANSPORT, Value: file }, !Ref 'AWS::NoValue']
+            - !If [Mail, { Name: AQUA_MAIL_DIR, Value: /tmp/aqua-private-mail }, !Ref 'AWS::NoValue']
+            - !If [Dispatcher, { Name: AQUA_ISSUER_SANDBOX_URL, Value: 'http://127.0.0.1:3005' }, !Ref 'AWS::NoValue']
+          Secrets:
+            - { Name: !FindInMap [Service, !Ref ServiceKind, Database], ValueFrom: !Sub '${RuntimeSecretArn}:databaseUrl::' }
+            - !If [MailKeys, { Name: AQUA_AUTH_MAIL_KEYS, ValueFrom: !Sub '${RuntimeSecretArn}:mailKeys::' }, !Ref 'AWS::NoValue']
+            - !If [MailKeys, { Name: AQUA_AUTH_MAIL_ACTIVE_KEY, ValueFrom: !Sub '${RuntimeSecretArn}:mailActiveKey::' }, !Ref 'AWS::NoValue']
+            - !If [Ingress, { Name: AQUA_CARD_WEBHOOK_KEYS, ValueFrom: !Sub '${RuntimeSecretArn}:webhookKeys::' }, !Ref 'AWS::NoValue']
+            - !If [Dispatcher, { Name: AQUA_ISSUER_KEY_ID, ValueFrom: !Sub '${RuntimeSecretArn}:issuerKeyId::' }, !Ref 'AWS::NoValue']
+            - !If [Dispatcher, { Name: AQUA_ISSUER_SIGNING_KEY, ValueFrom: !Sub '${RuntimeSecretArn}:issuerKey::' }, !Ref 'AWS::NoValue']
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: runtime
+              mode: blocking
+        - !If
+          - Dispatcher
+          - Name: sandbox-issuer
+            Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/${EcrRepositoryName}@${ImageDigest}'
+            Essential: true
+            ReadonlyRootFilesystem: true
+            User: '1000'
+            Command: [node, dist-server/staging-issuer.js]
+            HealthCheck:
+              Command: [CMD, node, -e, "fetch('http://127.0.0.1:3005/live',{signal:AbortSignal.timeout(2000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+              Interval: 10
+              Timeout: 5
+              Retries: 3
+              StartPeriod: 10
+            Environment: [{ Name: NODE_ENV, Value: staging }]
+            Secrets:
+              - { Name: AQUA_ISSUER_KEY_ID, ValueFrom: !Sub '${RuntimeSecretArn}:issuerKeyId::' }
+              - { Name: AQUA_ISSUER_SIGNING_KEY, ValueFrom: !Sub '${RuntimeSecretArn}:issuerKey::' }
+            LogConfiguration:
+              LogDriver: awslogs
+              Options:
+                awslogs-group: !Ref LogGroup
+                awslogs-region: !Ref 'AWS::Region'
+                awslogs-stream-prefix: sidecar
+                mode: blocking
+          - !Ref 'AWS::NoValue'
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: [DatabaseFromTask, EndpointsFromTask]
+    Properties:
+      Cluster: !Ref ClusterArn
+      LaunchType: FARGATE
+      PlatformVersion: '1.4.0'
+      DesiredCount: !Ref DesiredCount
+      TaskDefinition: !Ref Task
+      EnableExecuteCommand: false
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker: { Enable: true, Rollback: true }
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+      HealthCheckGracePeriodSeconds: !If [Http, 90, !Ref 'AWS::NoValue']
+      LoadBalancers: !If [Http, [{ ContainerName: runtime, ContainerPort: !If [Api, 3001, 3004], TargetGroupArn: !Ref TargetGroupArn }], !Ref 'AWS::NoValue']
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets: !Ref PrivateSubnetIds
+          SecurityGroups: [!GetAtt TaskGroup.GroupId]
+
+Outputs:
+  ServiceName: { Value: !GetAtt Service.Name }
+  TaskDefinitionArn: { Value: !Ref Task }
+  RuntimeLogGroup: { Value: !Ref LogGroup }
+  TaskSecurityGroupId: { Value: !GetAtt TaskGroup.GroupId }

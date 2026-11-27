@@ -7,7 +7,7 @@ import { LedgerStore } from '../server/ledger';
 import { verifyMigrations } from '../server/migrations';
 import {
   verifyApplicationRole, verifyAuthMailRole, verifyCardDispatcherRole, verifyCardIngressRole,
-  verifyCardOperationsRole, verifyCardWorkerRole, verifyMonitorRole, verifySettlementRole,
+  verifyCardOperationsRole, verifyCardWorkerRole, verifyMonitorRole, verifySettlementRole, verifyFundingRole, verifyCorrectionRole, verifyIssuanceRole, verifySettlementCaseRole, verifyAuthMailFeedbackRole, verifyAuthorizationSimulatorRole,
 } from '../server/permissions';
 import { reconcileRewards } from '../server/reward-reconciliation';
 import { approveTestCustomer } from '../server/test-customer-access';
@@ -105,6 +105,13 @@ await withRole('DATABASE_URL', 'aqua_app', async (db) => {
         ['AUTH_MAIL_DATABASE_URL', 'aqua_auth_mail', verifyAuthMailRole],
         ['MONITOR_DATABASE_URL', 'aqua_monitor', verifyMonitorRole],
         ['SETTLEMENT_DATABASE_URL', 'aqua_settlement', verifySettlementRole],
+        ['FUNDING_DATABASE_URL', 'aqua_funding', verifyFundingRole],
+        ['CORRECTION_DATABASE_URL', 'aqua_correction', verifyCorrectionRole],
+        ['ISSUANCE_DATABASE_URL', 'aqua_issuance', verifyIssuanceRole],
+        ['AUTHORIZATION_SIMULATOR_DATABASE_URL', 'aqua_authorizer', verifyAuthorizationSimulatorRole],
+        ['AUTH_MAIL_FEEDBACK_DATABASE_URL', 'aqua_feedback', verifyAuthMailFeedbackRole],
+        ['SETTLEMENT_CASE_DATABASE_URL', 'aqua_case_analyst', verifySettlementCaseRole],
+        ['SETTLEMENT_REVIEWER_DATABASE_URL', 'aqua_case_reviewer', verifySettlementCaseRole],
       ] as const) await withRole(variable, user, verify);
 
       for (const event of atTarget) await cards.apply(event);

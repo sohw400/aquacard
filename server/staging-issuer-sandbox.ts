@@ -24,6 +24,7 @@ export function createStagingIssuer(keyId: string, encodedKey: string) {
     const mac = createHmac('sha256', key).update(`sandbox.issuer.v1.${keyId}.${timestamp}.${request.method}.${request.url}.`).update(body).digest();
     return timingSafeEqual(mac, Buffer.from(signature.slice(3), 'hex'));
   }
+  app.get('/live', async () => ({ status: 'ok' }));
   app.get<{ Params: { key: string } }>('/operations/:key', async (request, reply) => {
     if (!signed(request, Buffer.alloc(0))) return reply.code(401).send({});
     if (!requestKey.test(request.params.key)) return reply.code(400).send({});

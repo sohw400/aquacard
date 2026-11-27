@@ -246,6 +246,36 @@ Resources:
       TreatMissingData: ignore
       AlarmActions: [!Ref AlarmTopicArn]
       OKActions: [!Ref AlarmTopicArn]
+  RewardBudgetAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: The active test reward program has less funding than one standard monthly cap. Review available funds and committed cashback.
+      Namespace: AquaCard/Operations
+      MetricName: RewardBudgetLow
+      Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: ignore
+      AlarmActions: [!Ref AlarmTopicArn]
+      OKActions: [!Ref AlarmTopicArn]
+  CashbackSkippedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: A new card authorization continued without cashback due to insufficient company funding within the past day.
+      Namespace: AquaCard/Operations
+      MetricName: UnfundedCashbackAuthorizations24h
+      Dimensions: [{ Name: Environment, Value: !Ref Environment }]
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: ignore
+      AlarmActions: [!Ref AlarmTopicArn]
+      OKActions: [!Ref AlarmTopicArn]
   OldestDueAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
