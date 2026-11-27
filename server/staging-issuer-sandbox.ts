@@ -1,18 +1,19 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import type { LocalStagingIssuerReceipts } from './local-staging-issuer-receipts';
 import Fastify, { type FastifyRequest } from 'fastify';
 
 const requestKey = /^aqua-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const cardRef = /^sandbox-card-[A-Za-z0-9_-]{1,100}$/;
 
-/** This synthetic issuer rejects every command. It has no card state and can truthfully
- * report that a lost request never took effect, even after its task is replaced. */
-export function createStagingIssuer(keyId: string, encodedKey: string) {
+/** The default stateless sidecar can only reject commands. The local QA rehearsal supplies a durable store. */
+export function createStagingIssuer(keyId: string, encodedKey: string, receipts?: LocalStagingIssuerReceipts) {
   if (process.env.NODE_ENV !== 'staging' || !/^[A-Za-z0-9_-]{1,32}$/.test(keyId) || !/^[A-Za-z0-9_-]{43}$/.test(encodedKey)) {
     throw new Error('The private staging issuer requires a sandbox signing key.');
   }
   const key = Buffer.from(encodedKey, 'base64url');
   if (key.toString('base64url') !== encodedKey) throw new Error('Invalid staging signing key.');
   const app = Fastify({ logger: false, bodyLimit: 2048, requestTimeout: 5000, connectionTimeout: 5000, exposeHeadRoutes: false });
+  if (receipts) app.addHook('onClose', async () => receipts.close());
   app.removeContentTypeParser('application/json');
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (_request, body, done) => done(null, body));
   function signed(request: FastifyRequest, body: Buffer) {
@@ -28,6 +29,8 @@ export function createStagingIssuer(keyId: string, encodedKey: string) {
   app.get<{ Params: { key: string } }>('/operations/:key', async (request, reply) => {
     if (!signed(request, Buffer.alloc(0))) return reply.code(401).send({});
     if (!requestKey.test(request.params.key)) return reply.code(400).send({});
+    const stored = receipts?.lookup(request.params.key);
+    if (stored) return reply.send(stored);
     return reply.code(404).send({ requestKey: request.params.key, status: 'not_found', authoritative: true });
   });
   app.post<{ Params: { card: string } }>('/cards/:card/status', async (request, reply) => {
@@ -38,6 +41,11 @@ export function createStagingIssuer(keyId: string, encodedKey: string) {
     try { body = JSON.parse(request.body.toString('utf8')); } catch { return reply.code(400).send({}); }
     if (body?.requestKey !== id || body.cardRef !== request.params.card || !['active', 'locked'].includes(body.targetStatus)
       || !Number.isSafeInteger(body.expiresAt)) return reply.code(400).send({});
+    if (receipts) {
+      const result = receipts.apply(body);
+      if (!result) return reply.code(409).send({});
+      return reply.code(result.status === 'succeeded' ? 200 : 422).send(result);
+    }
     return reply.code(422).send({ requestKey: id, cardRef: body.cardRef, status: 'rejected', code: 'COMMAND_REJECTED' });
   });
   return app;

@@ -4,5 +4,5 @@
     "lib": ["ES2023"],
     "types": ["node"]
   },
-  "include": ["server", "shared", "scripts/recovery-fixture.ts", "scripts/pitr-fixture.ts", "scripts/evm-funding-drill.ts", "scripts/check-testnet-transfer*.ts"]
+  "include": ["server", "shared", "scripts/recovery-fixture.ts", "scripts/pitr-fixture.ts", "scripts/evm-funding-drill.ts", "scripts/check-testnet-transfer*.ts", "scripts/staging-*.ts"]
 }
