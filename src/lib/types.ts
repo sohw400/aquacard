@@ -181,6 +181,8 @@ export interface AppState {
   reserve: number;
   rewards: number;
   accrued: number;
+  /** Unpaid fraction brought into the current Korean date; absent in older saves. */
+  reserveDayOpeningFraction?: number;
   rewardDebt: number;
   reserveAuto: boolean;
   rewardsAuto: boolean;

@@ -61,7 +61,8 @@
 .card-spending > div > span, .home-benefit-amounts > div > span:first-child, .amount-label, .reserve-earnings-list dt { color: var(--muted); font-size: 13px; font-weight: 500; line-height: 1.5; }
 .card-spending strong { color: var(--ink); font-size: 26px; line-height: 1.2; letter-spacing: -.035em; }
 .card-spending .btn { min-height: 44px; }
-.card-spending-sources { display: flex; flex-wrap: wrap; gap: 2px 5px; grid-column: 1 / -1; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.card-funding-link { display: flex; align-items: center; justify-content: space-between; gap: 8px; grid-column: 1 / -1; min-height: 44px; color: var(--ink-soft); font-size: 14px; }
+.card-funding-link > span:last-child { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
 .card-overview .home-renewal { margin-top: 0; }
 .home-page .home-wallet {
   padding: 16px 0 0;
@@ -79,7 +80,7 @@
 .home-payback .won { color: var(--accent-strong); font-size: clamp(30px,3vw,39px); letter-spacing: -.045em; }
 .home-reward-balance .won { color: var(--ink-soft); font-size: clamp(20px,1.8vw,24px); }
 .home-benefit-amounts > div > small { color: var(--muted); font-size: 12px; }
-.home-reserve-link { justify-content: start; margin-top: 18px; padding: 12px 0; min-height: 50px; border-block: 1px solid var(--line); color: var(--ink-soft); font-size: 14px; }
+.home-reserve-link { justify-content: start; margin-top: 6px; padding: 10px 0; min-height: 46px; color: var(--ink-soft); font-size: 14px; }
 .home-reserve-link > span:nth-child(2) { display: flex; align-items: baseline; justify-content: end; gap: 6px; flex: 1; flex-wrap: wrap; }
 .home-reserve-link strong { color: var(--ink); font-size: 15px; }
 .home-reserve-link small { color: var(--accent-strong); font-size: 12px; font-weight: 600; white-space: nowrap; }

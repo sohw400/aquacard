@@ -1,5 +1,6 @@
 import './MoneyPages.css';
-import { LiveEarnings, Toggle, Won } from '../components/ui';
+import { LiveEarnings, Won } from '../components/ui';
+import { ReserveSwitch } from '../components/PaymentSources';
 import { reserveTerms } from '../lib/engine';
 import { money, percent, shortDate } from '../lib/format';
 import { PLANS } from '../lib/policy';
@@ -22,7 +23,7 @@ export default function Reserve({ state, onMove, onAutoUse }: { state: AppState;
       <p className="lead-text">{state.reserve > 0 ? `지금 금액이면 하루에 약 ${money(daily)}이 쌓여요.` : '잔액 일부를 리저브에 두면 1초마다 보상이 쌓여요.'} 보상은 1원이 될&nbsp;때마다 리워드에 들어가요.</p>
     </section>
     <section className="reserve-preference">
-      <Toggle checked={state.reserveAuto} onChange={onAutoUse} label="잔액이 모자랄 때 리저브로 결제" detail="모자란 만큼만 리저브에서 빠져요." testId="reserve-auto" />
+      <ReserveSwitch checked={state.reserveAuto} onChange={onAutoUse} />
     </section>
 
     <details className="rule-details plain-section">

@@ -21,3 +21,9 @@
 .channel-value { font-size: 13px; color: var(--muted); }
 .channel-control[aria-checked="true"] .channel-value { color: var(--accent-strong); }
 .channel-lock-note { margin: 0 0 10px; padding: 12px; border-radius: 10px; background: var(--warning-weak); color: var(--warning); font-size: 14px; }
+.funding-order { margin-top: 16px; padding: 16px; border-radius: var(--radius-sm); background: var(--sunken); }
+.funding-order h3 { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+.funding-order ol { margin: 0; padding-left: 1.35em; list-style: decimal; }
+.funding-order li { padding: 4px 0; color: var(--ink); font-size: 15px; line-height: 1.5; }
+.funding-order li::marker { color: var(--muted); font-variant-numeric: tabular-nums; }
+.funding-order strong { float: right; padding-left: 8px; font-variant-numeric: tabular-nums; }

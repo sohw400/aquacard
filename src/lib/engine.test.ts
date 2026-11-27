@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { accountClosureBlockers, addYear, applyAction, availableToSpend, cardApplicationFee, createInitialState, loadState, memberSendRoom, nextRenewalNotice, portfolioValue, recordsKeptUntil, renewalMessage, renewalNotice, reserveTerms, saveState, STORAGE_KEY, unusedAnnualFee } from './engine';
+import { accountClosureBlockers, addYear, applyAction, availableToSpend, cardApplicationFee, createInitialState, loadState, memberSendRoom, nextRenewalNotice, paymentPreview, portfolioValue, recordsKeptUntil, renewalMessage, renewalNotice, reserveEarnings, reserveTerms, saveState, STORAGE_KEY, unusedAnnualFee } from './engine';
 import { josa, ro } from './format';
 import { mobilePreviewScenario } from './mobilePreview';
 import { assertFundingQuoteFresh, getFundingQuote } from './funding';
@@ -125,7 +125,7 @@ test('활성화되지 않거나 잠긴 카드와 부족한 결제 잔액을 거�
   state.card.locked = true;
   assert.throws(() => applyAction(state, { type: 'PAY', merchant: '카페', amount: 1_000 }, NOW), /잠금/);
   state.card.locked = false;
-  assert.throws(() => applyAction(state, { type: 'PAY', merchant: '카페', amount: 200_000 }, NOW), /리저브 자동/);
+  assert.throws(() => applyAction(state, { type: 'PAY', merchant: '카페', amount: 200_000 }, NOW), /지갑 부족분을 리저브에서 쓰도록/);
   assert.throws(() => applyAction(state, { type: 'PAY', merchant: '카페', amount: 0 }, NOW), /정수/);
   assert.throws(() => applyAction(state, { type: 'PAY', merchant: '카페', amount: 1.2 }, NOW), /정수/);
 });
@@ -178,6 +178,82 @@ test('같은 날 쌓인 리저브 보상은 이용 내역 한 줄에 합산하�
   state = applyAction(state, { type: 'TICK' }, NOW + DAY);
   assert.equal(state.transactions.filter((item) => item.kind === 'reward' && item.title === '리저브 보상').length, 2);
   assert.equal(state.transactions.filter((item) => item.title === '리저브 보상').reduce((sum, item) => sum + item.amount, 0), state.rewards - 4_280);
+});
+
+test('재접속 시 리저브 보상은 지난 서울 날짜에 기장되고 오늘 적립은 자정부터 시작한다', () => {
+  const midnight = Date.parse('2026-11-24T00:00:00+09:00');
+  const initial = createInitialState(midnight);
+  const threeDaysLater = midnight + 3 * DAY;
+  const daily = initial.reserve * initial.reserveRate / 365;
+  const caughtUp = applyAction(initial, { type: 'TICK' }, threeDaysLater);
+  assert.deepEqual(caughtUp.transactions.map(t => [new Date(t.timestamp + 9 * 3_600_000).toISOString().slice(0, 10), t.amount]),
+    [['2026-11-26', 171], ['2026-11-25', 171], ['2026-11-24', 171]]);
+  close(reserveEarnings(initial, threeDaysLater).today, 0);
+  close(reserveEarnings(caughtUp, threeDaysLater).today, 0);
+  close(reserveEarnings(caughtUp, threeDaysLater).total, 3 * daily);
+  const nextNoon = threeDaysLater + DAY / 2;
+  close(reserveEarnings(caughtUp, nextNoon).today, daily / 2);
+  const atNoon = applyAction(caughtUp, { type: 'TICK' }, nextNoon);
+  close(reserveEarnings(atNoon, nextNoon).today, daily / 2);
+  close(reserveEarnings(atNoon, nextNoon).total, 3.5 * daily);
+  assert.deepEqual(applyAction(atNoon, { type: 'TICK' }, nextNoon), atNoon);
+});
+
+test('날짜가 넘어가도 이전 날짜의 잔여 소수점과 원금·요율 변경 전 보상이 보존된다', () => {
+  const start = Date.parse('2026-11-26T12:00:00+09:00');
+  const cutoff = start + DAY / 2;
+  let state = createInitialState(start);
+  state.reserve = 10_000;
+  state.rewardsAuto = false;
+  const before = 10_000 * 0.05 / 365 / 2;
+  state = applyAction(state, { type: 'CHANGE_RATE', rate: 0.08 }, cutoff);
+  close(reserveEarnings(state, cutoff).today, 0);
+  close(state.accrued, before);
+  state = applyAction(state, { type: 'TRANSFER_RESERVE', direction: 'in', amount: 10_000 }, cutoff + DAY / 4);
+  const pending = 10_000 * 0.08 / 365 / 4 + 20_000 * 0.08 / 365 / 4;
+  state = applyAction(state, { type: 'TICK' }, cutoff + DAY / 2);
+  close(reserveEarnings(state, cutoff + DAY / 2).today, pending);
+  close(reserveEarnings(state, cutoff + DAY / 2).total, pending + before);
+  assert.equal(state.rewards - 4_280, Math.floor(pending + before));
+  assert.doesNotMatch(state.transactions.find(t => t.kind === 'reward')!.note, /먼저/);
+});
+
+test('결제 예상과 승인에 같은 순서·한도·페이백 조건을 사용한다', () => {
+  const start = Date.parse('2026-10-31T23:59:55+09:00');
+  const nextDay = start + 5_000;
+  const state = activeState(start);
+  Object.assign(state, { spend: 3_000, reserve: 5_000, rewards: 2_000, dailySpent: 1_000_000, monthlySpent: 5_000_000, monthlyCashback: 10_000 });
+  const before = structuredClone(state);
+  for (const rewardsAuto of [false, true]) for (const reserveAuto of [false, true]) {
+    const scenario = { ...state, rewardsAuto, reserveAuto };
+    const amount = 3_500;
+    const expired = paymentPreview(scenario, amount, 'store', start);
+    assert.equal(expired.maximum, 0);
+    assert.match(expired.issue!, /일 결제 한도/);
+    assert.equal(expired.cashback, 0);
+    const preview = paymentPreview(scenario, amount, 'store', nextDay);
+    assert.equal(preview.maximum, 3_000 + (rewardsAuto ? 2_000 : 0) + (reserveAuto ? 5_000 : 0));
+    const authorize = () => applyAction(scenario, { type: 'PAY', merchant: '서점', amount }, nextDay);
+    if (preview.issue) {
+      assert.throws(authorize, { message: preview.issue });
+      assert.equal(preview.cashback, 0);
+      assert.equal(preview.shortfall, 500);
+    } else {
+      const paid = authorize().payments[0];
+      assert.deepEqual([preview.rewards, preview.spend, preview.reserve, preview.cashback],
+        [paid.fromRewards, paid.fromSpend, paid.fromReserve, paid.cashback]);
+    }
+  }
+  assert.deepEqual(state,before);
+  const closed = { ...state, controls: { ...state.controls, online: false } };
+  const online = paymentPreview(closed, 1, 'online', nextDay);
+  assert.equal(online.maximum, 0);
+  assert.equal(online.cashback, 0);
+  assert.match(online.issue!, /온라인/);
+  assert.equal(paymentPreview({ ...state, card: { ...state.card, locked: true } }, 1, 'store', nextDay).maximum, 0);
+  const noReserve = paymentPreview({ ...state, reserve: 0, rewardsAuto: false }, 5_000, 'store', nextDay);
+  assert.doesNotMatch(noReserve.issue!, /리저브/);
+  assert.equal(paymentPreview({ ...state, spend: 2_000_000 }, 0, 'store', nextDay).maximum, 500_000);
 });
 
 test('리저브 이동과 보상률 변경 시 이전 잔액·보상률로 먼저 적립한다', () => {

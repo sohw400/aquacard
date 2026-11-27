@@ -63,6 +63,54 @@ async function checkPhone(browser, base) {
   } finally { await page.close(); }
 }
 
+async function checkFundingChoices(browser, base) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
+  try {
+    await page.clock.setFixedTime(new Date('2026-11-26T03:00:00Z'));
+    await openIssuedHome(page, base);
+    const reserve = page.getByTestId('open-reserve-card');
+    assert.ok(await reserve.evaluate(button => {
+      const rect = button.getBoundingClientRect();
+      return scrollY === 0 && button.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+    }), 'the Reserve entry must be tappable above the bottom navigation before any scrolling');
+    await reserve.tap();
+    await page.getByTestId('reserve-principal').waitFor();
+    await page.getByTestId('go-back').tap();
+    const readAmount = async locator => Number((await locator.innerText()).replace(/[^0-9]/g, ''));
+    const wallet = await readAmount(page.getByTestId('spend-balance'));
+    const rewards = await readAmount(page.getByTestId('available-rewards'));
+    const purchase = wallet + rewards + 2_000;
+    await page.getByTestId('nav-card').tap();
+    await page.getByTestId('card-open-sources').tap();
+    for (const useRewards of [false, true]) {
+      for (const useReserve of [false, true]) {
+        for (const [id, enabled] of [['rewards-auto', useRewards], ['reserve-auto', useReserve]]) {
+          const toggle = page.getByTestId(id);
+          if (await toggle.getAttribute('aria-checked') !== String(enabled)) await toggle.tap();
+        }
+        const names = [...(useRewards ? ['리워드'] : []), '지갑 잔액', ...(useReserve ? ['리저브 잔액'] : [])];
+        assert.deepEqual(await page.getByTestId('funding-order').locator('li > span').allTextContents(), names);
+        await page.getByTestId('nav-home').tap();
+        await page.getByTestId('open-payment').tap();
+        const dialog = page.getByTestId('dialog-payment');
+        await dialog.getByTestId('action-amount').fill(String(purchase));
+        assert.equal(await dialog.getByTestId('confirm-action').isEnabled(), useReserve);
+        if (useReserve) {
+          const usedRewards = useRewards ? rewards : 0;
+          assert.deepEqual(await dialog.locator('.source-row > span').allTextContents(), names);
+          const amounts = (await dialog.locator('.source-row > strong').allTextContents()).map(text => Number(text.replace(/[^0-9]/g, '')));
+          assert.deepEqual(amounts, [...(useRewards ? [usedRewards] : []), wallet, purchase - wallet - usedRewards]);
+        } else {
+          assert.equal(await dialog.getByTestId('payment-cashback').count(), 0, 'a declined payment must not promise cashback');
+          assert.match(await dialog.getByRole('alert').innerText(), /모자라요/);
+        }
+        await dialog.getByRole('button', { name: '취소', exact: true }).tap();
+        await page.getByTestId('open-payment-sources').tap();
+      }
+    }
+  } finally { await page.close(); }
+}
+
 let preview;
 let browser;
 try {
@@ -78,7 +126,8 @@ try {
   });
   await checkDesktop(browser, base);
   await checkPhone(browser, base);
-  console.log('Reserve and payment layouts stayed stable on desktop. The expanded phone form, footer and navigation remained accessible.');
+  await checkFundingChoices(browser, base);
+  console.log('Desktop and phone layouts, Reserve access and all four card funding settings passed.');
 } finally {
   try { await browser?.close(); } finally { await preview?.close(); }
 }
