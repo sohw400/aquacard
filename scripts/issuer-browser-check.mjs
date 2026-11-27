@@ -243,6 +243,47 @@ async function finishSuccess(confirmed, commandStatus = 'succeeded') {
   const result = await dispatch(); assert.equal(result.status, 'succeeded');
   await refresh(); await state(confirmed, commandStatus);
 }
+async function checkCardApplication() {
+  await page.getByTestId('application-refresh').click();
+  await page.getByTestId('application-submit').waitFor();
+  const applicationUrl = new URL('/api/card-application', base).href;
+  let firstKey;
+  await page.route(applicationUrl, async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    const response = await route.fetch();
+    assert.equal(response.status(), 201);
+    firstKey = route.request().headers()['idempotency-key'];
+    await route.abort('failed');
+  });
+  await page.getByTestId('application-submit').click();
+  await page.getByTestId('application-retry').click({ trial: true });
+  await page.unroute(applicationUrl);
+  await page.reload();
+  const replay = page.waitForResponse(response => response.url() === applicationUrl && response.request().method() === 'POST');
+  await page.getByTestId('application-retry').click();
+  const replayed = await replay;
+  assert.equal(replayed.status(), 201);
+  assert.ok(firstKey);
+  assert.equal(replayed.request().headers()['idempotency-key'], firstKey, 'reload must reuse the original member application command');
+  const application = await replayed.json();
+  assert.equal(application.form, 'virtual');
+  assert.equal(application.status, 'submitted');
+  await page.getByRole('heading', { name: '심사 중', exact: true }).waitFor();
+  let version = application.version;
+  for (const [action, title] of [['approve', '발급 준비 중'], ['issue', '발급 완료']]) {
+    // Synthetic provider events in the disposable schema. Member endpoints cannot advance issuance.
+    await database.query('SELECT apply_card_application_event($1::jsonb, $2::bigint)',
+      [JSON.stringify({ applicationId: application.id, expectedVersion: version, eventId: runId + '-' + action, action }), Date.now()]);
+    version++;
+    await page.getByTestId('application-refresh').click();
+    await page.getByRole('heading', { name: title, exact: true }).waitFor();
+  }
+  const activation = page.waitForResponse(response => response.url() === applicationUrl + '/activate' && response.request().method() === 'POST');
+  await page.getByTestId('application-activate').click();
+  assert.equal((await activation).status(), 200);
+  pass('The member retries a lost application response after reload, sees confirmed issuance and explicitly activates the virtual card.');
+  return (await snapshot()).card.id;
+}
 async function fits(target, name) {
   const size = await target.evaluate(() => ({ viewport: innerWidth, width: document.documentElement.scrollWidth }));
   assert.ok(size.width <= size.viewport + 1, `${name}: horizontal overflow ${size.width}/${size.viewport}`);
@@ -270,7 +311,7 @@ try {
   assert.deepEqual(await cardEvent(noCardAuthorization), { accepted: false, code: 'CARD_NOT_ISSUED' });
   pass('A newly registered account shows no linked card and cannot issue a fabricated card command.');
 
-  cardId = (await operator(['register', ownerId, `sandbox-card-${runId}`, 'active'])).cardId;
+  cardId = await checkCardApplication();
   await refresh(); await state('active', 'none');
   assert.equal(await panel().getAttribute('data-card-id'), cardId);
   await approvalState('allowed');

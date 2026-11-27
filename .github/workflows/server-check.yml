@@ -13,9 +13,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  mobile-webkit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: ./node_modules/.bin/playwright-core install --with-deps webkit
+      - name: Check mobile card flows in WebKit
+        env:
+          AQUA_LAYOUT_ENGINE: webkit
+        run: npm run test:home-layout
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     services:
       postgres:
         image: postgres:18-bookworm@sha256:ece55f7868da684e400f82f1030a050718adbdd65c23aa500c486f6e2950dc0f
@@ -40,7 +57,20 @@ jobs:
       DATABASE_DISPATCHER_ROLE: aqua_dispatcher
       DATABASE_OPERATIONS_ROLE: aqua_operations
       DATABASE_SETTLEMENT_ROLE: aqua_settlement
+      DATABASE_FUNDING_ROLE: aqua_funding
+      DATABASE_CORRECTION_ROLE: aqua_correction
+      DATABASE_ISSUANCE_ROLE: aqua_issuance
+      DATABASE_AUTHORIZATION_SIMULATOR_ROLE: aqua_authorizer
+      DATABASE_AUTH_MAIL_FEEDBACK_ROLE: aqua_feedback
+      DATABASE_SETTLEMENT_CASE_ROLES: aqua_case_analyst,aqua_case_reviewer
       SETTLEMENT_DATABASE_URL: postgresql://aqua_settlement:aqua_settlement_local_only@127.0.0.1:5432/aqua
+      FUNDING_DATABASE_URL: postgresql://aqua_funding:aqua_funding_local_only@127.0.0.1:5432/aqua
+      CORRECTION_DATABASE_URL: postgresql://aqua_correction:aqua_correction_local_only@127.0.0.1:5432/aqua
+      ISSUANCE_DATABASE_URL: postgresql://aqua_issuance:aqua_issuance_local_only@127.0.0.1:5432/aqua
+      AUTHORIZATION_SIMULATOR_DATABASE_URL: postgresql://aqua_authorizer:aqua_authorizer_local_only@127.0.0.1:5432/aqua
+      AUTH_MAIL_FEEDBACK_DATABASE_URL: postgresql://aqua_feedback:aqua_feedback_local_only@127.0.0.1:5432/aqua
+      SETTLEMENT_CASE_DATABASE_URL: postgresql://aqua_case_analyst:aqua_case_analyst_local_only@127.0.0.1:5432/aqua
+      SETTLEMENT_REVIEWER_DATABASE_URL: postgresql://aqua_case_reviewer:aqua_case_reviewer_local_only@127.0.0.1:5432/aqua
       DATABASE_MONITOR_ROLE: aqua_monitor
       MONITOR_DATABASE_URL: postgresql://aqua_monitor:aqua_monitor_local_only@127.0.0.1:5432/aqua
       DATABASE_AUTH_MAIL_ROLE: aqua_auth_mail
@@ -56,6 +86,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -73,7 +104,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/aqua-cfn"
           source "$RUNNER_TEMP/aqua-cfn/bin/activate"
           python -m pip install --disable-pip-version-check cfn-lint==1.40.4
-          cfn-lint --regions ap-northeast-2 --template infra/operations-monitoring.yaml infra/staging-pitr.yaml infra/staging-network.yaml infra/staging-foundation.yaml infra/staging-bootstrap.yaml
+          cfn-lint --regions ap-northeast-2 --template infra/operations-monitoring.yaml infra/staging-pitr.yaml infra/staging-network.yaml infra/staging-foundation.yaml infra/staging-bootstrap.yaml infra/staging-runtime-edge.yaml infra/staging-runtime-service.yaml
           python -B -m unittest discover -s scripts -p "test_*template.py"
           node --import tsx scripts/check-operations-alarms.mjs
       - name: Verify trust bundle packaging
@@ -131,6 +162,10 @@ jobs:
             assert.equal(statSync(path).mode & 0o777, 0o444);
             assert.equal(createHash("sha256").update(readFileSync(path)).digest("hex"), process.argv[1]);
           ' "$aqua_ca_hash"
+      - name: Build the previous web release for the candidate schema
+        run: bash scripts/build-fallback-image.sh aqua-card-server:ci aqua-card-server:compatible
+      - name: Verify fallback startup refusals and recovery on the candidate schema
+        run: bash scripts/fallback-drill.sh aqua-card-server:ci aqua-card-server:compatible
       - name: Initialize a private PostgreSQL fixture from the release image
         run: bash scripts/staging-bootstrap-smoke.sh aqua-card-server:ci
       - name: Check the compiled container with a read-only filesystem
@@ -311,6 +346,8 @@ jobs:
           npm run test:card:browser
           npm run test:rewards:browser
           npm run server:reconcile
+      - name: Check connected deposit and withdrawal in an isolated schema
+        run: npm run test:funding:browser
       - name: Check connected issuer controls in an isolated schema
         run: npm run test:issuer:browser
       - name: Check customer access and session security in an isolated schema

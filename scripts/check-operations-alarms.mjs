@@ -22,7 +22,7 @@ const queues = {
   issuerOutbox: queue,
   authMail: { ...queue, needsReview: 0 },
 };
-const scheduled = monitorResult(environment, { ledgerFindings: 1, queues, failedChecks: [] }).event;
+const scheduled = monitorResult(environment, { ledgerFindings: 1, queues, budget: { budgetLow: true, unfunded24h: 3 }, failedChecks: [] }).event;
 
 async function idleWorkerEvent(run) {
   const stop = new AbortController();
@@ -42,7 +42,7 @@ const empty = async () => null;
 const stats = async () => ({});
 const outbox = { claim: empty, stats };
 const workerEvents = {
-  WatchCardWorker: await idleWorkerEvent(options => runCardWorker({ processNext: empty, stats }, options)),
+  WatchCardWorker: await idleWorkerEvent(options => runCardWorker({ processNext: empty, expireHold: empty, stats }, options)),
   WatchIssuerDispatcher: await idleWorkerEvent(options => runIssuerDispatcher(outbox, {}, options)),
   WatchAuthMailWorker: await idleWorkerEvent(options => runAuthMailWorker(outbox, {}, 'test', {}, options)),
 };

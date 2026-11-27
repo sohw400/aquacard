@@ -16,7 +16,11 @@ docker compose up -d --wait postgres
 
 Compose는 PostgreSQL만 실행한다. 호스트의 `127.0.0.1:54329`, DB `aqua`를 사용한다. 마이그레이션·테스트 소유자는 `aqua` / `aqua_local_only`, 애플리케이션 역할은 `aqua_app` / `aqua_app_local_only`다. 이 값은 로컬 테스트 전용이며 운영 자격 증명이 아니다. PostgreSQL 18 데이터 볼륨은 `/var/lib/postgresql`에 연결한다.
 
-처음 한 번 `.env.example`을 `.env`로 복사한다. 기존 `.env`는 덮어쓰지 않는다.
+처음 실행할 때는 `.env.example`을 `.env`로 복사한다. 기존 로컬 DB 볼륨을 업그레이드할 때는 아래 명령으로 이 버전에서 추가한 서비스 로그인을 만든다. 기존 `.env`에는 사용할 서비스의 접속 주소와 `DATABASE_*_ROLE` 항목만 예제에서 추가한다. 정산 차이를 승인하는 두 운영자는 `DATABASE_SETTLEMENT_CASE_ROLES`에 각각 등록한다.
+
+```bash
+docker compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U aqua -d aqua < docker/postgres-init.sql
+```
 
 ```bash
 test -f .env || cp .env.example .env

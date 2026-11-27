@@ -1,3 +1,5 @@
+import type { CardApplication, CardApplicationSnapshot } from '../shared/api';
+import { CardApplicationStore } from './card-applications';
 import { approveTestCustomer } from './test-customer-access';
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
@@ -184,4 +186,46 @@ test('production API refuses sandbox issuer writes while preserving safe status 
   const snapshot = await f.request<IssuerCardSnapshot>('/issuer-card', viewing(alice));
   assert.equal(snapshot.status, 200); assert.equal(snapshot.data.mode, 'sandbox'); assert.equal(snapshot.data.canRequestStatus, false); assert.equal(snapshot.data.card?.command, null);
   assert.equal((await f.database.query('SELECT COUNT(*)::int AS count FROM issuer_outbox')).rows[0].count, 0);
+});
+
+
+test('card application routes bind changes to the signed-in member; only the separate provider and eventual member activation can issue a card', async t => {
+  const f = await fixture(t);
+  const alice = await f.signup('newcardalice');
+  const bob = await f.signup('newcardbobby');
+  const submit = (member: MemberSession, body: unknown, key = 'new-application') => ({
+    method:'POST' as const, cookie:member.cookie, body,
+    headers:{'x-aqua-account':member.user.id,'idempotency-key':key},
+  });
+  const before = await f.request<CardApplicationSnapshot>('/card-application',viewing(alice));
+  assert.deepEqual(before.data,{application:null,canApply:false,canActivate:false});
+  await approveTestCustomer(f.database,alice.user.id);
+  assert.equal((await f.request<CardApplicationSnapshot>('/card-application',viewing(alice))).data.canApply,true);
+  const forged = await f.request('/card-application',submit(alice,{form:'virtual',userId:bob.user.id}));
+  assert.equal(forged.status,400);
+  const requested = await f.request<CardApplication>('/card-application',submit(alice,{form:'virtual'}));
+  assert.equal(requested.status,201,requested.body);
+  assert.equal(requested.data.status,'submitted');
+  assert.deepEqual((await f.request<CardApplication>('/card-application',submit(alice,{form:'virtual'}))).data,requested.data);
+  assert.deepEqual((await f.request<CardApplicationSnapshot>('/card-application',viewing(bob))).data.application,null);
+  const issuer = new CardApplicationStore(f.database);
+  for (const [index, action] of (['approve','issue'] as const).entries()) {
+    await issuer.providerEvent({action,applicationId:requested.data.id,eventId:action,expectedVersion:index+1});
+  }
+  const body = {applicationId:requested.data.id,expectedVersion:3};
+  assert.equal((await f.request('/card-application/activate',submit(bob,body,'wrong-member'))).status,404);
+  const activated = await f.request<CardApplication>('/card-application/activate',submit(alice,body,'activate-member'));
+  assert.equal(activated.status,200,activated.body);
+  assert.equal(activated.data.status,'active');
+});
+
+test('the production HTTP mode exposes status with both sandbox application actions disabled', async t => {
+  const f=await fixture(t,true);
+  const alice=await f.signup('readonlycard');
+  await approveTestCustomer(f.database,alice.user.id);
+  const read = await f.request<CardApplicationSnapshot>('/card-application',viewing(alice));
+  assert.deepEqual(read.data,{application:null,canApply:false,canActivate:false});
+  const attempted=await f.request('/card-application',{method:'POST',cookie:alice.cookie,body:{form:'virtual'},
+    headers:{'x-aqua-account':alice.user.id,'idempotency-key':'blocked-attempt'}});
+  assert.equal(attempted.status,403);
 });

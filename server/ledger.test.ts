@@ -383,3 +383,29 @@ test('서로 다른 송금인의 동시 입금도 수신자 잔액의 정수 한
   assert.equal(accounts.reduce((total, account) => total + BigInt(account.balanceWon), 0n), BigInt(Number.MAX_SAFE_INTEGER) + 3_000n);
   assert.equal(accounts[1].transactions.filter((item) => item.direction === 'received').length, 1);
 });
+
+test('account polling omits history and equal-timestamp activity pages contain every member-owned record once', async t => {
+  const { store } = await fixture(t);
+  await member(store, 'alice'); await member(store, 'bob');
+  for (let index = 0; index < 57; index++) await fund(store, 'alice', 1000, 'page-test-' + index);
+  await fund(store, 'bob', 1234, 'other-owner');
+  const first = await store.snapshot('alice');
+  const summary = await store.snapshot('alice', true);
+  assert.equal(summary.balanceWon, 57000);
+  assert.deepEqual(summary.transactions, []);
+  assert.deepEqual(summary.cardPayments, []);
+  assert.equal(first.transactions.length, 25);
+  const cursor = first.historyCursors?.transfers;
+  assert.ok(cursor);
+  await assert.rejects(store.activity('bob', 'transfers', cursor), /처음부터/);
+  await assert.rejects(store.activity('alice', 'cards', cursor), /처음부터/);
+  const second = await store.activity('alice', 'transfers', cursor);
+  assert.equal(second.items.length, 25);
+  assert.ok(second.nextCursor);
+  const last = await store.activity('alice', 'transfers', second.nextCursor);
+  assert.equal(last.nextCursor, null);
+  const ids = [...first.transactions, ...second.items, ...last.items].map(item => item.id);
+  assert.equal(ids.length, 57);
+  assert.equal(new Set(ids).size, 57);
+  assert.deepEqual(ids, [...ids].sort().reverse());
+});

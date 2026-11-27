@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type Ref } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type Ref } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { reserveEarnings } from '../lib/engine';
 import { won } from '../lib/format';
@@ -29,7 +29,8 @@ export function LiveEarnings({ state, period, testId }: { state: AppState; perio
 }
 
 export function Toggle({ checked, onChange, label, detail, testId }: { checked: boolean; onChange: (value: boolean) => void; label: string; detail?: string; testId?: string }) {
-  return <div className="toggle-row"><div><strong>{label}</strong>{detail && <p>{detail}</p>}</div><button type="button" className={`switch${checked ? ' on' : ''}`} role="switch" aria-checked={checked} aria-label={label} data-testid={testId} onClick={() => onChange(!checked)}><span /></button></div>;
+  const description = useId();
+  return <div className="toggle-row"><div><strong>{label}</strong>{detail && <p id={description}>{detail}</p>}</div><button type="button" className={`switch${checked ? ' on' : ''}`} role="switch" aria-checked={checked} aria-label={label} aria-describedby={detail ? description : undefined} data-testid={testId} onClick={() => onChange(!checked)}><span /></button></div>;
 }
 
 /** One tappable settings or summary line: label on the left, value and chevron on the right. */

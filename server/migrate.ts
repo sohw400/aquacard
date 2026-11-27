@@ -1,19 +1,42 @@
-import { databaseFromEnvironment } from './database';
+import { databaseFromEnvironment, type Database } from './database';
 import { applyMigrations } from './migrations';
-import { grantApplicationRole, grantCardIngressRole, grantCardWorkerRole, grantCardDispatcherRole, grantCardOperationsRole, grantAuthMailRole, grantMonitorRole, grantSettlementRole } from './permissions';
+import {
+  grantApplicationRole, grantAuthMailFeedbackRole, grantAuthMailRole, grantAuthorizationSimulatorRole,
+  grantCardDispatcherRole, grantCardIngressRole, grantCardOperationsRole, grantCardWorkerRole,
+  grantCorrectionRole, grantFundingRole, grantIssuanceRole, grantMonitorRole, grantSettlementCaseRole, grantSettlementRole,
+} from './permissions';
+
+type Grant = (database: Database, login: string) => Promise<void>;
+const grants: [string, Grant][] = [];
+const services: Record<string, Grant> = {
+  DATABASE_RUNTIME_ROLE: grantApplicationRole,
+  DATABASE_INGRESS_ROLE: grantCardIngressRole,
+  DATABASE_WORKER_ROLE: grantCardWorkerRole,
+  DATABASE_DISPATCHER_ROLE: grantCardDispatcherRole,
+  DATABASE_OPERATIONS_ROLE: grantCardOperationsRole,
+  DATABASE_AUTH_MAIL_ROLE: grantAuthMailRole,
+  DATABASE_MONITOR_ROLE: grantMonitorRole,
+  DATABASE_SETTLEMENT_ROLE: grantSettlementRole,
+  DATABASE_FUNDING_ROLE: grantFundingRole,
+  DATABASE_CORRECTION_ROLE: grantCorrectionRole,
+  DATABASE_ISSUANCE_ROLE: grantIssuanceRole,
+  DATABASE_AUTH_MAIL_FEEDBACK_ROLE: grantAuthMailFeedbackRole,
+  DATABASE_AUTHORIZATION_SIMULATOR_ROLE: grantAuthorizationSimulatorRole,
+};
+for (const [variable, grant] of Object.entries(services)) {
+  const login = process.env[variable];
+  if (login) grants.push([login, grant]);
+}
+for (const login of (process.env.DATABASE_SETTLEMENT_CASE_ROLES ?? '').split(',').map(role => role.trim()).filter(Boolean)) {
+  grants.push([login, grantSettlementCaseRole]);
+}
+if (new Set(grants.map(([login]) => login)).size !== grants.length) {
+  throw new Error('The API, service workers and settlement case operators must use different database roles.');
+}
 
 const database = await databaseFromEnvironment(true);
 try {
-  const roles = [process.env.DATABASE_RUNTIME_ROLE, process.env.DATABASE_INGRESS_ROLE, process.env.DATABASE_WORKER_ROLE, process.env.DATABASE_DISPATCHER_ROLE, process.env.DATABASE_OPERATIONS_ROLE, process.env.DATABASE_AUTH_MAIL_ROLE, process.env.DATABASE_MONITOR_ROLE, process.env.DATABASE_SETTLEMENT_ROLE].filter(Boolean);
-  if (new Set(roles).size !== roles.length) throw new Error('The API, card ingress, worker, dispatcher, operations, monitor, settlement and auth mail worker must use different database roles.');
   await applyMigrations(database);
-  if (process.env.DATABASE_RUNTIME_ROLE) await grantApplicationRole(database, process.env.DATABASE_RUNTIME_ROLE);
-  if (process.env.DATABASE_INGRESS_ROLE) await grantCardIngressRole(database, process.env.DATABASE_INGRESS_ROLE);
-  if (process.env.DATABASE_WORKER_ROLE) await grantCardWorkerRole(database, process.env.DATABASE_WORKER_ROLE);
-  if (process.env.DATABASE_DISPATCHER_ROLE) await grantCardDispatcherRole(database, process.env.DATABASE_DISPATCHER_ROLE);
-  if (process.env.DATABASE_OPERATIONS_ROLE) await grantCardOperationsRole(database, process.env.DATABASE_OPERATIONS_ROLE);
-  if (process.env.DATABASE_AUTH_MAIL_ROLE) await grantAuthMailRole(database, process.env.DATABASE_AUTH_MAIL_ROLE);
-  if (process.env.DATABASE_MONITOR_ROLE) await grantMonitorRole(database, process.env.DATABASE_MONITOR_ROLE);
-  if (process.env.DATABASE_SETTLEMENT_ROLE) await grantSettlementRole(database, process.env.DATABASE_SETTLEMENT_ROLE);
+  for (const [login, grant] of grants) await grant(database, login);
   console.log('PostgreSQL migrations are up to date.');
 } finally { await database.close(); }

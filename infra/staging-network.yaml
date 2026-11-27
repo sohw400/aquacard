@@ -228,3 +228,6 @@ Outputs:
     Value: !GetAtt VerifierSecurityGroup.GroupId
   SourceDatabaseSecurityGroupId:
     Value: !GetAtt SourceDatabaseSecurityGroup.GroupId
+  EndpointSecurityGroupId:
+    Description: Interface endpoints used by private runtime tasks.
+    Value: !GetAtt EndpointSecurityGroup.GroupId

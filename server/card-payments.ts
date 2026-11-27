@@ -21,6 +21,7 @@ const failures: Record<string, { status: number; message: string }> = {
   CARD_STATUS_UNCONFIRMED: { status: 409, message: '카드 상태 확인이 끝날 때까지 새 결제를 승인할 수 없습니다.' },
   CUSTOMER_ACCESS_REQUIRED: { status: 403, message: '현재 계정 상태에서는 새 결제를 승인할 수 없습니다.' },
   EMAIL_VERIFICATION_REQUIRED: { status: 403, message: '이메일 확인을 마친 뒤 새 결제를 이용해 주세요.' },
+  CARD_HOLD_EXPIRED: { status: 409, message: '승인 보류가 만료되어 매입 확인이 필요합니다.' },
   INSUFFICIENT_FUNDS: { status: 409, message: '승인할 수 있는 잔액이 부족합니다.' },
   IDEMPOTENCY_CONFLICT: { status: 409, message: '같은 카드 이벤트 번호에 다른 내용이 있습니다.' },
   RECIPIENT_BALANCE_LIMIT: { status: 409, message: '반영 후 잔액이 처리 범위를 초과합니다.' },

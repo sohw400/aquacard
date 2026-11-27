@@ -26,6 +26,34 @@ BEGIN
     CREATE ROLE aqua_settlement LOGIN PASSWORD 'aqua_settlement_local_only'
       NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aqua_funding') THEN
+    CREATE ROLE aqua_funding LOGIN PASSWORD 'aqua_funding_local_only'
+      NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aqua_correction') THEN
+    CREATE ROLE aqua_correction LOGIN PASSWORD 'aqua_correction_local_only'
+      NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aqua_issuance') THEN
+    CREATE ROLE aqua_issuance LOGIN PASSWORD 'aqua_issuance_local_only'
+      NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aqua_feedback') THEN
+    CREATE ROLE aqua_feedback LOGIN PASSWORD 'aqua_feedback_local_only'
+      NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aqua_authorizer') THEN
+    CREATE ROLE aqua_authorizer LOGIN PASSWORD 'aqua_authorizer_local_only'
+      NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aqua_case_analyst') THEN
+    CREATE ROLE aqua_case_analyst LOGIN PASSWORD 'aqua_case_analyst_local_only'
+      NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aqua_case_reviewer') THEN
+    CREATE ROLE aqua_case_reviewer LOGIN PASSWORD 'aqua_case_reviewer_local_only'
+      NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aqua_monitor') THEN
     CREATE ROLE aqua_monitor LOGIN PASSWORD 'aqua_monitor_local_only'
       NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;

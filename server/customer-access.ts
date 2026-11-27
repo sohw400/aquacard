@@ -11,6 +11,10 @@ export interface CustomerAccessTransition {
   reason: string;
 }
 
+export type TransferRiskTier = 'standard' | 'high';
+interface TransferRiskCommand { userId: string; tier: TransferRiskTier; expectedVersion: number; idempotencyKey: string; caseRef: string }
+interface TransferRiskReceipt { tier: TransferRiskTier; version: number; updatedAt: number | null }
+
 const key = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const statuses: readonly string[] = ['unverified', 'pending_review', 'active', 'restricted', 'frozen', 'closed'];
 const failures: Record<string, { status: number; message: string }> = {
@@ -51,6 +55,26 @@ export class CustomerAccessStore {
       const { rows } = await this.database.query<{ result: CustomerAccessSnapshot }>(
         'SELECT customer_access_snapshot($1::text) AS result', [userId]);
       return rows[0].result;
+    } catch (error) { return commandError(error); }
+  }
+
+  async transferRisk(userId: string) {
+    if (typeof userId !== 'string' || !key.test(userId)) invalid();
+    try {
+      const { rows } = await this.database.query('SELECT operator_read_transfer_risk($1::text) AS result', [userId]);
+      return rows[0].result as TransferRiskReceipt;
+    } catch (error) { return commandError(error); }
+  }
+
+  async setTransferRisk(input: TransferRiskCommand) {
+    if (process.env.NODE_ENV === 'production') throw new LedgerError(403, 'SANDBOX_DISABLED', '운영 환경에서는 테스트 고객 한도를 변경할 수 없습니다.');
+    if (!input || !key.test(input.userId) || !['standard','high'].includes(input.tier)
+      || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0
+      || !key.test(input.idempotencyKey) || !/^[A-Za-z][A-Za-z0-9._:-]{2,79}$/.test(input.caseRef)) invalid();
+    try {
+      const { rows } = await this.database.query('SELECT operator_set_transfer_risk($1::jsonb,$2::bigint) AS result',
+        [JSON.stringify(input), this.now()]);
+      return rows[0].result as TransferRiskReceipt;
     } catch (error) { return commandError(error); }
   }
 

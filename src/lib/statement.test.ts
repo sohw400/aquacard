@@ -63,7 +63,10 @@ test('갱신일로 시간을 옮기면 다음 해가 생기고 해마다 따로 
   const next = summarizeYear(state, 2027);
   assert.equal(next.cardFees, 0, '잔액이 모자라 연회비 없이 스탠다드로 바뀌었다');
   assert.ok(next.reserveRewards > 0, '1년 동안 쌓인 리저브 보상');
-  assert.deepEqual(summarizeYear(state, 2026), before);
+  const closing = summarizeYear(state, 2026);
+  assert.ok(closing.reserveRewards > before.reserveRewards, '휴면 기간의 작년 보상은 작년 내역에 귀속된다');
+  assert.deepEqual({ ...closing, reserveRewards: before.reserveRewards }, before);
+  assert.equal(closing.reserveRewards + next.reserveRewards, state.transactions.filter(t => t.kind === 'reward').reduce((sum, t) => sum + t.amount, 0));
 });
 
 test('복사할 내역은 탭으로 칸을 나누고 오래된 거래부터 코인·수량·상대를 함께 적는다', () => {

@@ -7,7 +7,7 @@ import { LedgerStore } from '../server/ledger';
 import { verifyMigrations } from '../server/migrations';
 import {
   verifyApplicationRole, verifyAuthMailRole, verifyCardDispatcherRole,
-  verifyCardIngressRole, verifyCardOperationsRole, verifyCardWorkerRole, verifyMonitorRole, verifySettlementRole,
+  verifyCardIngressRole, verifyCardOperationsRole, verifyCardWorkerRole, verifyMonitorRole, verifySettlementRole, verifyFundingRole, verifyCorrectionRole, verifyIssuanceRole, verifySettlementCaseRole, verifyAuthMailFeedbackRole, verifyAuthorizationSimulatorRole,
 } from '../server/permissions';
 import { reconcileRewards } from '../server/reward-reconciliation';
 import { RewardsStore } from '../server/rewards';
@@ -99,6 +99,13 @@ async function verifyServiceRoles() {
     ['AUTH_MAIL_DATABASE_URL', verifyAuthMailRole],
     ['MONITOR_DATABASE_URL', verifyMonitorRole],
     ['SETTLEMENT_DATABASE_URL', verifySettlementRole],
+    ['FUNDING_DATABASE_URL', verifyFundingRole],
+    ['CORRECTION_DATABASE_URL', verifyCorrectionRole],
+    ['ISSUANCE_DATABASE_URL', verifyIssuanceRole],
+    ['AUTHORIZATION_SIMULATOR_DATABASE_URL', verifyAuthorizationSimulatorRole],
+    ['AUTH_MAIL_FEEDBACK_DATABASE_URL', verifyAuthMailFeedbackRole],
+    ['SETTLEMENT_CASE_DATABASE_URL', verifySettlementCaseRole],
+    ['SETTLEMENT_REVIEWER_DATABASE_URL', verifySettlementCaseRole],
   ] as const) await withRole(variable, verify);
 }
 

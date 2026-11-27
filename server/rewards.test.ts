@@ -1,3 +1,4 @@
+import { rewardActivity } from './reward-read';
 import { approveTestCustomer } from './test-customer-access';
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
@@ -470,25 +471,31 @@ test('회사 예산 100원은 서로 다른 회원의 동시 페이백 약정으
   const f = await fixture(t);
   await f.activate(100); await f.fund(10_000); await f.fund(10_000, 'bobby');
   const peer = f.peer();
-  const promised = await Promise.allSettled([f.cards.apply(authorize('budget-alice', 10_000)), peer.cards.apply(authorize('budget-bobby', 10_000, 'bobby'))]);
-  assert.equal(promised.filter((result) => result.status === 'fulfilled').length, 1);
-  const denied = promised.find((result) => result.status === 'rejected') as PromiseRejectedResult;
-  assert.ok(denied.reason instanceof LedgerError);
-  assert.equal(denied.reason.status, 503, '회사 예산 부족을 고객 잔액 부족으로 분류하지 않는다');
-  assert.equal(denied.reason.code, 'REWARD_BUDGET_UNAVAILABLE');
-  const winner = promised.find((result) => result.status === 'fulfilled') as PromiseFulfilledResult<CardEventResult>;
-  assert.equal(cashback(winner.value.payment).pendingWon, 100);
-  const winnerUser = promised[0].status === 'fulfilled' ? 'alice' : 'bobby';
-  const loserUser = winnerUser === 'alice' ? 'bobby' : 'alice';
-  const untouched = await f.ledger.snapshot(loserUser);
-  assert.equal(untouched.balanceWon, 10_000);
-  assert.equal(untouched.heldBalanceWon, 0);
-  assert.equal(untouched.cardPayments.length, 0, '예산 거절은 부분 승인이나 고객 보류를 남기지 않는다');
-  await f.cards.apply(capture(winner.value.payment.id, 10_000, true, `capture-${winner.value.payment.id}`, winnerUser));
+  const authorized = await Promise.all([f.cards.apply(authorize('budget-alice', 10_000)), peer.cards.apply(authorize('budget-bobby', 10_000, 'bobby'))]);
+  assert.deepEqual(authorized.map(({ payment }) => cashback(payment).pendingWon).sort((a, b) => a - b), [0, 100]);
+  const health = async (time: number) => (await f.database.query('SELECT reward_budget_health($1) AS health', [time])).rows[0].health;
+  assert.deepEqual(await health(NOW), { budgetLow: true, unfunded24h: 1 });
+  assert.deepEqual(await health(NOW + DAY + 1), { budgetLow: true, unfunded24h: 0 });
+  for (const { payment } of authorized) {
+    const user = payment.id === 'budget-alice' ? 'alice' : 'bobby';
+    const granted = cashback(payment).pendingWon;
+    const snapshot = await f.ledger.snapshot(user);
+    assert.deepEqual([snapshot.balanceWon, snapshot.heldBalanceWon], [0, 10_000]);
+    assert.equal(cashback(payment).reason, granted ? undefined : 'budget_unavailable');
+    assert.equal(cashback(payment).rateBps, granted ? 100 : 0);
+    assert.deepEqual(cashback(snapshot.cardPayments[0]), cashback(payment));
+    const replay = await peer.cards.apply(authorize(payment.id, 10_000, user));
+    assert.deepEqual(replay.payment, payment);
+    const closed = await f.cards.apply(capture(payment.id, 10_000, true, `capture-${payment.id}`, user));
+    assert.equal(cashback(closed.payment).awardedWon, granted);
+    assert.equal(cashback(closed.payment).reason, cashback(payment).reason);
+  }
   const alice = await f.rewards.snapshot('alice'); const bob = await f.rewards.snapshot('bobby');
   assert.equal(alice.availableWon + bob.availableWon, 100);
   assert.equal(alice.cashback.confirmedWon + bob.cashback.confirmedWon, 100);
   await failure(() => f.grant(1), [503]);
+  await f.rewards.fundBudget({ amountWon: 10_000, idempotencyKey: 'replenish-budget' });
+  assert.deepEqual(await health(NOW), { budgetLow: false, unfunded24h: 1 });
   await assertMoneyBalanced(f.database);
 });
 
@@ -649,4 +656,22 @@ test('프로그램 중지는 기존 약정을 깨지 않고 발행된 리워드 
   assert.equal((await f.rewards.snapshot('alice')).availableWon, 0);
   assert.equal((await f.ledger.snapshot('alice')).totalBalanceWon, 0);
   await assertMoneyBalanced(f.database);
+});
+
+
+test('dashboard omits reward postings and the owner can page past fifty equal timestamp grants', async t => {
+  const f = await fixture(t);
+  await f.activate(100);
+  for (let i = 0; i < 53; i++) await f.grant(1);
+  await f.grant(2, 'bobby');
+  assert.deepEqual((await f.ledger.snapshot('alice', true)).rewards.history, []);
+  assert.equal((await f.ledger.snapshot('alice')).rewards.history.length, 50);
+  const first = await rewardActivity(f.database, 'alice');
+  const second = await rewardActivity(f.database, 'alice', first.nextCursor!);
+  const third = await rewardActivity(f.database, 'alice', second.nextCursor!);
+  assert.deepEqual([first.items.length, second.items.length, third.items.length, third.nextCursor], [25, 25, 3, null]);
+  const ids = [...first.items, ...second.items, ...third.items].map(row => row.id);
+  assert.equal(new Set(ids).size, 53);
+  assert.ok(!ids.includes((await rewardActivity(f.database,'bobby')).items[0].id));
+  await assert.rejects(rewardActivity(f.database, 'bobby', first.nextCursor!), { code: 'INVALID_CURSOR' });
 });

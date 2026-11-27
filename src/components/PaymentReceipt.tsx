@@ -22,8 +22,8 @@ export default function PaymentReceipt({ receipt, onClose }: { receipt: PaymentR
   useModal(ref, onClose, heading);
 
   const sources = [
-    { label: '지갑 잔액', id: 'spend', amount: payment.fromSpend },
     { label: '리워드', id: 'rewards', amount: payment.fromRewards },
+    { label: '지갑 잔액', id: 'spend', amount: payment.fromSpend },
     { label: '리저브', id: 'reserve', amount: payment.fromReserve },
   ].filter((source) => source.amount > 0);
   const usedEqualsCredit = receipt.rewardsBefore === receipt.rewardsAfter && payment.fromRewards > 0

@@ -46,7 +46,25 @@ test('operations migration traces legacy approvals without inventing policy hist
     const beforeUpgrade = await financialHistory(database);
 
     await applyMigrations(database); await verifyMigrations(database);
-    assert.deepEqual(await financialHistory(database), beforeUpgrade);
+    const afterUpgrade = await financialHistory(database);
+    const legacyIds = new Set(beforeUpgrade.ledger_accounts.map(({ record }) => record.id));
+    const addedAccounts = afterUpgrade.ledger_accounts.filter(({ record }) => !legacyIds.has(record.id));
+    const emptyAccounts = ['funding_fee', 'funding_hold', 'funding_network_fee', 'funding_settled'].map(
+      name => ({ id: 'system:' + name, kind: 'funding_system', balance_won: 0, currency: 'TEST_KRW', user_id: null }));
+    const reserve = { id: 'reserve:legacy', kind: 'user_reserve', balance_won: 0, currency: 'TEST_KRW', user_id: 'legacy' };
+    assert.deepEqual(addedAccounts.map(({ record }) => record).sort((a, b) => a.id.localeCompare(b.id)), [reserve, ...emptyAccounts]);
+    function legacyRows(rows: typeof afterUpgrade.journals, newColumn: string) {
+      return rows.map(({ record }) => {
+        const { [newColumn]: added, ...original } = record;
+        assert.equal(added, null);
+        return { record: original };
+      });
+    }
+    assert.deepEqual({ ...afterUpgrade,
+      ledger_accounts: afterUpgrade.ledger_accounts.filter(({ record }) => legacyIds.has(record.id)),
+      journals: legacyRows(afterUpgrade.journals, 'reserve_entry_id'),
+      card_reward_allocations: legacyRows(afterUpgrade.card_reward_allocations, 'cashback_budget_limited_at'),
+    }, beforeUpgrade);
     assert.deepEqual(await cards.apply(event), approved);
     const operations = new CardOperationsStore(database);
     const input = { requestId: randomUUID(), lookup: { kind: 'event' as const, id: event.eventId }, caseReference: 'CASE-LEGACY' };
@@ -62,7 +80,7 @@ test('operations migration traces legacy approvals without inventing policy hist
     assert.equal(initial.payment?.status, 'partially_captured');
     assert.deepEqual([initial.payment.authorizedWon, initial.payment.heldWon, initial.payment.capturedWon], [10_000, 6_000, 4_000]);
     assert.doesNotMatch(JSON.stringify(initial), /private-legacy|passwordHash|merchantName|canonical_input|request_key|lease_token/);
-    assert.deepEqual(await financialHistory(database), beforeUpgrade, 'inspection must not alter the financial state');
+    assert.deepEqual(await financialHistory(database), afterUpgrade, 'inspection must not alter the financial state');
     assert.equal((await database.query('SELECT COUNT(*)::int AS n FROM issuer_cards')).rows[0].n, 0);
     assert.equal((await database.query('SELECT COUNT(*)::int AS n FROM card_authorization_decisions')).rows[0].n, 0);
 

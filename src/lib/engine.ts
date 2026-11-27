@@ -6,7 +6,7 @@ import { assertFundingQuoteFresh, getFundingQuote, unitsToWon } from './funding'
 import { createFundingQuote, fundingStatusLabel, getFundingNetworks, validateFundingAddress } from './movements';
 import { addressLine, SAMPLE_ADDRESSES, validAddress } from './address';
 import { normalizeName, UNLISTED_VENUE, validRecipientName, venueOf } from './travel';
-import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, DeliveryStage, FundingOperation, FundingSymbol, NotificationSettings, Payment, PaymentControls, Plan, Transaction, WithdrawalDestination } from './types';
+import type { Account, Action, AppState, AssetSymbol, CardStage, CardState, DeliveryStage, FundingOperation, FundingSymbol, NotificationSettings, Payment, PaymentChannel, PaymentControls, Plan, Transaction, WithdrawalDestination } from './types';
 
 export const STORAGE_KEY = 'aqua-card:poc:v1';
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -66,6 +66,44 @@ export function pinIssue(pin: string): string {
 
 export function availableToSpend(state: AppState): number {
   return state.spend + (state.rewardsAuto ? state.rewards : 0) + (state.reserveAuto ? state.reserve : 0);
+}
+
+/** Evaluate a purchase against balances, card status and limits already advanced to the authorization time. */
+function cardPaymentTerms(state: AppState, amount: number, channel: PaymentChannel) {
+  let issue: string | null = null;
+  if (state.card.stage !== 'active') issue = '카드 신청과 발급을 마친 뒤 결제해 주세요.';
+  else if (state.card.locked) issue = '카드 잠금을 해제한 뒤 결제해 주세요.';
+  else if (!['store', 'online', 'overseas'].includes(channel)) issue = '결제 방식을 확인해 주세요.';
+  else if (channel === 'online' && !state.controls.online) issue = '온라인 결제를 막아 두었어요. 결제 설정에서 풀 수 있어요.';
+  else if (channel === 'overseas' && !state.controls.overseas) issue = '해외 결제를 막아 두었어요. 결제 설정에서 풀 수 있어요.';
+
+  const dailyLeft = Math.max(0, state.controls.daily - state.dailySpent);
+  const monthlyLeft = Math.max(0, state.controls.monthly - state.monthlySpent);
+  const maximum = issue ? 0 : Math.min(availableToSpend(state), state.controls.perPayment, dailyLeft, monthlyLeft);
+  const validAmount = Number.isSafeInteger(amount) && amount > 0;
+  const requested = validAmount ? amount : 0;
+  const rewards = state.rewardsAuto ? Math.min(state.rewards, requested) : 0;
+  const spend = Math.min(state.spend, requested - rewards);
+  const reserve = state.reserveAuto ? Math.min(state.reserve, requested - rewards - spend) : 0;
+  const shortfall = requested - rewards - spend - reserve;
+  if (!issue) {
+    if (!validAmount) issue = '금액은 1원 이상의 정수로 입력해 주세요.';
+    else if (amount > state.controls.perPayment) issue = `1회 결제 한도는 ${manWon(state.controls.perPayment)}이에요.`;
+    else if (amount > dailyLeft) issue = `일 결제 한도 ${manWon(state.controls.daily)}을 넘어요.`;
+    else if (amount > monthlyLeft) issue = `월 결제 한도 ${manWon(state.controls.monthly)}을 넘어요.`;
+    else if (shortfall > 0) {
+      issue = `잔액이 부족해요. 결제에 쓸 수 있는 금액이 ${wonText(shortfall)} 모자라요.`;
+      if (!state.reserveAuto && state.reserve >= shortfall) issue += ' 지갑 부족분을 리저브에서 쓰도록 설정하면 결제할 수 있어요.';
+    }
+  }
+  const plan = PLANS[state.card.plan];
+  const cashback = issue ? 0 : Math.min(Math.floor((spend + reserve) * plan.cashbackRate), Math.max(0, plan.cashbackCap - state.monthlyCashback));
+  return { rewards, spend, reserve, shortfall, cashback, maximum, issue };
+}
+
+/** Preview uses the same due renewals, funding completions and Korean date rollovers as PAY. */
+export function paymentPreview(state: AppState, amount: number, channel: PaymentChannel = 'store', wallNow = Date.now()) {
+  return cardPaymentTerms(applyAction(state, { type: 'TICK' }, wallNow), amount, channel);
 }
 
 export function portfolioValue(state: AppState): number {
@@ -302,11 +340,26 @@ export function reserveTerms(state: Pick<AppState, 'card' | 'reserveRate'>): { r
 }
 const reservePerMs = (state: AppState) => { const { rate, cap } = reserveTerms(state); return Math.min(state.reserve, cap) * rate / YEAR_MS; };
 
-/** Adds what the Reserve earned since the last accrual, at the terms in force, up to `until`. */
+/** Post whole won to each Korean earning day, carrying sub-won amounts across midnight. */
 function earnReserve(state: AppState, until: number): void {
-  if (until <= state.lastAccruedAt) return;
-  state.accrued += reservePerMs(state) * (until - state.lastAccruedAt);
-  state.lastAccruedAt = until;
+  const perMs = reservePerMs(state);
+  let nextMidnight = (kstDay(state.lastAccruedAt) + 1) * DAY_MS - KST_OFFSET_MS;
+  if (perMs === 0 && until >= nextMidnight) {
+    state.reserveDayOpeningFraction = state.accrued;
+    state.lastAccruedAt = until;
+    return;
+  }
+  while (state.lastAccruedAt < until) {
+    const end = Math.min(until, nextMidnight);
+    state.accrued += perMs * (end - state.lastAccruedAt);
+    state.lastAccruedAt = end;
+    if (end === nextMidnight) {
+      // Midnight ends the previous earning interval; no time has elapsed on the new date.
+      sweepAccrued(state, end - 1);
+      state.reserveDayOpeningFraction = state.accrued;
+      nextMidnight += DAY_MS;
+    }
+  }
 }
 
 function chargeSpend(state: AppState, amount: number, purpose: string): void {
@@ -440,9 +493,9 @@ function sweepAccrued(state: AppState, now: number): void {
   if (amount < 1) return;
   state.accrued = Math.max(0, state.accrued - amount);
   const offset = creditRewards(state, amount);
-  const { day } = dateParts(now);
-  const note = '리저브에서 실시간으로 쌓인 보상이에요. 리워드에 바로 더해져 카드 결제에 먼저 쓰여요.';
-  const entry = state.transactions.find((item) => item.kind === 'reward' && item.title === RESERVE_REWARD_TITLE && dateParts(item.timestamp).day === day);
+  const day = kstDay(now);
+  const note = '리저브에 보관한 원금에서 쌓인 카드 결제용 리워드예요.';
+  const entry = state.transactions.find((item) => item.kind === 'reward' && item.title === RESERVE_REWARD_TITLE && kstDay(item.timestamp) === day);
   if (entry) {
     entry.amount = safeAdd(entry.amount, amount);
     if (offset) entry.note = `${note} 이전 페이백 조정분을 먼저 차감했어요.`;
@@ -455,6 +508,7 @@ function sweepAccrued(state: AppState, now: number): void {
 function accrue(state: AppState, wallNow: number): number {
   if (!Number.isFinite(wallNow) || wallNow < 0) throw new Error('시간 정보가 올바르지 않아요. 다시 시도해 주세요.');
   const now = Math.max(state.lastAccruedAt, wallNow + state.clockOffsetMs);
+  if (state.accrued >= 1) sweepAccrued(state, state.lastAccruedAt); // Legacy unswept credit belongs to its last recorded day.
   // Renewal dates passed on the way settle first, so the Reserve earns each stretch at the membership it had.
   settleCardBilling(state, now);
   earnReserve(state, now);
@@ -475,12 +529,20 @@ export function liveRewards(state: AppState, wallNow = Date.now()): number {
 /** Reserve rewards credited so far plus the remainder still accruing. */
 export function reserveEarnings(state: AppState, wallNow = Date.now()): { total: number; today: number } {
   const now = Math.max(state.lastAccruedAt, wallNow + state.clockOffsetMs);
-  const pending = state.accrued + reservePerMs(state) * (now - state.lastAccruedAt);
-  const { day } = dateParts(now);
-  const credits = state.transactions.filter((item) => item.kind === 'reward' && item.title === RESERVE_REWARD_TITLE);
+  if (state.card.billingAt !== null && state.card.billingAt <= now && state.card.stage === 'active' && PLANS[state.card.plan].annualFee > 0) {
+    return reserveEarnings(applyAction(state, { type: 'TICK' }, wallNow), wallNow);
+  }
+  const perMs = reservePerMs(state);
+  const day = kstDay(now);
+  const pending = state.accrued + perMs * (now - state.lastAccruedAt);
+  const credits = state.transactions.filter(item => item.kind === 'reward' && item.title === RESERVE_REWARD_TITLE);
   const total = credits.reduce((sum, item) => sum + item.amount, 0) + pending;
-  const today = credits.filter((item) => dateParts(item.timestamp).day === day).reduce((sum, item) => sum + item.amount, 0) + pending;
-  return { total, today };
+  // The journal posts integer won; remove the fraction carried from yesterday to show what was earned today.
+  const today = day === kstDay(state.lastAccruedAt)
+    ? credits.filter(item => kstDay(item.timestamp) === day).reduce((sum, item) => sum + item.amount, 0)
+      + pending - (state.reserveDayOpeningFraction ?? 0)
+    : perMs * (now - (day * DAY_MS - KST_OFFSET_MS));
+  return { total, today: Math.max(0, today) };
 }
 
 /** Reward credits settle any previous cashback reversal before becoming spendable. */
@@ -864,26 +926,13 @@ export function applyAction(input: AppState, action: Action, wallNow = Date.now(
       return createInitialState(wallNow);
     }
     case 'PAY': {
-      integer(action.amount);
-      if (state.card.stage !== 'active') throw new Error('카드 신청과 발급을 마친 뒤 결제해 주세요.');
-      if (state.card.locked) throw new Error('카드 잠금을 해제한 뒤 결제해 주세요.');
-      if (typeof action.merchant !== 'string' || !action.merchant.trim()) throw new Error('결제처를 입력해 주세요.');
       const channel = action.channel ?? 'store';
-      if (!['store', 'online', 'overseas'].includes(channel)) throw new Error('결제 방식을 확인해 주세요.');
-      if (channel === 'online' && !state.controls.online) throw new Error('온라인 결제를 막아 두었어요. 결제 설정에서 풀 수 있어요.');
-      if (channel === 'overseas' && !state.controls.overseas) throw new Error('해외 결제를 막아 두었어요. 결제 설정에서 풀 수 있어요.');
-      if (action.amount > state.controls.perPayment) throw new Error(`1회 결제 한도는 ${manWon(state.controls.perPayment)}이에요.`);
-      if (state.dailySpent + action.amount > state.controls.daily) throw new Error(`일 결제 한도 ${manWon(state.controls.daily)}을 넘어요.`);
-      if (state.monthlySpent + action.amount > state.controls.monthly) throw new Error(`월 결제 한도 ${manWon(state.controls.monthly)}을 넘어요.`);
-      if (availableToSpend(state) < action.amount) throw new Error(state.reserveAuto ? '쓸 수 있는 금액이 부족해요. 충전한 뒤 다시 결제해 주세요.' : '잔액이 부족해요. 충전하거나 리저브 자동 사용을 켜 주세요.');
-      const fromRewards = state.rewardsAuto ? Math.min(state.rewards, action.amount) : 0;
-      const fromSpend = Math.min(state.spend, action.amount - fromRewards);
-      const fromReserve = action.amount - fromRewards - fromSpend;
+      const { rewards: fromRewards, spend: fromSpend, reserve: fromReserve, cashback, issue } = cardPaymentTerms(state, action.amount, channel);
+      if (issue) throw new Error(issue);
+      if (typeof action.merchant !== 'string' || !action.merchant.trim()) throw new Error('결제처를 입력해 주세요.');
       state.rewards -= fromRewards;
       state.spend -= fromSpend;
       state.reserve -= fromReserve;
-      const plan = PLANS[state.card.plan];
-      const cashback = Math.min(Math.floor((action.amount - fromRewards) * plan.cashbackRate), Math.max(0, plan.cashbackCap - state.monthlyCashback));
       // Reserve cap at authorization, so multiple pending purchases cannot each use it.
       state.monthlyCashback += cashback;
       state.dailySpent += action.amount;
@@ -1045,6 +1094,7 @@ function validState(value: unknown): value is AppState {
   if (!record(value) || value.version !== 1 || !validAccount(value.account) || typeof value.signedIn !== 'boolean' || (value.signedIn && !value.account)) return false;
   const integers = ['spend', 'reserve', 'rewards', 'rewardDebt', 'monthlyCashback', 'dailySpent', 'monthlySpent', 'sequence'];
   if (!integers.every((key) => whole(value[key])) || !nonnegative(value.accrued) || !nonnegative(value.clockOffsetMs)
+    || (value.reserveDayOpeningFraction !== undefined && (!nonnegative(value.reserveDayOpeningFraction) || value.reserveDayOpeningFraction >= 1))
     || !timestamp(value.lastAccruedAt) || !nonnegative(value.reserveRate) || value.reserveRate > 1
     || typeof value.reserveAuto !== 'boolean' || typeof value.rewardsAuto !== 'boolean' || !validCard(value.card) || !cardConsistent(value.card)
     || !validControls(value.controls) || !validNotifications(value.notifications)) return false;

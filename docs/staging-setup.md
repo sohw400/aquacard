@@ -83,6 +83,10 @@ aws ecs describe-tasks --cluster "$AQUA_STAGE_CLUSTER" --tasks "$AQUA_BOOT_TASK"
 | `PrivateSubnetIds`, `TaskSecurityGroupId` | 네트워크의 `PrivateSubnetIds`, `MonitorSecurityGroupId` |
 | `ImageDigest`, `DatabaseCaFile`, `MonitorSecretFormat` | ECR에서 확인한 다이제스트, `/etc/aqua/rds-ca.pem`, `json` |
 
+## API와 작업자 배포
+
+모니터의 DB 접속을 확인한 뒤 사설 HTTPS 진입점과 서비스별 작업 정의를 준비한다. API, 카드 수신기와 각 작업자는 별도 로그인으로 실행한다. 실행 개수의 기본값은 0이며, 스테이징 운영자가 비밀값과 TLS 인증서를 준비한 후 시작한다. [사설 스테이징 서비스 배포](staging-runtime.md)
+
 ## 인수와 비용 정리
 
 점검 작업이 정상 종료하고 CloudWatch에 해당 환경의 `MonitorHealthy=1`과 `LedgerFindings=0`이 기록되는지 확인한다. 새 DB에서는 업무 데이터가 비어 있어도 두 값이 나올 수 있다. 합성 송금 시점 복구를 검증하려면 스테이징 API, 제한된 앱 DB 계정, 거래를 허용한 합성 회원 두 명이 별도로 필요하다. API·카드 발급사·메일 작업자 배포는 위 스택의 범위 밖이다. 복구 스택 생성 시 네트워크 기반 스택의 `VerifierSecurityGroupId`를 사용하면 `ManageVerifierEgress=true`로 지정한다. 이 설정은 훈련 중 해당 검증기에서 새 복원본으로 가는 TCP 5432 경로만 열고 스택을 삭제할 때 정리한다. 준비된 뒤 원본과 복원본에서 거래를 대조하고, 당직자의 실제 경보 및 복구 통지 시각을 기록한다. [서울 스테이징 복구 훈련](staging-recovery.md)

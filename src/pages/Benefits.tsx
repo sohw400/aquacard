@@ -1,7 +1,8 @@
 import { ChevronRight } from 'lucide-react';
 import './MoneyPages.css';
 import { RewardHistory } from '../components/Activity';
-import { LiveEarnings, Toggle, Won } from '../components/ui';
+import { LiveEarnings, Won } from '../components/ui';
+import { RewardSwitch } from '../components/PaymentSources';
 import { money, percent } from '../lib/format';
 import { reserveTerms } from '../lib/engine';
 import { getCashbackSummary } from '../lib/rewards';
@@ -16,10 +17,10 @@ export default function Benefits({ state, onReserve, onRewardsAuto }: { state: A
     <section className="live-card benefit-balance balance-panel" aria-label="리워드">
       <div className="live-card-head"><span className="live-label">카드에 쓸 수 있는 리워드</span></div>
       <div className="live-amount"><Won value={state.rewards} className="hero-amount" testId="reward-balance" /></div>
-      <p className="live-caption">페이백과 리저브 보상이 받기 버튼 없이 바로 쌓여요. 카드 결제에만 쓸 수 있어요.</p>
+      <p className="live-caption">확정된 페이백과 리저브 보상이 자동으로 쌓여요. 카드 결제에만 쓸 수 있어요.</p>
     </section>
     <section className="reward-preference">
-      <Toggle checked={state.rewardsAuto} onChange={onRewardsAuto} label="리워드 우선 사용" detail="카드 결제 시 보유 리워드부터 차감해요." testId="rewards-auto" />
+      <RewardSwitch checked={state.rewardsAuto} onChange={onRewardsAuto} />
     </section>
 
     <section className="plain-section cashback-summary" aria-labelledby="cashback-title">

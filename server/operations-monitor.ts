@@ -50,8 +50,14 @@ async function run() {
     await verifyMigrations(database);
     preflight = 'role';
     await verifyMonitorRole(database);
-    // A failure in either check must not hide a confirmed incident in the other.
+    // Preserve findings from each independent check when another query fails.
     await Promise.all([
+      database.query<{ health: { budgetLow: boolean; unfunded24h: number } }>('SELECT reward_budget_health($1) AS health', [Date.now()])
+        .then(({ rows }) => {
+          const value = rows[0]?.health;
+          if (!value || typeof value.budgetLow !== 'boolean' || !Number.isSafeInteger(value.unfunded24h) || value.unfunded24h < 0) throw new Error('Invalid reward budget signal.');
+          observation.budget = value;
+        }).catch(() => { observation.failedChecks.push('budget'); }),
       ledgerFindingCount(database).then((count) => { observation.ledgerFindings = count; },
         () => { observation.failedChecks.push('ledger'); }),
       readQueueHealth(database).then((queues) => { observation.queues = queues; },

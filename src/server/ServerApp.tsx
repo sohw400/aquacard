@@ -1,12 +1,16 @@
+import FundingPanel from './FundingPanel';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, ChevronRight, Copy, CreditCard, List, LogOut, RefreshCw, Send, UserRound } from 'lucide-react';
 import type { AccountSnapshot, MemberProfile } from '../../shared/api';
 import Logo from '../components/Logo';
 import AuthPanel from './AuthPanel';
 import TransferDialog from './TransferDialog';
+import ActivityPages from './ActivityPages';
 import CardPaymentsPanel from './CardPaymentsPanel';
+import CardDeclinesPanel from './CardDeclinesPanel';
 import IssuerCardPanel from './IssuerCardPanel';
-import RewardsPanel from './RewardsPanel';
+import ReservePanel from './ReservePanel';
+import RewardsPanel, { RewardControls } from './RewardsPanel';
 import CustomerAccessPanel from './CustomerAccessPanel';
 import SessionSecurityPanel from './SessionSecurityPanel';
 import EmailVerificationPanel from './EmailVerificationPanel';
@@ -33,6 +37,8 @@ export default function ServerApp() {
   const [user, setUser] = useState<MemberProfile | null>(null);
   const [account, setAccount] = useState<AccountSnapshot | null>(null);
   const [screen, setScreen] = useState<Screen>(requestedScreen);
+  const screenRef = useRef(screen);
+  screenRef.current = screen;
   const pageHeading = useRef<HTMLHeadingElement>(null);
   const [booting, setBooting] = useState(true);
   const [bootError, setBootError] = useState('');
@@ -103,7 +109,7 @@ export default function ServerApp() {
     setRefreshing(true);
     read.promise = (async () => {
       try {
-        const snapshot = await api.account(read.controller.signal);
+        const snapshot = await api.account(read.controller.signal, screenRef.current !== 'history');
         if (!active.current || userRef.current?.id !== owner.id || version !== requestVersion.current) return;
         if (snapshot.user.id !== owner.id) { expired(); return; }
         setAccount(snapshot); setError('');
@@ -130,6 +136,10 @@ export default function ServerApp() {
     })();
     return read.promise;
   }, [expired]);
+
+  useEffect(() => {
+    if (screen === 'history' && userRef.current) void loadAccount();
+  }, [screen, loadAccount]);
 
   const authenticate = useCallback((profile: MemberProfile) => {
     invalidateReads(); userRef.current = profile;
@@ -284,7 +294,7 @@ export default function ServerApp() {
             <IssuerCardPanel key={user.id} ownerId={user.id} visible={screen === 'home'} access={account?.access ?? null} onSessionExpired={ownerExpired} />
           </div>
           {screen === 'home' && <section className="sa-balance-panel">
-              <div className="sa-balance-heading"><h2>사용 가능 잔액</h2>
+              <div className="sa-balance-heading"><h2>지갑 잔액</h2>
                 <button className="sa-icon-button" aria-label="잔액 새로고침" data-testid="server-refresh" disabled={refreshing}
                   onClick={() => void loadAccount()}><RefreshCw size={17} /></button>
               </div>
@@ -298,7 +308,7 @@ export default function ServerApp() {
               </div>
               <dl className="sa-balance-breakdown">
                 <div><dt>결제 대기 원금</dt><dd data-testid="server-held-balance">{typeof account?.heldBalanceWon === 'number' ? money(account.heldBalanceWon) : '확인 중'}</dd></div>
-                <div><dt>원금 합계</dt><dd data-testid="server-total-balance">{typeof account?.totalBalanceWon === 'number' ? money(account.totalBalanceWon) : '확인 중'}</dd></div>
+                <div><dt>지갑과 결제 대기 원금 합계</dt><dd data-testid="server-total-balance">{typeof account?.totalBalanceWon === 'number' ? money(account.totalBalanceWon) : '확인 중'}</dd></div>
               </dl>
               <div className="sa-balance-actions">
                 <button className="sa-primary" data-testid="server-send" disabled={!account?.access?.canTransact || Boolean(pending) || account.limits.available < 1000 || account.balanceWon < 1000}
@@ -310,22 +320,36 @@ export default function ServerApp() {
               </div>
               {notice && <p role="status">{notice}</p>}
             </section>}
-          {screen !== 'history' && <CustomerAccessPanel access={account?.access ?? null}
-            showEmailLink={screen === 'home' && !!account && !verified} />}
-          {screen === 'home' && <RewardsPanel rewards={account?.rewards ?? null} saving={preferenceSaving || preferenceConfirming}
+          {screen === 'home' && <ReservePanel key={'reserve:' + user.id} owner={user.id} reserve={account?.reserve} walletWon={account?.balanceWon}
+            useFirst={account?.rewards.useFirst ?? false} rewardControls={<RewardControls rewards={account?.rewards ?? null} saving={preferenceSaving || preferenceConfirming}
             unresolved={preferenceIntent !== null} message={preferenceMessage} error={preferenceError}
             onUseFirstChange={changeRewardPriority} onRetry={retryRewardPreference} />}
+            canTransact={account?.access.canTransact ?? false} refresh={() => void loadAccount()} />}
+          {screen !== 'history' && <CustomerAccessPanel access={account?.access ?? null}
+            showEmailLink={screen === 'home' && !!account && !verified} />}
+          {screen === 'home' && <FundingPanel key={'funding:' + user.id} owner={user.id} enabled={Boolean(account?.access?.canTransact && verified)} onRefresh={()=>void loadAccount()} />}
+          {screen === 'home' && <RewardsPanel key={'rewards:' + user.id} owner={user.id} rewards={account?.rewards ?? null} />}
           {screen === 'history' && <>
-            <CardPaymentsPanel payments={account?.cardPayments ?? null} />
+            <ActivityPages key={user.id + ':cards:' + account?.historyCursors?.cards}
+              first={account?.historyCursors ? account.cardPayments : null} cursor={account?.historyCursors?.cards ?? null} owner={user.id} fetchPage={api.cardHistory}>
+              {records => <CardPaymentsPanel payments={records} />}
+            </ActivityPages>
+            <ActivityPages key={user.id + ':declines:' + account?.historyCursors?.declines}
+              first={account?.cardDeclines ?? null} cursor={account?.historyCursors?.declines ?? null} owner={user.id} fetchPage={api.declineHistory}>
+              {records => <CardDeclinesPanel records={records} />}
+            </ActivityPages>
+            <ActivityPages key={user.id + ':transfers:' + account?.historyCursors?.transfers}
+              first={account?.historyCursors ? account.transactions : null} cursor={account?.historyCursors?.transfers ?? null} owner={user.id} fetchPage={api.transferHistory}>
+            {transactions =>
             <section className="sa-transactions" aria-labelledby="transfer-history-heading">
               <div className="sa-section-heading">
                 <h2 id="transfer-history-heading">송금과 충전</h2>
-                <span>{account ? `${account.transactions.length}건` : '확인 중'}</span>
+                <span>{transactions ? `${transactions.length}건` : '확인 중'}</span>
               </div>
-              {!account ? <div className="sa-empty-state">내역을 불러오고 있습니다.</div>
-                : !account.transactions.length ? <div className="sa-empty-state">송금이나 충전 내역이 생기면 여기에 표시됩니다.</div>
+              {!transactions ? <div className="sa-empty-state">내역을 불러오고 있습니다.</div>
+                : !transactions.length ? <div className="sa-empty-state">송금이나 충전 내역이 생기면 여기에 표시됩니다.</div>
                 : <div className="sa-transaction-list" data-testid="server-transactions">
-                  {account.transactions.map((transaction) => {
+                  {transactions.map((transaction) => {
                     const sent = transaction.direction === 'sent';
                     const funded = transaction.direction === 'funded';
                     const name = transaction.counterpartyName || (funded ? '테스트 잔액 반영' : 'Aqua 회원');
@@ -341,7 +365,8 @@ export default function ServerApp() {
                     </div>;
                   })}
                 </div>}
-            </section>
+            </section>}
+            </ActivityPages>
           </>}
           {screen === 'account' && <>
             <EmailVerificationPanel key={`email:${user.id}`} ownerId={user.id} email={user.email}

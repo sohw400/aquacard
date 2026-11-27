@@ -28,6 +28,7 @@ interface CardApplicationProps {
   now: number;
   controls: PaymentControls;
   onOpenLimits: () => void;
+  onOpenSources: () => void;
   onOpenChannels: () => void;
   /** Opens the demo payment sheet for an active card. */
   onPay: () => void;
@@ -66,7 +67,7 @@ function TierFacts({ plan }: { plan: Plan }) {
   return <Facts className="cf-tier-facts" items={[`페이백 ${percent(terms.cashbackRate)}`, terms.reserveBonus ? `리저브 +${percent(terms.reserveBonus)}p` : terms.card]} />;
 }
 
-export default function CardApplication({ card, account, spend, now, controls, onOpenLimits, onOpenChannels, onPay, onChange, onAction, onDeposit, onNotify }: CardApplicationProps) {
+export default function CardApplication({ card, account, spend, now, controls, onOpenLimits, onOpenSources, onOpenChannels, onPay, onChange, onAction, onDeposit, onNotify }: CardApplicationProps) {
   const [identityConsent, setIdentityConsent] = useState(false);
   const [reviewConsent, setReviewConsent] = useState(false);
   const [revealed, setRevealed] = useState(false);
@@ -283,6 +284,7 @@ export default function CardApplication({ card, account, spend, now, controls, o
 
         <section className="cf-section" aria-labelledby="cf-settings-title">
           <h3 id="cf-settings-title">카드 설정</h3>
+          <NavRow label="결제에 쓸 잔액" testId="card-open-sources" onClick={onOpenSources} />
           <NavRow label="결제 한도" value={`1회 ${manWon(controls.perPayment)}`} testId="card-open-limits" onClick={onOpenLimits} />
           <NavRow label="온라인·해외 결제" value={controls.online && controls.overseas ? '모두 허용' : !controls.online && !controls.overseas ? '모두 막음' : controls.online ? '해외 막음' : '온라인 막음'} testId="card-open-channels" onClick={onOpenChannels} />
           {!card.physical && <NavRow label={`${physicalName(card.plan)} 받기`} value={plan.physicalFee ? won(plan.physicalFee) : '무료'} testId="card-physical-add" onClick={() => setAddressSheet('physical')} />}

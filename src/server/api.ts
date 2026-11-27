@@ -1,4 +1,7 @@
-import type { AccountSnapshot, EmailVerificationSnapshot, IssuerCardSnapshot, IssuerCardStatus, IssuerCardStatusReceipt, MemberProfile, RewardPreferenceResult, SessionSecuritySnapshot, TransferResult } from '../../shared/api';
+import type { FundingInput, MemberFunding } from '../../shared/funding';
+import type { CardActivityPage, CardDeclinePage, ReserveActivityPage, TransferActivityPage } from '../../shared/account-activity';
+import type { ReserveSnapshot, AccountSnapshot, EmailVerificationSnapshot, IssuerCardSnapshot, IssuerCardStatus, IssuerCardStatusReceipt, MemberProfile, RewardPreferenceResult, SessionSecuritySnapshot, TransferResult } from '../../shared/api';
+import type { CardApplication, CardApplicationSnapshot } from '../../shared/api';
 export type { EmailVerificationSnapshot } from '../../shared/api';
 
 export class ApiError extends Error {
@@ -8,12 +11,12 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: { method?: 'GET' | 'POST'; body?: unknown; signal?: AbortSignal; key?: string; ownerId?: string; expectedStatus?: number } = {}): Promise<T> {
+async function request<T>(path: string, options: { method?: 'GET' | 'POST'; body?: unknown; signal?: AbortSignal; key?: string; ownerId?: string; summary?: boolean; expectedStatus?: number } = {}): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method: options.method ?? 'GET',
     credentials: 'same-origin',
     cache: 'no-store',
-    headers: { Accept: 'application/json', ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(options.key ? { 'Idempotency-Key': options.key } : {}), ...(options.ownerId ? { 'X-Aqua-Account': options.ownerId } : {}) },
+    headers: { Accept: 'application/json', ...(options.summary ? { 'X-Aqua-View': 'summary' } : {}), ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(options.key ? { 'Idempotency-Key': options.key } : {}), ...(options.ownerId ? { 'X-Aqua-Account': options.ownerId } : {}) },
     ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
     signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
   });
@@ -41,11 +44,32 @@ export const api = {
   emailVerification: (ownerId: string, signal?: AbortSignal) => request<EmailVerificationSnapshot>('/auth/email', { ownerId, signal, expectedStatus: 200 }),
   requestEmailVerification: (ownerId: string, signal?: AbortSignal) => request<{ ok: true }>('/auth/email/request', { method: 'POST', body: {}, ownerId, signal, expectedStatus: 202 }),
   confirmEmailVerification: (token: string, ownerId: string, signal?: AbortSignal) => request<{ ok: true }>('/auth/email/confirm', { method: 'POST', body: { token }, ownerId, signal, expectedStatus: 200 }),
-  account: (signal?: AbortSignal) => request<AccountSnapshot>('/account', { signal }),
+  funding: (ownerId: string, signal?: AbortSignal) => request<MemberFunding[]>('/funding', {ownerId,signal}),
+  fundingIntent: (body: FundingInput, key: string, ownerId: string) => request<MemberFunding>('/funding', {method:'POST',body,key,ownerId}),
+  account: (signal?: AbortSignal, summary = false) => request<AccountSnapshot>('/account', { signal, summary }),
+  declineHistory: (ownerId: string, cursor: string | undefined, signal: AbortSignal) =>
+    request<CardDeclinePage>('/account/activity/declines' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''), { ownerId, signal }),
+  cardHistory: (ownerId: string, cursor: string, signal: AbortSignal) =>
+    request<CardActivityPage>('/account/activity/cards?cursor=' + encodeURIComponent(cursor), { ownerId, signal }),
+  rewardHistory: (ownerId: string, cursor: string | null, signal: AbortSignal) =>
+    request<import('../../shared/account-activity').RewardActivityPage>('/account/activity/rewards' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''), { ownerId, signal }),
+  transferHistory: (ownerId: string, cursor: string, signal: AbortSignal) =>
+    request<TransferActivityPage>('/account/activity/transfers?cursor=' + encodeURIComponent(cursor), { ownerId, signal }),
   member: (tag: string, signal?: AbortSignal) => request<{ member: Recipient }>(`/members?tag=${encodeURIComponent(tag)}`, { signal }),
   transfer: (body: { recipientTag: string; amountWon: number }, key: string, ownerId: string) => request<TransferResult>('/transfers', { method: 'POST', body, key, ownerId }),
+  reserveHistory: (ownerId: string, cursor: string | null, signal: AbortSignal) =>
+    request<ReserveActivityPage>('/account/activity/reserve' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''), { ownerId, signal }),
+  reserveMove: (body: { direction: 'in' | 'out'; amountWon: number }, key: string, ownerId: string) =>
+    request<ReserveSnapshot>('/reserve/movement', { method: 'POST', body, key, ownerId }),
+  reservePreference: (body: { autoUse: boolean; expectedVersion: number }, key: string, ownerId: string) =>
+    request<ReserveSnapshot>('/reserve/preference', { method: 'POST', body, key, ownerId }),
   rewardPreference: (body: { useFirst: boolean; expectedVersion: number }, key: string, ownerId: string) => request<RewardPreferenceResult>('/rewards/preference', { method: 'POST', body, key, ownerId }),
   issuerCard: (ownerId: string, signal?: AbortSignal) => request<IssuerCardSnapshot>('/issuer-card', { ownerId, signal, expectedStatus: 200 }),
+  cardApplication: (ownerId: string, signal?: AbortSignal) => request<CardApplicationSnapshot>('/card-application', { ownerId, signal, expectedStatus: 200 }),
+  submitCardApplication: (form: CardApplication['form'], key: string, ownerId: string) =>
+    request<CardApplication>('/card-application', { method: 'POST', body: { form }, key, ownerId, expectedStatus: 201 }),
+  activateCardApplication: (body: { applicationId: string; expectedVersion: number }, key: string, ownerId: string) =>
+    request<CardApplication>('/card-application/activate', { method: 'POST', body, key, ownerId, expectedStatus: 200 }),
   issuerCardStatus: (body: { cardId: string; targetStatus: IssuerCardStatus; expectedVersion: number }, key: string, ownerId: string, signal?: AbortSignal) => request<IssuerCardStatusReceipt>('/issuer-card/status', { method: 'POST', body, key, ownerId, signal, expectedStatus: 202 }),
   requestRecovery: (email: string, signal?: AbortSignal) => request<{ ok: true }>('/auth/recovery/request', { method: 'POST', body: { email }, signal, expectedStatus: 202 }),
   confirmRecovery: (token: string, password: string, signal?: AbortSignal) => request<{ ok: true }>('/auth/recovery/confirm', { method: 'POST', body: { token, password }, signal, expectedStatus: 200 }),

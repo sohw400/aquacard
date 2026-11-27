@@ -1,4 +1,5 @@
-import { NavRow, Toggle } from '../components/ui';
+import { NavRow } from '../components/ui';
+import PaymentSources from '../components/PaymentSources';
 import { maskEmail, maskPhone } from '../lib/auth';
 import { memberSendRoom } from '../lib/engine';
 import { dateLabel, money, percent, ro } from '../lib/format';
@@ -47,9 +48,8 @@ export default function Settings({ state, account, cardStatus, go, onRewardsAuto
     </section>
 
     <section className="settings-group" aria-labelledby="settings-pay">
-      <h2 id="settings-pay">결제 순서</h2>
-      <Toggle checked={state.rewardsAuto} onChange={onRewardsAuto} label="리워드 먼저 쓰기" detail="결제할 때 리워드부터 빠져요." testId="rewards-auto" />
-      <Toggle checked={state.reserveAuto} onChange={onReserveAuto} label="모자라면 리저브로 결제" detail="잔액이 모자란 만큼만 리저브에서 빠져요." testId="reserve-auto" />
+      <h2 id="settings-pay">결제에 쓸 잔액</h2>
+      <PaymentSources state={state} onRewardsAuto={onRewardsAuto} onReserveAuto={onReserveAuto} />
     </section>
 
     <section className="settings-group" aria-labelledby="settings-history">

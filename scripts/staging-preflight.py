@@ -13,6 +13,8 @@ MONITOR_LOOKBACK = timedelta(minutes=15)  # Three scheduled monitor intervals.
 BASE_ALARMS = {
     "MissingMonitorAlarm": {"MonitorHealthy"},
     "MonitorErrorAlarm": {"MonitorHealthy"},
+    "RewardBudgetAlarm": {"RewardBudgetLow"},
+    "CashbackSkippedAlarm": {"UnfundedCashbackAuthorizations24h"},
     "LedgerAlarm": {"LedgerFindings"},
     "OldestDueAlarm": {q + "OldestDueSeconds" for q in ("CardInbox", "IssuerOutbox", "AuthMail")},
     "ReviewAlarm": {"CardInboxReviewCount", "IssuerOutboxReviewCount"},

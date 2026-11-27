@@ -25,6 +25,9 @@ const paymentC = `rewards-held-${runId}`;
 const checks = [];
 const runtimeErrors = [];
 const preferenceRequests = [];
+const rewardHistoryPath = '/api/account/activity/rewards';
+const historyRequests = [];
+const reserveHistoryRequests = [];
 let browser;
 let page;
 let originalProgramActive;
@@ -56,7 +59,7 @@ async function account() {
 async function moneyIs(id, amount) {
   await page.waitForFunction(({ id, amount }) => {
     const shown = document.querySelector(`[data-testid="${id}"]`)?.textContent ?? '';
-    return /\d/.test(shown) && Number(shown.replace(/[^\d-]/g, '')) === amount;
+    return /\d/.test(shown) && Number(shown.replace(/−/g, '-').replace(/[^\d-]/g, '')) === amount;
   }, { id, amount });
 }
 
@@ -143,6 +146,8 @@ try {
   page.on('pageerror', (error) => runtimeErrors.push(error.message));
   page.on('request', (request) => {
     if (preferenceRequest(request)) preferenceRequests.push({ key: request.headers()['idempotency-key'], ownerId: request.headers()['x-aqua-account'], body: request.postDataJSON() });
+    if (new URL(request.url()).pathname === '/api/account/activity/reserve') reserveHistoryRequests.push(request.headers()['x-aqua-account']);
+    if (new URL(request.url()).pathname === rewardHistoryPath) historyRequests.push(request.headers()['x-aqua-account']);
   });
   const health = await context.request.get(new URL('/api/health', base).href);
   assert.equal(health.status(), 200, 'Start the migrated sandbox API and connected UI before this suite.');
@@ -173,6 +178,58 @@ try {
   programChanged = !originalProgramActive;
   command('server:rewards', ['grant', owner.email, '3000', `${runId}-grant`]);
   await snapshot({ cash: 100_000, cashHeld: 0, cashTotal: 100_000, reward: 3_000, rewardHeld: 0, debt: 0, confirmed: 0, pending: 0, reversed: 0, remaining: 10_000 });
+  assert.deepEqual(reserveHistoryRequests, [], 'Folded Reserve management must not fetch the movement journal.');
+  const reserve = page.getByTestId('server-reserve');
+  await reserve.locator('summary').click();
+  await reserve.getByLabel('옮길 금액 (원)').fill('100001');
+  assert.equal(await reserve.getByRole('button', { name: '지갑에서 넣기' }).isEnabled(), false);
+  await reserve.getByLabel('옮길 금액 (원)').fill('1000');
+  assert.equal(await reserve.getByRole('button', { name: '지갑으로 빼기' }).isEnabled(), false);
+  const movementRequests = [];
+  const droppedMovement = Promise.withResolvers();
+  await page.route('**/api/reserve/movement', async (route) => {
+    const request = route.request();
+    movementRequests.push({ key: request.headers()['idempotency-key'], ownerId: request.headers()['x-aqua-account'], body: request.postDataJSON() });
+    if (movementRequests.length > 1) return route.continue();
+    try {
+      const committed = await route.fetch();
+      assert.equal(committed.status(), 200);
+      await route.abort('failed');
+      droppedMovement.resolve();
+    } catch (error) { droppedMovement.reject(error); }
+  });
+  await reserve.getByRole('button', { name: '지갑에서 넣기' }).click();
+  await droppedMovement.promise;
+  await page.reload();
+  await reserve.getByRole('button', { name: '이전 요청 확인' }).click();
+  await reserve.getByRole('button', { name: '이전 요청 확인' }).waitFor({ state: 'hidden' });
+  await moneyIs('server-reserve-balance', 1000);
+  await moneyIs('server-balance', 99_000);
+  assert.ok(movementRequests[0].key);
+  const movement = { key: movementRequests[0].key, ownerId: userId, body: { direction: 'in', amountWon: 1_000 } };
+  assert.deepEqual(movementRequests, [movement, movement]);
+  await page.unroute('**/api/reserve/movement');
+  const fallback = reserve.getByRole('switch', { name: '지갑 부족분을 리저브에서 결제' });
+  for (const expected of [true, false]) {
+    const response = page.waitForResponse(reply => reply.request().method() === 'POST' && new URL(reply.url()).pathname === '/api/reserve/preference');
+    await fallback.click();
+    assert.equal((await response).status(), 200);
+    assert.equal((await account()).reserve.autoUse, expected);
+    await page.waitForFunction(expected => document.querySelector('[aria-labelledby="reserve-fallback-label"]')?.getAttribute('aria-checked') === String(expected), expected);
+  }
+  await reserve.locator('summary').click();
+  await reserve.getByLabel('옮길 금액 (원)').fill('1000');
+  await reserve.getByRole('button', { name: '지갑으로 빼기' }).click();
+  await moneyIs('server-reserve-balance', 0);
+  await moneyIs('server-balance', 100_000);
+  assert.equal(await reserve.getByLabel('옮길 금액 (원)').inputValue(), '');
+  const movements = reserve.getByRole('region', { name: '리저브 이동 내역' });
+  await movements.getByText('−1,000원', { exact: true }).waitFor();
+  assert.deepEqual(await movements.locator('li > span').allTextContents(), ['−1,000원', '+1,000원']);
+  assert.deepEqual(await movements.locator('li strong').allTextContents(), ['지갑으로 빼기', '지갑에서 넣기']);
+  assert.ok(reserveHistoryRequests.length > 0 && reserveHistoryRequests.every(id => id === userId));
+  pass('Reserve movements recover a lost response after reload, preserve one booking and the fallback setting, then restore wallet funds.');
+
   await setPreference(true);
   assert.equal((await account()).rewards.programActive, true);
   pass('One new account receives funded card-only rewards; principal totals and transfer capacity exclude the reward units.');
@@ -275,6 +332,30 @@ try {
   await page.setViewportSize({ width: 320, height: 740 });
   await fits('320px rewards');
   await page.screenshot({ path: new URL('rewards-mobile.png', artifacts).pathname, fullPage: true });
+  const history = page.getByTestId('rewards-history');
+  assert.deepEqual(historyRequests, [], 'Dashboard polling must not request journals before the member expands history.');
+  const summary = await context.request.get(new URL('/api/account', base).href, { headers: { 'X-Aqua-View': 'summary' } });
+  assert.equal(summary.status(), 200);
+  assert.deepEqual((await summary.json()).rewards.history, []);
+  await page.route('**' + rewardHistoryPath, route => route.abort('failed'), { times: 1 });
+  await history.locator(':scope > summary').click();
+  await history.getByRole('alert').waitFor();
+  const historyResponse = page.waitForResponse(reply => new URL(reply.url()).pathname === rewardHistoryPath);
+  await history.getByRole('button', { name: '다시 불러오기' }).click();
+  const reply = await historyResponse;
+  assert.equal(reply.status(), 200);
+  const records = (await reply.json()).items;
+  assert.deepEqual(records.map(row => row.id), final.rewards.history.map(row => row.id).slice(0, records.length));
+  assert.deepEqual(historyRequests, [userId, userId]);
+  const release = records.find(row => row.paymentId === paymentC && row.kind === 'card_release');
+  assert.ok(release);
+  const row = history.getByTestId('rewards-record-' + release.id);
+  await row.locator('summary').click();
+  await moneyIs('rewards-record-available-' + release.id, 2_121);
+  await moneyIs('rewards-record-held-' + release.id, -2_221);
+  await moneyIs('rewards-record-adjustment-' + release.id, -100);
+  await fits('320px expanded reward journal');
+  pass('Reward history loads only on demand, recovers a failed read, and displays the available, held and adjustment deltas of a real journal entry.');
   await card(paymentA, 'partially_refunded', { principal: { captured: 4_200, refunded: 2_100 }, rewards: { captured: 1_800, refunded: 900 } }, { awarded: 42, reversed: 21 });
   assert.deepEqual(runtimeErrors, []);
   pass('Reward preferences, balances, monthly cashback and mixed-funding receipts persist after reload and fit a 320px screen.');
@@ -282,8 +363,8 @@ try {
   await writeFile(new URL('results.json', artifacts), JSON.stringify({
     recordedAt: new Date().toISOString(), baseUrl: base.href, passed: checks.length, checks,
     backendMocked: false, database: 'PostgreSQL', accountsCreated: 1, engine: 'Chromium', realDeviceTested: false,
-    mutationPaths: ['Real preference API', 'Local sandbox rewards and card CLIs'],
-    droppedResponse: 'Only the reply to a committed preference POST was dropped; its original key and version were retried after reload.',
+    mutationPaths: ['Real Reserve movement and preference APIs', 'Real reward preference API', 'Local sandbox rewards and card CLIs'],
+    droppedResponse: 'Committed Reserve movement and reward preference replies were dropped and their original commands retried after reload.',
     finalPrincipalWon: 97_900, finalRewardWon: 2_121, finalAdjustmentWon: 0,
     cashback: { confirmedWon: 21, reversedWon: 121, pendingWon: 0 },
     screenshots: ['rewards-desktop.png', 'rewards-mobile.png'],

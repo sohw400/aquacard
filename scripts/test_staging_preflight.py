@@ -86,7 +86,7 @@ class StagingPreflightTests(unittest.TestCase):
         self.assertEqual("db-ABCDEF", report["sourceDbiResourceId"])
         self.assertEqual("2026-11-26T04:55:00Z", report["restoreWindow"]["latest"])
         self.assertEqual("2026-11-26T04:58:00Z", report["monitorSampleUtc"])
-        self.assertEqual(8, len(report["alarms"]))
+        self.assertEqual(10, len(report["alarms"]))
         calls = {op: (arguments, query) for _, op, arguments, query in data.calls}
         self.assertEqual(("--dbi-resource-id", "db-ABCDEF"), calls["describe-db-instance-automated-backups"][0])
         actual_names = {row["physical"] for row in data.records["list-stack-resources"]}

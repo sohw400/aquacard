@@ -5,7 +5,7 @@ import { getCashbackSummary } from '../lib/rewards';
 import './MoneyPages.css';
 import { ActivityList, listedTransactions } from '../components/Activity';
 import { Won } from '../components/ui';
-import { availableToSpend, renewalMessage, renewalNotice, reserveTerms } from '../lib/engine';
+import { availableToSpend, paymentPreview, renewalMessage, renewalNotice, reserveTerms } from '../lib/engine';
 import { money, percent } from '../lib/format';
 import { fundingStatusLabel, getHeldFundingWon, isFundingPending } from '../lib/movements';
 import { fundingLabel, PLANS } from '../lib/policy';
@@ -17,6 +17,7 @@ interface HomeProps {
   onSend: () => void;
   onCard: () => void;
   onPay: () => void;
+  onPaymentSources: () => void;
   onReserve: () => void;
   onRewards: () => void;
   onActivity: () => void;
@@ -27,19 +28,13 @@ interface HomeProps {
 
 const PREPARING = ['submitted', 'approved', 'issued'];
 
-export default function Home({ state, onDeposit, onSend, onCard, onPay, onReserve, onRewards, onActivity, onFunding, onRefund, onDetail }: HomeProps) {
+export default function Home({ state, onDeposit, onSend, onCard, onPay, onPaymentSources, onReserve, onRewards, onActivity, onFunding, onRefund, onDetail }: HomeProps) {
   const { card } = state;
   const plan = PLANS[card.plan];
   const pending = state.fundingOperations.filter(isFundingPending);
   const held = getHeldFundingWon(state);
   const recent = listedTransactions(state.transactions);
   const cashback = getCashbackSummary(state);
-  const spendable = availableToSpend(state);
-  const sources = [
-    state.spend > 0 && `지갑 ${money(state.spend)}`,
-    state.rewardsAuto && state.rewards > 0 && `리워드 ${money(state.rewards)}`,
-    state.reserveAuto && state.reserve > 0 && `리저브 ${money(state.reserve)}`,
-  ].filter((source): source is string => Boolean(source));
   const active = card.stage === 'active';
   const notice = renewalNotice(state, Date.now() + state.clockOffsetMs);
   const cardLine = active ? card.locked ? '잠겨 있어요' : `끝번호 ${card.last4}`
@@ -62,10 +57,11 @@ export default function Home({ state, onDeposit, onSend, onCard, onPay, onReserv
         <span className="card-manage-link">카드 관리<ChevronRight size={16} aria-hidden="true" /></span>
       </button>
       {active ? <div className="card-spending">
-        <div><span>{card.locked ? '잠금 해제 후 결제 가능' : '카드 결제 가능 금액'}</span><strong data-testid="available-balance" aria-describedby={spendable > state.spend ? 'card-spending-sources' : undefined}>{money(spendable)}</strong></div>
+        <div><span>{card.locked ? '카드 잠금 중' : '한 번에 결제 가능한 금액'}</span><strong data-testid="available-balance">{money(paymentPreview(state, 0).maximum)}</strong></div>
         <button type="button" className="btn primary" data-testid="open-payment" onClick={onPay}>{card.locked ? '잠금 풀기' : '결제해 보기'}</button>
-        {spendable > state.spend && <p className="card-spending-sources" id="card-spending-sources">{sources.map((source, index) =>
-          <span key={source}>{index > 0 && '+ '}{source}</span>)}</p>}
+        <button type="button" className="card-funding-link" onClick={onPaymentSources} data-testid="open-payment-sources">
+          <span>결제에 쓸 잔액</span><span>{money(availableToSpend(state))}<ChevronRight size={16} aria-hidden="true" /></span>
+        </button>
       </div> : <button type="button" className="btn primary block" data-testid="open-payment" onClick={onPay}>{PREPARING.includes(card.stage) ? '진행 상황 보기' : card.stage === 'rejected' ? '다시 신청하기' : '신청 이어서 하기'}</button>}
       {notice && <button type="button" className={`home-status home-renewal${notice.short ? ' short' : ''}`} data-testid="home-renewal" onClick={onCard}>
         <CalendarClock size={16} aria-hidden="true" />
@@ -78,6 +74,9 @@ export default function Home({ state, onDeposit, onSend, onCard, onPay, onReserv
       <span className="eyebrow" id="home-balance-label">지갑 잔액</span>
       <Won value={state.spend} className="balance-figure" testId="spend-balance" />
       {held > 0 && <p className="balance-note">보내는 중 <strong data-testid="funding-held">{money(held)}</strong></p>}
+      <button type="button" className="home-reserve-link" data-testid="open-reserve-card" onClick={onReserve}>
+        <span>리저브 잔액</span><span><strong>{money(state.reserve)}</strong><small>연 {percent(reserveTerms(state).rate)}</small></span><ChevronRight size={16} aria-hidden="true" />
+      </button>
       <div className="home-actions">
         <button type="button" className="btn primary" data-testid="open-deposit" onClick={onDeposit}><ArrowDownLeft size={17} aria-hidden="true" />충전</button>
         <button type="button" className="btn neutral" data-testid="open-send" onClick={onSend}><ArrowUpRight size={17} aria-hidden="true" />보내기</button>
@@ -97,9 +96,6 @@ export default function Home({ state, onDeposit, onSend, onCard, onPay, onReserv
         </div>
         <div className="home-reward-balance"><span>사용 가능 리워드</span><Won value={state.rewards} testId="available-rewards" /></div>
       </div>
-      <button type="button" className="home-reserve-link" data-testid="open-reserve-card" onClick={onReserve}>
-        <span>리저브 잔액</span><span><strong>{money(state.reserve)}</strong><small>연 {percent(reserveTerms(state).rate)}</small></span><ChevronRight size={16} aria-hidden="true" />
-      </button>
     </section>
 
     <section className="home-activity" aria-labelledby="home-activity-title">

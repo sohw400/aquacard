@@ -1,0 +1,8 @@
+.sa-funding h3 { margin:24px 0 8px; font-size:16px; }
+.sa-funding p { margin:8px 0; color:var(--sa-muted); font-size:14px; line-height:1.6; }
+.sa-funding form { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr)); gap:12px; align-items:end; margin:16px 0; }
+.sa-funding label { display:grid; gap:5px; color:var(--sa-ink); font-size:14px; }
+.sa-funding input,.sa-funding select { width:100%; min-height:44px; padding:8px; border:1px solid var(--sa-line); border-radius:8px; background:var(--sa-surface,#fff); color:inherit; font:inherit; }
+.sa-funding-record { padding:14px 0; border-top:1px solid var(--sa-line); }
+.sa-funding-record > div { display:flex; justify-content:space-between; gap:12px; align-items:center; }
+.sa-funding-record code { overflow-wrap:anywhere; }

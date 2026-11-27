@@ -105,3 +105,9 @@
 .sa-card-slot .sa-issuer-details.is-compact .sa-issuer-state h3 { font-size:clamp(17px,1.6vw,22px); }
 .sa-card-slot .sa-issuer-details.is-compact .sa-issuer-actions { grid-column:2; grid-row:1; margin:0; }
 .sa-issuer-details.is-compact > :not(.sa-issuer-state,.sa-issuer-actions) { grid-column:1/-1; }
+.sa-application h3 { color: var(--sa-ink); font-size: 21px; font-weight: 650; }
+.sa-application p { margin-top: 6px; color: #536170; font-size: 14px; line-height: 1.55; }
+.sa-application-options { margin: 16px 0 0; padding: 0; border: 0; }
+.sa-application-options legend { font-size: 13px; font-weight: 600; }
+.sa-application-options label { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; margin-right: 18px; font-size: 14px; cursor: pointer; }
+.sa-application-options input { width: 16px; height: 16px; accent-color: var(--sa-ink); }

@@ -8,7 +8,7 @@ import { verifySettlementRole } from './permissions';
 
 /** Shared by the one-shot settlement commands. Close the pool before returning a report. */
 export async function checkIssuerStatementLedger(
-  statement: IssuerStatement, requireClosedThroughMs?: number,
+  statement: IssuerStatement, requireClosedThroughMs?: number, focusEventId?: string,
 ): Promise<ReturnType<typeof matchIssuerStatement>> {
   // Bound a network outage during role verification, snapshot retrieval or shutdown.
   const deadline = setTimeout(() => {
@@ -21,7 +21,7 @@ export async function checkIssuerStatementLedger(
       await verifyMigrations(db);
       await verifySettlementRole(db);
       const ledger = await readIssuerStatementLedger(db, statement.startMs, statement.endMs, requireClosedThroughMs);
-      return matchIssuerStatement(statement, ledger);
+      return matchIssuerStatement(statement, ledger, 100, focusEventId);
     } finally { await db.close(); }
   } finally { clearTimeout(deadline); }
 }

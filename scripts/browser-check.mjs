@@ -589,13 +589,13 @@ try {
   await page.getByTestId('open-payment').click();
   await page.getByTestId('action-amount').fill(String(bigPayment));
   assert.equal(await page.getByTestId('confirm-action').isDisabled(), true);
-  assert.match(await page.getByTestId('dialog-payment').innerText(), new RegExp(`${pattern(wonText(bigPayment - spendBeforePayment - START.rewards))}이 모자라요`));
+  assert.match(await page.getByTestId('dialog-payment').innerText(), new RegExp(`${pattern(wonText(bigPayment - spendBeforePayment - START.rewards))}\\s*모자라요`));
   await page.keyboard.press('Escape');
   await nav('settings');
   await page.getByTestId('reserve-auto').click();
   await stateWhen((current) => current.reserveAuto);
   await nav('home');
-  assert.equal(await displayedAmount(page.getByTestId('available-balance')), spendBeforePayment + START.rewards + START.reserve, '리저브 결제를 켜면 리저브까지 카드로 쓸 수 있다');
+  assert.equal(await displayedAmount(page.getByTestId('available-balance')), Math.min(spendBeforePayment + START.rewards + START.reserve, (await read()).controls.perPayment), '리저브를 포함해도 한 번에 쓸 수 있는 금액은 1회 한도를 넘지 않는다');
   await page.getByTestId('open-payment').click();
   await submitAmount('payment', bigPayment);
   state = await stateWhen((current) => current.payments[0]?.status === 'completed');
@@ -619,7 +619,7 @@ try {
   assert.equal(await displayedAmount(benefits.getByTestId('cashback-remaining')), PLANS.standard.cashbackCap - bigCashback);
   pass('잔액 부족·리저브 자동 사용·카드로 쓸 수 있는 돈·결제 영수증 회계·확정 페이백·남은 혜택 한도');
 
-  assert.match(await benefits.innerText(), /받기 버튼 없이 바로 쌓여요.*카드 결제에만 쓸 수 있어요/s);
+  assert.match(await benefits.innerText(), /리저브 보상이 자동으로 쌓여요.*카드 결제에만 쓸 수 있어요/s);
   assert.equal(await page.getByTestId('claim-rewards').count(), 0, '리저브 보상은 받기 버튼 없이 리워드에 더해진다');
   assert.equal(await page.getByTestId('dialog-rewards').count(), 0, '혜택은 기본 탭의 페이지로 제공');
   await benefits.getByRole('button', { name: '리저브 보기', exact: true }).click();
@@ -1779,11 +1779,11 @@ try {
   await lifePayment.getByTestId('pay-channel-online').click();
   assert.match(await lifePayment.innerText(), /온라인 결제를 막아 두었어요/);
   await lifePayment.getByTestId('action-amount').fill('5000');
-  await lifePayment.getByTestId('confirm-action').click();
+  assert.equal(await lifePayment.getByTestId('confirm-action').isDisabled(), true);
   assert.match(await lifePayment.getByRole('alert').innerText(), /온라인 결제를 막아/);
   await lifePayment.getByTestId('pay-channel-store').click();
   await lifePayment.getByTestId('action-amount').fill('110000');
-  await lifePayment.getByTestId('confirm-action').click();
+  assert.equal(await lifePayment.getByTestId('confirm-action').isDisabled(), true);
   assert.match(await lifePayment.getByRole('alert').innerText(), /1회 결제 한도는 10만원/);
   await lifePayment.getByTestId('action-amount').fill('5800');
   await lifePayment.getByTestId('confirm-action').click();

@@ -1,8 +1,12 @@
+import { memberCardDeclines } from './card-declines';
+import { activityBoundary, activityPage, activityPageSize } from './activity-cursor';
+import type { ActivityKind, CardActivityPage, TransferActivityPage } from '../shared/account-activity';
 import { randomUUID } from 'node:crypto';
 import type { PoolClient, QueryResultRow } from 'pg';
 import type { AccountSnapshot, CardPaymentRecord, MemberProfile, TransferRecord, TransferResult } from '../shared/api';
 import type { Database } from './database';
 import { LedgerError } from './errors';
+import { readReserve } from './reserve';
 import { readRewardsSnapshot } from './reward-read';
 export { LedgerError } from './errors';
 
@@ -18,6 +22,8 @@ interface JournalRow extends QueryResultRow {
   request_payload: string; balance_after_won: string; created_at: string;
 }
 interface CardRow extends QueryResultRow {
+  cashback_budget_limited_at: string | null;
+  reserve_funding: CardPaymentRecord['funding'] | null;
   id: string; merchant_name: string; status: CardPaymentRecord['status']; authorized_won: string; held_won: string;
   captured_won: string; released_won: string; refunded_won: string; created_at: string; updated_at: string;
   policy_version: string | null; month: string | null; rate_bps: number | null;
@@ -72,6 +78,7 @@ function checkRequestKey(value: string): void {
 
 function domainError(error: unknown): never {
   const pg = error as { code?: string; constraint?: string; message?: string };
+  if (pg.message === 'RECIPIENT_BALANCE_LIMIT') throw new LedgerError(409, 'RECIPIENT_BALANCE_LIMIT', '반영 후 원금 합계가 처리 범위를 넘습니다.');
   if (pg.message === 'EMAIL_VERIFICATION_REQUIRED') throw new LedgerError(403, 'EMAIL_VERIFICATION_REQUIRED', '이메일 확인을 마친 뒤 거래해 주세요.');
   if (pg.message === 'CUSTOMER_ACCESS_REQUIRED') throw new LedgerError(403, 'CUSTOMER_ACCESS_REQUIRED', '현재 고객 상태에서는 이 거래를 진행할 수 없습니다.');
   if (pg.code === '23505') {
@@ -167,11 +174,12 @@ export class LedgerStore {
           rewards: { authorizedWon: safeInteger(row.reward_authorized_won), heldWon: safeInteger(row.reward_held_won),
             capturedWon: safeInteger(row.reward_captured_won), releasedWon: safeInteger(row.reward_released_won), refundedWon: safeInteger(row.reward_refunded_won) },
         },
-        cashback: { policyVersion: row.policy_version!, month: row.month!, rateBps: safeInteger(row.rate_bps),
+        cashback: { ...(row.cashback_budget_limited_at == null ? {} : { reason: 'budget_unavailable' as const }), policyVersion: row.policy_version!, month: row.month!, rateBps: safeInteger(row.rate_bps),
           pendingWon: safeInteger(row.cashback_pending_won), awardedWon: safeInteger(row.cashback_awarded_won),
           reversedWon: safeInteger(row.cashback_reversed_won), offsetWon: safeInteger(row.cashback_offset_won),
           closedAt: row.closed_at === null ? null : safeInteger(row.closed_at) },
       }),
+      ...(row.reserve_funding ? { funding: row.reserve_funding } : {}),
     };
   }
 
@@ -180,12 +188,13 @@ export class LedgerStore {
     const year = shifted.getUTCFullYear(), month = shifted.getUTCMonth(), day = shifted.getUTCDate();
     const monthStart = Date.UTC(year, month, 1) - KST_OFFSET_MS, monthEnd = Date.UTC(year, month + 1, 1) - KST_OFFSET_MS;
     const dayStart = Date.UTC(year, month, day) - KST_OFFSET_MS, dayEnd = dayStart + DAY_MS;
-    const { rows } = await client.query<{ today: string; month: string }>(`SELECT
+    const { rows } = await client.query<{ today: string; month: string; limited: boolean }>(`SELECT
+      customer_transfer_limited($3::text) AS limited,
       COALESCE(SUM(CASE WHEN created_at >= $1 AND created_at < $2 THEN amount_won ELSE 0 END), 0)::text AS today,
       COALESCE(SUM(amount_won), 0)::text AS month FROM journals
       WHERE kind = 'member_transfer' AND sender_id = $3 AND created_at >= $4 AND created_at < $5`, [dayStart, dayEnd, user.id, monthStart, monthEnd]);
     const sentToday = safeInteger(rows[0].today), sentMonth = safeInteger(rows[0].month);
-    const share = now < user.createdAt + 30 * DAY_MS ? 2 : 1;
+    const share = rows[0].limited || now < user.createdAt + 30 * DAY_MS ? 2 : 1;
     const perTransfer = 1_000_000 / share, daily = 2_000_000 / share, monthly = 5_000_000 / share;
     return { perTransfer, daily, monthly, sentToday, sentMonth,
       available: Math.max(0, Math.min(balanceWon, perTransfer, daily - sentToday, monthly - sentMonth)) };
@@ -197,7 +206,39 @@ export class LedgerStore {
       counterpartyName: sent ? row.recipient_name : row.sender_name, counterpartyTag: sent ? row.recipient_tag : row.sender_tag, createdAt: safeInteger(row.created_at) };
   }
 
-  async snapshot(userId: string): Promise<AccountSnapshot> {
+  private async transferPage(client: PoolClient, userId: string, cursor?: string): Promise<TransferActivityPage> {
+    const after = activityBoundary(cursor, userId, 'transfers');
+    const params = [userId, activityPageSize + 1, ...(after ? [after.createdAt, after.id] : [])];
+    // Limit each index scan before merging a busy sender's outgoing and incoming records.
+    const boundary = after ? 'AND (created_at,id) < ($3::bigint,$4::text)' : '';
+    const kinds = "kind IN ('member_transfer','sandbox_credit')";
+    const history = await client.query<JournalRow>(`SELECT * FROM (
+      (SELECT * FROM journals WHERE sender_id = $1 AND ${kinds} ${boundary} ORDER BY created_at DESC,id DESC LIMIT $2)
+      UNION ALL
+      (SELECT * FROM journals WHERE recipient_id = $1 AND sender_id IS DISTINCT FROM $1 AND ${kinds} ${boundary}
+        ORDER BY created_at DESC,id DESC LIMIT $2)
+    ) AS records ORDER BY created_at DESC,id DESC LIMIT $2`, params);
+    return activityPage(userId, 'transfers', history.rows.map(row => this.record(row, userId)));
+  }
+
+  private async cardPage(client: PoolClient, userId: string, cursor?: string): Promise<CardActivityPage> {
+    const after = activityBoundary(cursor, userId, 'cards');
+    const params = [userId, activityPageSize + 1, ...(after ? [after.createdAt, after.id] : [])];
+    const payments = await client.query<CardRow>(`SELECT p.*, reserve_payment_funding(p.id) AS reserve_funding, a.policy_version, a.month, a.rate_bps,
+        a.principal_authorized_won, a.principal_held_won, a.principal_captured_won, a.principal_released_won, a.principal_refunded_won,
+        a.reward_authorized_won, a.reward_held_won, a.reward_captured_won, a.reward_released_won, a.reward_refunded_won,
+        a.cashback_budget_limited_at, a.cashback_pending_won, a.cashback_awarded_won, a.cashback_reversed_won, a.cashback_offset_won, a.closed_at
+        FROM card_payments p LEFT JOIN card_reward_allocations a ON a.payment_id = p.id
+        WHERE p.user_id = $1 ${after ? 'AND (p.created_at,p.id) < ($3::bigint,$4::text)' : ''} ORDER BY p.created_at DESC, p.id DESC LIMIT $2`, params);
+    return activityPage(userId, 'cards', payments.rows.map(row => this.cardRecord(row)));
+  }
+
+  async activity(userId: string, kind: Extract<ActivityKind, 'cards' | 'transfers'>, cursor?: string) {
+    return this.database.transaction<CardActivityPage | TransferActivityPage>(client => kind === 'cards'
+      ? this.cardPage(client, userId, cursor) : this.transferPage(client, userId, cursor), { isolation: 'repeatable read' });
+  }
+
+  async snapshot(userId: string, summary = false): Promise<AccountSnapshot> {
     return this.database.transaction(async (client) => {
       const now = this.now();
       const user = await this.requireUser(client, userId);
@@ -205,17 +246,13 @@ export class LedgerStore {
       const balanceWon = safeInteger(accounts.find((row) => row.id === userAccountId(userId))!.balance_won);
       const heldBalanceWon = safeInteger(accounts.find((row) => row.id === holdAccountId(userId))!.balance_won);
       const totalBalanceWon = safeInteger(String(BigInt(balanceWon) + BigInt(heldBalanceWon)));
-      const history = await client.query<JournalRow>(`SELECT * FROM journals WHERE kind IN ('member_transfer', 'sandbox_credit')
-        AND (sender_id = $1 OR recipient_id = $1) ORDER BY created_at DESC, id DESC`, [userId]);
-      const payments = await client.query<CardRow>(`SELECT p.*, a.policy_version, a.month, a.rate_bps,
-        a.principal_authorized_won, a.principal_held_won, a.principal_captured_won, a.principal_released_won, a.principal_refunded_won,
-        a.reward_authorized_won, a.reward_held_won, a.reward_captured_won, a.reward_released_won, a.reward_refunded_won,
-        a.cashback_pending_won, a.cashback_awarded_won, a.cashback_reversed_won, a.cashback_offset_won, a.closed_at
-        FROM card_payments p LEFT JOIN card_reward_allocations a ON a.payment_id = p.id
-        WHERE p.user_id = $1 ORDER BY p.created_at DESC, p.id DESC`, [userId]);
+      const transfers = summary ? null : await this.transferPage(client, userId);
+      const payments = summary ? null : await this.cardPage(client, userId);
+      const declines = summary ? null : await memberCardDeclines(client, userId);
       const access = (await client.query<{ result: AccountSnapshot['access'] }>('SELECT customer_access_snapshot($1::text) AS result', [userId])).rows[0].result;
-      return { user: profile(user), access, balanceWon, heldBalanceWon, totalBalanceWon, rewards: await readRewardsSnapshot(client, userId, now), cardPayments: payments.rows.map((row) => this.cardRecord(row)),
-        transactions: history.rows.map((row) => this.record(row, userId)), limits: await this.limits(client, user, balanceWon, now) };
+      return { user: profile(user), access, balanceWon, heldBalanceWon, totalBalanceWon, rewards: await readRewardsSnapshot(client, userId, now, summary), reserve: await readReserve(client, userId), cardPayments: payments?.items ?? [],
+        ...(summary ? {} : { cardDeclines: declines!.items, historyCursors: { cards: payments?.nextCursor ?? null, transfers: transfers?.nextCursor ?? null, declines: declines!.nextCursor } }),
+        transactions: transfers?.items ?? [], limits: await this.limits(client, user, balanceWon, now) };
     }, { isolation: 'repeatable read' });
   }
 

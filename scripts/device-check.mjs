@@ -510,7 +510,7 @@ try {
     await assertAmount(benefits.getByTestId('cashback-remaining'), PLANS.standard.cashbackCap - cashback, `${name} remaining monthly cashback`);
     await assertAmount(benefits.getByTestId('reward-balance'), cashback, `${name} spendable reward balance`);
     assert.equal(await benefits.getByTestId('reserve-today').isVisible(), true);
-    assert.match(await benefits.innerText(), /받기 버튼 없이 바로 쌓여요/);
+    assert.match(await benefits.innerText(), /리저브 보상이 자동으로 쌓여요/);
     assert.equal(await benefits.getByTestId('claim-rewards').count(), 0, `${name}: reserve rewards need no claim step`);
     const rewardsAuto = benefits.getByTestId('rewards-auto');
     await assertTouchTarget(rewardsAuto, `${name} rewards setting`);

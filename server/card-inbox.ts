@@ -46,6 +46,22 @@ export interface InboxRequeueResult {
   version: number;
 }
 
+export interface CaptureResolutionInput {
+  id: string;
+  expectedVersion: number;
+  idempotencyKey: string;
+  evidenceRef: string;
+  replacementId: string | null;
+}
+export interface CaptureResolutionResult {
+  id: string;
+  disposition: 'void' | 'superseded';
+  replacementId: string | null;
+  evidenceRef: string;
+  resolvedAt: number;
+}
+export interface HoldExpiration { paymentId: string; eventId: string; releasedWon: number }
+
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const keyPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const maxClock = 8.64e15 - 9 * 60 * 60 * 1_000;
@@ -116,6 +132,20 @@ export class CardInboxStore {
         const { rows } = await client.query<{ result: InboxProcessResult | null }>('SELECT process_card_inbox($1::bigint) AS result', [now]);
         return rows[0].result;
       }, { isolation: 'read committed' });
+    } catch (error) { return commandError(error, 'INVALID_INBOX_COMMAND'); }
+  }
+
+  async expireHold(): Promise<HoldExpiration | null> {
+    const { rows } = await this.database.query<{ result: HoldExpiration | null }>(
+      'SELECT expire_sandbox_card_hold($1::bigint) AS result', [this.now()]);
+    return rows[0].result;
+  }
+
+  async resolveCapture(input: CaptureResolutionInput): Promise<CaptureResolutionResult> {
+    try {
+      const { rows } = await this.database.query<{ result: CaptureResolutionResult }>(
+        'SELECT operator_resolve_card_capture($1::jsonb,$2::bigint) AS result', [JSON.stringify(input), this.now()]);
+      return rows[0].result;
     } catch (error) { return commandError(error, 'INVALID_INBOX_COMMAND'); }
   }
 

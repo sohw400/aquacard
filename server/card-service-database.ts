@@ -9,6 +9,12 @@ const serviceUrls = {
   operations: 'OPERATIONS_DATABASE_URL',
   monitor: 'MONITOR_DATABASE_URL',
   settlement: 'SETTLEMENT_DATABASE_URL',
+  funding: 'FUNDING_DATABASE_URL',
+  correction: 'CORRECTION_DATABASE_URL',
+  issuance: 'ISSUANCE_DATABASE_URL',
+  mailFeedback: 'AUTH_MAIL_FEEDBACK_DATABASE_URL',
+  authorizationSimulator: 'AUTHORIZATION_SIMULATOR_DATABASE_URL',
+  settlementCase: 'SETTLEMENT_CASE_DATABASE_URL',
 } as const;
 
 /** Each service requires its own login, including the read-only scheduled monitor. */

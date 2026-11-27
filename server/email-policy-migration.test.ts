@@ -43,6 +43,13 @@ test('email policy upgrade requires new proof without rewriting customer decisio
     const event = { kind: 'authorize' as const, eventId: 'old-approval', paymentId: 'old-payment', userId: 'legacy', amountWon: 10_000, merchantName: '기존 가맹점' };
     const approved = await cards.apply(event);
     const transfer = { senderId: 'legacy', recipientTag: 'bobby', amountWon: 1_000, idempotencyKey: 'old-transfer' };
+    // Book the transfer using the v010 journal schema predating risk tiers.
+    // Reading its idempotency receipt works on both sides of the migration.
+    await database.query(`INSERT INTO journals(id,kind,from_account_id,to_account_id,amount_won,sender_id,recipient_id,
+      sender_name,sender_tag,recipient_name,recipient_tag,request_owner_id,idempotency_key,request_payload,balance_after_won,created_at)
+      SELECT $1,'member_transfer',id,'user:bobby',$2,'legacy','bobby','기***원','legacy','기***원','bobby','legacy',$3,$4,balance_won-$2,$5
+      FROM ledger_accounts WHERE id='user:legacy'`, [randomUUID(), transfer.amountWon, transfer.idempotencyKey,
+      JSON.stringify({ kind: 'member_transfer', recipientId: 'bobby', amountWon: transfer.amountWon }), NOW]);
     const sent = await ledger.transfer(transfer);
     const oldDecision = (await database.query('SELECT * FROM card_authorization_decisions')).rows[0];
     const oldCustomerEvents = (await database.query('SELECT * FROM customer_access_events ORDER BY user_id,version')).rows;
