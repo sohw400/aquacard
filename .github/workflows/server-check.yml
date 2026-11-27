@@ -162,10 +162,10 @@ jobs:
             assert.equal(statSync(path).mode & 0o777, 0o444);
             assert.equal(createHash("sha256").update(readFileSync(path)).digest("hex"), process.argv[1]);
           ' "$aqua_ca_hash"
-      - name: Build and exercise the paired previous web release on the current schema
-        run: |
-          bash scripts/build-fallback-image.sh aqua-card-server:ci aqua-card-server:compatible
-          bash scripts/fallback-drill.sh aqua-card-server:ci aqua-card-server:compatible
+      - name: Build the previous web release for the candidate schema
+        run: bash scripts/build-fallback-image.sh aqua-card-server:ci aqua-card-server:compatible
+      - name: Verify fallback startup refusals and recovery on the candidate schema
+        run: bash scripts/fallback-drill.sh aqua-card-server:ci aqua-card-server:compatible
       - name: Initialize a private PostgreSQL fixture from the release image
         run: bash scripts/staging-bootstrap-smoke.sh aqua-card-server:ci
       - name: Check the compiled container with a read-only filesystem

@@ -96,7 +96,7 @@ expect_startup_refusal() {
     echo 'Fallback kept running when startup should have refused this configuration.' >&2; return 1
   fi
   docker logs "$id" > "$scratch/refusal.log" 2>&1
-  if [[ "$status" != 1 ]] || ! rg -Fq "$expected" "$scratch/refusal.log"; then
+  if [[ "$status" != 1 ]] || ! grep -Fq -- "$expected" "$scratch/refusal.log"; then
     echo "Unexpected startup refusal (exit $status). Expected: $expected" >&2
     cat "$scratch/refusal.log" >&2
     return 1
